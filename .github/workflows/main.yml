@@ -86,3 +86,75 @@ jobs:
         with:
           name: bsp-peek-${{ matrix.os_short }}
           path: staging/*
+
+  build-docker:
+    strategy:
+      matrix:
+        runtime:
+          - name: sniper
+            image: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
+          - name: scout
+            image: registry.gitlab.steamos.cloud/steamrt/scout/sdk:latest
+      fail-fast: false
+    runs-on: ubuntu-latest
+    name: linux-x86-docker-${{ matrix.runtime.name }}
+    container:
+      image: ${{ matrix.runtime.image }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: project
+
+      - name: Checkout SourceMod
+        uses: actions/checkout@v6
+        with:
+          repository: alliedmodders/sourcemod
+          ref: 1.12-dev
+          submodules: recursive
+          path: sourcemod
+
+      - name: Checkout Metamod:Source
+        uses: actions/checkout@v6
+        with:
+          repository: alliedmodders/metamod-source
+          submodules: recursive
+          ref: 1.12-dev
+          path: metamod-source
+
+      - name: Install build deps in container (32-bit i386 toolchain for CSGO srcds)
+        run: |
+          dpkg --add-architecture i386 || true
+          apt-get update
+          apt-get install -y --no-install-recommends \
+              python3-pip python3-venv git ca-certificates \
+              gcc-multilib g++-multilib libstdc++6:i386
+          python3 -m venv /opt/ambuild-venv
+          /opt/ambuild-venv/bin/pip install --upgrade pip
+          /opt/ambuild-venv/bin/pip install git+https://github.com/alliedmodders/ambuild.git@master
+          echo "/opt/ambuild-venv/bin" >> $GITHUB_PATH
+
+      - name: Build
+        working-directory: project
+        run: |
+          mkdir build && cd build
+          python3 ../configure.py \
+            --sm-path="$GITHUB_WORKSPACE/sourcemod" \
+            --mms-path="$GITHUB_WORKSPACE/metamod-source" \
+            --enable-optimize \
+            --targets=x86
+          ambuild
+
+      - name: Stage release files
+        run: |
+          mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include staging/addons/metamod/scripting
+          find project/build -name '*.so' -exec cp {} staging/addons/sourcemod/extensions/ \;
+          touch staging/addons/sourcemod/extensions/bsp-peek.autoload
+          cp project/gamedata/*.txt staging/addons/sourcemod/gamedata/
+          cp project/include/*.inc staging/addons/sourcemod/scripting/include/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: bsp-peek-linux-docker-${{ matrix.runtime.name }}
+          path: staging/*
