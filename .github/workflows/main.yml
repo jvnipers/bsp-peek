@@ -143,8 +143,9 @@ jobs:
               export PATH=/opt/uv:$PATH
 
               # uv-managed Python 3.11 + AMBuild from upstream master.
-              uv python install 3.11
-              UV_PY=$(uv python find 3.11)
+              # Force musl variant: default cpython-gnu needs glibc 2.17, scout has 2.15.
+              uv python install cpython-3.11-linux-x86_64-musl
+              UV_PY=$(uv python find cpython-3.11-linux-x86_64-musl)
               uv pip install --python "$UV_PY" --system \
                   git+https://github.com/alliedmodders/ambuild.git@master
 
