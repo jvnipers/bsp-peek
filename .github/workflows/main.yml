@@ -98,8 +98,6 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     name: linux-x86-docker-${{ matrix.runtime.name }}
-    # NOTE: no `container:` block - checkout actions need modern glibc which the scout image lacks.
-    # Checkout runs on the host, then we invoke the runtime image via `docker run` only for the actual build.
     steps:
       - uses: actions/checkout@v6
         with:
@@ -132,21 +130,32 @@ jobs:
             ${{ matrix.runtime.image }} \
             bash -ec '
               dpkg --add-architecture i386 || true
-              apt-get update
+              apt-get update || true
               apt-get install -y --no-install-recommends \
-                  python3-pip python3-venv git ca-certificates \
-                  gcc-multilib g++-multilib libstdc++6:i386
-              python3 -m venv /opt/ambuild-venv
-              /opt/ambuild-venv/bin/pip install --upgrade pip
-              /opt/ambuild-venv/bin/pip install git+https://github.com/alliedmodders/ambuild.git@master
-              export PATH=/opt/ambuild-venv/bin:$PATH
+                  curl ca-certificates git \
+                  gcc-multilib g++-multilib libstdc++6:i386 || true
+
+              # uv ships portable prebuilt Python (python-build-standalone) -
+              # statically linked, works on scout/precise glibc 2.15
+              export HOME=/root
+              export UV_INSTALL_DIR=/opt/uv
+              curl -LsSf https://astral.sh/uv/install.sh | sh
+              export PATH=/opt/uv:$PATH
+
+              # uv-managed Python 3.11 + AMBuild from upstream master.
+              uv python install 3.11
+              UV_PY=$(uv python find 3.11)
+              uv pip install --python "$UV_PY" --system \
+                  git+https://github.com/alliedmodders/ambuild.git@master
+
               mkdir -p build && cd build
-              python3 ../configure.py \
+              "$UV_PY" ../configure.py \
                 --sm-path=/work/sourcemod \
                 --mms-path=/work/metamod-source \
                 --enable-optimize \
                 --targets=x86
-              ambuild
+              # ambuild console script was installed against $UV_PY, lives next to it.
+              "$(dirname "$UV_PY")/ambuild"
             '
 
       - name: Stage release files
