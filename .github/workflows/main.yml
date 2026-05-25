@@ -40,7 +40,7 @@ jobs:
       - uses: actions/setup-python@v6
         name: Setup Python
         with:
-          python-version: '3.14'
+          python-version: "3.14"
 
       - name: Install Python dependencies
         run: python -m pip install --upgrade pip setuptools wheel
@@ -93,11 +93,13 @@ jobs:
         runtime:
           - name: sniper
             image: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
-          - name: scout
-            image: registry.gitlab.steamos.cloud/steamrt/scout/sdk:latest
+          #- name: scout
+          #  image: registry.gitlab.steamos.cloud/steamrt/scout/sdk:latest
       fail-fast: false
     runs-on: ubuntu-latest
     name: linux-x86-docker-${{ matrix.runtime.name }}
+    # NOTE: no `container:` block - checkout actions need modern glibc which the scout image lacks.
+    # Checkout runs on the host, then we invoke the runtime image via `docker run` only for the actual build.
     steps:
       - uses: actions/checkout@v6
         with:
@@ -130,44 +132,21 @@ jobs:
             ${{ matrix.runtime.image }} \
             bash -ec '
               dpkg --add-architecture i386 || true
-              apt-get update || true
+              apt-get update
               apt-get install -y --no-install-recommends \
-                  curl ca-certificates git \
-                  gcc-multilib g++-multilib libstdc++6:i386 || true
-
-              # uv ships portable prebuilt Python (python-build-standalone) -
-              # statically linked, works on scout/precise glibc 2.15
-              export HOME=/root
-              export UV_INSTALL_DIR=/opt/uv
-              curl -LsSf https://astral.sh/uv/install.sh | sh
-              export PATH=/opt/uv:$PATH
-
-              # uv-managed Python 3.11. Force musl variant - default cpython-gnu needs glibc 2.17, scout has 2.15.
-              export UV_PYTHON_INSTALL_DIR=/opt/uvpy
-              uv python install cpython-3.11-linux-x86_64-musl
-              UV_PY=$(find /opt/uvpy -type f -name python3.11 | head -n1)
-              if [ -z "$UV_PY" ] || [ ! -x "$UV_PY" ]; then
-                  echo "uv python install did not produce a usable binary"
-                  ls -laR /opt/uvpy || true
-                  exit 1
-              fi
-              echo "Using interpreter: $UV_PY"
-
-              # Bootstrap pip into a clean venv, install AMBuild there.
-              "$UV_PY" -m venv /opt/ambuild-venv
-              /opt/ambuild-venv/bin/python -m ensurepip --upgrade
-              /opt/ambuild-venv/bin/python -m pip install --upgrade pip setuptools wheel
-              /opt/ambuild-venv/bin/python -m pip install \
-                  git+https://github.com/alliedmodders/ambuild.git@master
+                  python3-pip python3-venv git ca-certificates \
+                  gcc-multilib g++-multilib libstdc++6:i386
+              python3 -m venv /opt/ambuild-venv
+              /opt/ambuild-venv/bin/pip install --upgrade pip
+              /opt/ambuild-venv/bin/pip install git+https://github.com/alliedmodders/ambuild.git@master
               export PATH=/opt/ambuild-venv/bin:$PATH
-
               mkdir -p build && cd build
-              /opt/ambuild-venv/bin/python ../configure.py \
+              python3 ../configure.py \
                 --sm-path=/work/sourcemod \
                 --mms-path=/work/metamod-source \
                 --enable-optimize \
                 --targets=x86
-              /opt/ambuild-venv/bin/ambuild
+              ambuild
             '
 
       - name: Stage release files
