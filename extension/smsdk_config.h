@@ -6,7 +6,7 @@
   "\"Peek\" into engine CCollisionBSPData (brushes, leaves, planes, nodes)"
 #define SMEXT_CONF_VERSION "1.0.0"
 #define SMEXT_CONF_AUTHOR "jvnipers"
-#define SMEXT_CONF_URL "https://github.com/FemboyKZ/bsp-peek"
+#define SMEXT_CONF_URL "https://github.com/jvnipers/bsp-peek"
 #define SMEXT_CONF_LOGTAG "BSPP"
 #define SMEXT_CONF_LICENSE "AGPLv3"
 #define SMEXT_CONF_DATESTRING __DATE__
