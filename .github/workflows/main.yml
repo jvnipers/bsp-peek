@@ -98,9 +98,8 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     name: linux-x86-docker-${{ matrix.runtime.name }}
-    container:
-      image: ${{ matrix.runtime.image }}
-      options: --user root
+    # NOTE: no `container:` block - checkout actions need modern glibc which the scout image lacks.
+    # Checkout runs on the host, then we invoke the runtime image via `docker run` only for the actual build.
     steps:
       - uses: actions/checkout@v6
         with:
@@ -122,28 +121,33 @@ jobs:
           ref: 1.12-dev
           path: metamod-source
 
-      - name: Install build deps in container (32-bit i386 toolchain for CSGO srcds)
+      - name: Build inside ${{ matrix.runtime.name }} container
         run: |
-          dpkg --add-architecture i386 || true
-          apt-get update
-          apt-get install -y --no-install-recommends \
-              python3-pip python3-venv git ca-certificates \
-              gcc-multilib g++-multilib libstdc++6:i386
-          python3 -m venv /opt/ambuild-venv
-          /opt/ambuild-venv/bin/pip install --upgrade pip
-          /opt/ambuild-venv/bin/pip install git+https://github.com/alliedmodders/ambuild.git@master
-          echo "/opt/ambuild-venv/bin" >> $GITHUB_PATH
-
-      - name: Build
-        working-directory: project
-        run: |
-          mkdir build && cd build
-          python3 ../configure.py \
-            --sm-path="$GITHUB_WORKSPACE/sourcemod" \
-            --mms-path="$GITHUB_WORKSPACE/metamod-source" \
-            --enable-optimize \
-            --targets=x86
-          ambuild
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work/project \
+            -e HL2SDKCSGO=/work/project/hl2sdk-csgo \
+            -e MMSOURCE112=/work/metamod-source \
+            -e SOURCEMOD112=/work/sourcemod \
+            ${{ matrix.runtime.image }} \
+            bash -ec '
+              dpkg --add-architecture i386 || true
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                  python3-pip python3-venv git ca-certificates \
+                  gcc-multilib g++-multilib libstdc++6:i386
+              python3 -m venv /opt/ambuild-venv
+              /opt/ambuild-venv/bin/pip install --upgrade pip
+              /opt/ambuild-venv/bin/pip install git+https://github.com/alliedmodders/ambuild.git@master
+              export PATH=/opt/ambuild-venv/bin:$PATH
+              mkdir -p build && cd build
+              python3 ../configure.py \
+                --sm-path=/work/sourcemod \
+                --mms-path=/work/metamod-source \
+                --enable-optimize \
+                --targets=x86
+              ambuild
+            '
 
       - name: Stage release files
         run: |
