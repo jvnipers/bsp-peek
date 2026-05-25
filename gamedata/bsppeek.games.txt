@@ -1,0 +1,100 @@
+// Engine binary: engine.so (Linux) / engine.dll (Windows)
+
+"Games"
+{
+    "csgo"
+    {
+        "Signatures"
+        {
+            "BSPDataLoaderCaller"
+            {
+                "library"   "engine"
+                "linux"     "\x55\x89\xE5\x56\x53\x8B\x5D\x08\x83\xEC\x08\x8B\x75\x0C\x53\x68\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x83\xC4\x10\x85\xC0"
+                "windows"   "\x55\x8B\xEC\x56\x8B\xF1\xC7\x05\x2A\x2A\x2A\x2A\x01\x00\x00\x00\xC7\x05\x2A\x2A\x2A\x2A\x00\x00\x00\x00\xC7\x05\x2A\x2A\x2A\x2A\x01\x00\x00\x00"
+            }
+        }
+
+        "Addresses"
+        {
+            "g_BSPData"
+            {
+                "signature" "BSPDataLoaderCaller"
+                "linux"
+                {
+                    "read"  "165"
+                }
+                "windows"
+                {
+                    "read"  "88"
+                }
+            }
+        }
+
+        "Keys"
+        {
+            //
+            // Final CCollisionBSPData offsets (x86, MAX_QPATH=96, CRangeValidatedArray<T>=8 bytes = {T* ptr; int count}).
+            // cstrike15_src/engine/cmodel_private.h.
+            //   0x00  cnode_t* map_rootnode
+            //   0x04..0x63  char mapPathName[96]
+            //   0x64  int numbrushsides    | 0x68 map_brushsides.ptr  | 0x6C count
+            //   0x70  int numboxbrushes    | 0x74 map_boxbrushes.ptr  | 0x78 count
+            //   0x7C  int numplanes        | 0x80 map_planes.ptr      | 0x84 count
+            //   0x88  int numnodes         | 0x8C map_nodes.ptr       | 0x90 count
+            //   0x94  int numleafs         | 0x98 map_leafs.ptr       | 0x9C count
+            //   0xA0  int emptyleaf,  0xA4 int solidleaf
+            //   0xA8  int numleafbrushes   | 0xAC map_leafbrushes.ptr | 0xB0 count
+            //   0xB4  int numcmodels       | 0xB8 map_cmodels.ptr     | 0xBC count
+            //   0xC0  int numbrushes       | 0xC4 map_brushes.ptr     | 0xC8 count
+            //
+            "off_map_rootnode"       "0"
+            "off_numbrushsides"      "100"
+            "off_map_brushsides"     "104"
+            "off_numplanes"          "124"
+            "off_map_planes"         "128"
+            "off_numnodes"           "136"
+            "off_map_nodes"          "140"
+            "off_numleafs"           "148"
+            "off_map_leafs"          "152"
+            "off_numleafbrushes"     "168"
+            "off_map_leafbrushes"    "172"
+            "off_numbrushes"         "192"
+            "off_map_brushes"        "196"
+
+            "cbrush_contents"        "0"
+            "cbrush_numsides"        "4"
+            "cbrush_firstbrushside"  "6"
+            "cbrush_sizeof"          "8"
+
+            "cbrushside_plane"       "0"
+            "cbrushside_sizeof"      "8"
+
+            "cplane_normal"          "0"
+            "cplane_dist"            "12"
+            "cplane_sizeof"          "20"
+
+            // cnode_t (cstrike15_src/engine/cmodel_private.h, x86):
+            //   cplane_t* plane;     // 0x00 (4 bytes)
+            //   int       children[2]; // 0x04 (8 bytes)
+            //   sizeof(cnode_t) = 12. Negative child encodes leaf: leafIdx = -1 - child.
+            "cnode_plane"            "0"
+            "cnode_children"         "4"
+            "cnode_sizeof"           "12"
+
+            // cleaf_t layout:
+            //   int     contents;          // 0x00
+            //   short   cluster;           // 0x04
+            //   short   area:9 flags:7;    // 0x06
+            //   ushort  firstleafbrush;    // 0x08
+            //   ushort  numleafbrushes;    // 0x0A
+            //   ushort  firstleafface;     // 0x0C
+            //   ushort  numleaffaces;      // 0x0E
+            //   short   dispCount;         // 0x10
+            //   short   dispListStart;     // 0x12
+            //   sizeof(cleaf_t)            = 0x14
+            "cleaf_firstleafbrush"   "8"
+            "cleaf_numleafbrushes"   "10"
+            "cleaf_sizeof"           "16"
+        }
+    }
+}

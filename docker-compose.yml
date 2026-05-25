@@ -1,0 +1,14 @@
+services:
+  build:
+    build: .
+    image: bsppeek-builder:sniper
+    volumes:
+      - .:/work
+      # Defaults assume SDKs live in the repo root (sibling of extension/):
+      #   sm-bspintrospection/hl2sdk-csgo
+      #   sm-bspintrospection/metamod-source
+      #   sm-bspintrospection/sourcemod
+      # Override by exporting HL2SDKCSGO / MMSOURCE112 / SOURCEMOD112 on the host.
+      - ${HL2SDKCSGO:-./hl2sdk-csgo}:/sdks/hl2sdk-csgo:ro
+      - ${MMSOURCE112:-./metamod-source}:/sdks/metamod-source:ro
+      - ${SOURCEMOD112:-./sourcemod}:/sdks/sourcemod:ro
