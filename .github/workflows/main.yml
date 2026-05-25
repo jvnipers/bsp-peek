@@ -77,7 +77,7 @@ jobs:
         run: |
           mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include staging/addons/metamod/scripting
           find project/build -name '*${{ matrix.ext }}' -exec cp {} staging/addons/sourcemod/extensions/ \;
-          touch staging/addons/sourcemod/extensions/bsp-peek.autoload
+          touch staging/addons/sourcemod/extensions/bsppeek.autoload
           cp project/gamedata/*.txt staging/addons/sourcemod/gamedata/
           cp project/include/*.inc staging/addons/sourcemod/scripting/include/
 
@@ -149,7 +149,7 @@ jobs:
         run: |
           mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include staging/addons/metamod/scripting
           find project/build -name '*.so' -exec cp {} staging/addons/sourcemod/extensions/ \;
-          touch staging/addons/sourcemod/extensions/bsp-peek.autoload
+          touch staging/addons/sourcemod/extensions/bsppeek.autoload
           cp project/gamedata/*.txt staging/addons/sourcemod/gamedata/
           cp project/include/*.inc staging/addons/sourcemod/scripting/include/
 
