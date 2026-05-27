@@ -173,7 +173,7 @@ jobs:
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/work" \
             -v "$GITHUB_WORKSPACE/musl-loader/ld-musl-x86_64.so.1:/lib/ld-musl-x86_64.so.1:ro" \
-            -v "$GITHUB_WORKSPACE/ambuild-src:/opt/ambuild-src:ro" \
+            -v "$GITHUB_WORKSPACE/ambuild-src:/opt/ambuild-src" \
             -w /work/project \
             -e HL2SDKCSGO=/work/project/hl2sdk-csgo \
             -e MMSOURCE112=/work/metamod-source \
