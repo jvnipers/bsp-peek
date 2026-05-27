@@ -131,6 +131,13 @@ jobs:
           docker run --rm -v "$GITHUB_WORKSPACE/musl-loader:/out" alpine:3.20 \
             sh -c 'cp /lib/ld-musl-x86_64.so.1 /out/'
 
+      - name: Pre-clone AMBuild on host (scout only)
+        if: matrix.runtime.name == 'scout'
+        run: |
+          # Scout's git is too old to fetch arbitrary commits by SHA (no protocol v2 / allowReachableSHA1InWant),
+          # so clone on the host where git is modern, then bind-mount into the container.
+          git clone --depth 1 https://github.com/alliedmodders/ambuild.git "$GITHUB_WORKSPACE/ambuild-src"
+
       - name: Build inside sniper container
         if: matrix.runtime.name == 'sniper'
         run: |
@@ -166,6 +173,7 @@ jobs:
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/work" \
             -v "$GITHUB_WORKSPACE/musl-loader/ld-musl-x86_64.so.1:/lib/ld-musl-x86_64.so.1:ro" \
+            -v "$GITHUB_WORKSPACE/ambuild-src:/opt/ambuild-src:ro" \
             -w /work/project \
             -e HL2SDKCSGO=/work/project/hl2sdk-csgo \
             -e MMSOURCE112=/work/metamod-source \
@@ -188,8 +196,7 @@ jobs:
               uv python install cpython-3.11-linux-x86_64-musl
               uv venv --python cpython-3.11-linux-x86_64-musl /opt/venv
               export PATH=/opt/venv/bin:$PATH
-              uv pip install --python /opt/venv/bin/python \
-                  git+https://github.com/alliedmodders/ambuild.git@master
+              uv pip install --python /opt/venv/bin/python /opt/ambuild-src
 
               mkdir -p build && cd build
               python ../configure.py \
