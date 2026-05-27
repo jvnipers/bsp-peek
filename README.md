@@ -11,6 +11,11 @@ MM:S 1.12+ SM 1.12+ (No SM 1.13 or MM:S 2.0 support (yet))
 ### BSP queries
 
 ```sp
+// Misc
+native int  BSP_MapPathName(char[] buf, int maxlen);    // engine's internal map path string
+native int  BSP_EmptyLeaf();                            // sentinel: void leaf index
+native int  BSP_SolidLeaf();                            // sentinel: fully-solid leaf index
+
 // Counts
 native int  BSP_NumBrushes();
 native int  BSP_NumBrushSides();
@@ -30,6 +35,9 @@ native void BSP_BrushBounds(int brushIdx, float mins[3], float maxs[3]);
 native bool BSP_IsBoxBrush(int brushIdx);
 native int  BSP_BrushNumSides(int brushIdx);
 native bool BSP_BrushSidePlane(int brushIdx, int sideIdx, float normal[3], float &dist);
+native int  BSP_BrushSideBevel(int brushIdx, int sideIdx);    // 0/1: VBSP-generated bevel plane
+native int  BSP_BrushSideThin(int brushIdx, int sideIdx);     // 0/1: thin-side flag
+native int  BSP_BrushSideTexInfo(int brushIdx, int sideIdx);  // texinfo table index
 native bool BSP_FindBrushPairAtSeam(const float samplePos[3], float seamZ,
                                     int &outLowerBrush, int &outUpperBrush);
 
@@ -39,20 +47,25 @@ native int  BSP_LeafContents(int leafIdx);                   // contents flags @
 native int  BSP_LeafCluster(int leafIdx);                    // PVS cluster (short @ +4)
 native int  BSP_LeafArea(int leafIdx);                       // area portal grouping (low 9 bits of +6)
 native int  BSP_LeafFlags(int leafIdx);                      // misc flags (high 7 bits of +6)
+native int  BSP_LeafFirstFace(int leafIdx);                  // first leaf-face index
+native int  BSP_LeafNumFaces(int leafIdx);                   // leaf-face count
 native bool BSP_LeafBounds(int leafIdx, float mins[3], float maxs[3]);
 
 // Node accessors (manual BSP walking)
 native bool BSP_NodePlane(int nodeIdx, float normal[3], float &dist);
 native bool BSP_NodeChildren(int nodeIdx, int &leftChild, int &rightChild);
+native bool BSP_NodeBounds(int nodeIdx, float mins[3], float maxs[3]);  // shares LeafBounds tree-walk
 
 // Plane table access
 native bool BSP_PlaneAt(int planeIdx, float normal[3], float &dist);
+native int  BSP_PlaneType(int planeIdx);   // 0=X 1=Y 2=Z 3=ANYX 4=ANYY 5=ANYZ
 
 // Box brush (cboxbrush_t) - SIMD-optimized axis-aligned brushes
 native bool BSP_BoxBrushBounds(int idx, float mins[3], float maxs[3]);
 native int  BSP_BoxBrushOriginalBrush(int idx);   // original cbrush_t index; -1 if invalid
 native bool BSP_BoxBrushSurfaceIndex(int idx, int surf[6]);  // per-face surface props:
                                                              // {-X,+X,-Y,+Y,-Z,+Z}
+native int  BSP_BoxBrushContents(int idx);                   // via originalBrush lookup
 
 // Submodels (cmodel_t) - for func_brush, doors, breakables. idx 0 = world.
 native bool BSP_CModelBounds(int idx, float mins[3], float maxs[3]);
@@ -110,6 +123,8 @@ native int   BSP_DispDiskDebugInfo(int idx, char[] buf, int maxlen);
 
 - Engine reader resolves three globals from gamedata sigscan: `g_DispCollTreeCount`, `g_pDispCollTrees`, `g_pDispBounds` (anchored on `CMod_LoadDispInfo`). Field offsets within `CDispCollTree` (mins/maxs/power, `m_aVerts` / `m_aTris` CUtlVector members) and `CDispCollTri` (3 byte indices + edge flags + plane).
 
+- Tree/bounds array pointers stored as `T**` (address-of-pointer), dereferenced at access time. Engine re-allocates these arrays per map load (CMod_LoadDispInfo), so caching the dereferenced value at init = use-after-free across map changes.
+
 - For `HeightAt` queries, AABB-rejects the disp first, then iterates triangles testing XY containment + barycentric Z interpolation. Picks the highest matching Z across all tris (matches a downward trace).
 
 ## Build
@@ -118,14 +133,14 @@ Produces `build/extension/bsppeek.ext/{platform}-x86/.` containing the ext binar
 
 ### Docker
 
-```pwsh
+```bash
 docker compose run --rm build
 ```
 
 ### Native
 
-```pwsh
-mkdir build; cd build
+```bash
+mkdir build && cd build
 python ../configure.py --enable-optimize --targets=x86
 ambuild
 ```
