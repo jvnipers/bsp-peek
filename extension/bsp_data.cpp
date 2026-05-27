@@ -30,6 +30,15 @@ static int OFF_NUMLEAFS = 0;
 static int OFF_MAP_LEAFS = 0;
 static int OFF_NUMNODES = 0;
 static int OFF_MAP_NODES = 0;
+static int OFF_NUMBOXBRUSHES = 0;
+static int OFF_MAP_BOXBRUSHES = 0;
+static int SZ_CBOXBRUSH = 48;
+static int OFF_CBOXBRUSH_MINS = 0;
+static int OFF_CBOXBRUSH_MAXS = 16;
+static int OFF_CBOXBRUSH_SURFIDX = 32;
+static int OFF_CBOXBRUSH_BRUSHNUM = 44;
+static int OFF_NUMCMODELS = 0;
+static int OFF_MAP_CMODELS = 0;
 
 // cbrush_t layout
 static int OFF_CBRUSH_CONTENTS = 0;
@@ -58,6 +67,13 @@ static int SZ_CLEAF = 16;
 static int OFF_CNODE_PLANE = 0;
 static int OFF_CNODE_CHILDREN = 4;
 static int SZ_CNODE = 12;
+
+// cmodel_t layout
+static int OFF_CMODEL_MINS = 0;
+static int OFF_CMODEL_MAXS = 12;
+static int OFF_CMODEL_ORIGIN = 24;
+static int OFF_CMODEL_HEADNODE = 36;
+static int SZ_CMODEL = 40;
 
 // Cache state (brush AABB + leaf AABB)
 struct BrushCacheEntry {
@@ -114,6 +130,15 @@ bool Init(IGameConfig *gameconf, char *error, size_t maxlen) {
   OFF_MAP_LEAFS = GetKeyInt(gameconf, "off_map_leafs", 0);
   OFF_NUMNODES = GetKeyInt(gameconf, "off_numnodes", 0);
   OFF_MAP_NODES = GetKeyInt(gameconf, "off_map_nodes", 0);
+  OFF_NUMBOXBRUSHES = GetKeyInt(gameconf, "off_numboxbrushes", 0);
+  OFF_MAP_BOXBRUSHES = GetKeyInt(gameconf, "off_map_boxbrushes", 0);
+  SZ_CBOXBRUSH = GetKeyInt(gameconf, "cboxbrush_sizeof", 48);
+  OFF_CBOXBRUSH_MINS = GetKeyInt(gameconf, "cboxbrush_mins", 0);
+  OFF_CBOXBRUSH_MAXS = GetKeyInt(gameconf, "cboxbrush_maxs", 16);
+  OFF_CBOXBRUSH_SURFIDX = GetKeyInt(gameconf, "cboxbrush_surfidx", 32);
+  OFF_CBOXBRUSH_BRUSHNUM = GetKeyInt(gameconf, "cboxbrush_brushnum", 44);
+  OFF_NUMCMODELS = GetKeyInt(gameconf, "off_numcmodels", 0);
+  OFF_MAP_CMODELS = GetKeyInt(gameconf, "off_map_cmodels", 0);
 
   // cbrush_t / cbrushside_t / cplane_t
   OFF_CBRUSH_CONTENTS = GetKeyInt(gameconf, "cbrush_contents", 0);
@@ -140,6 +165,13 @@ bool Init(IGameConfig *gameconf, char *error, size_t maxlen) {
   OFF_CNODE_PLANE = GetKeyInt(gameconf, "cnode_plane", 0);
   OFF_CNODE_CHILDREN = GetKeyInt(gameconf, "cnode_children", 4);
   SZ_CNODE = GetKeyInt(gameconf, "cnode_sizeof", 12);
+
+  // cmodel_t
+  OFF_CMODEL_MINS = GetKeyInt(gameconf, "cmodel_mins", 0);
+  OFF_CMODEL_MAXS = GetKeyInt(gameconf, "cmodel_maxs", 12);
+  OFF_CMODEL_ORIGIN = GetKeyInt(gameconf, "cmodel_origin", 24);
+  OFF_CMODEL_HEADNODE = GetKeyInt(gameconf, "cmodel_headnode", 36);
+  SZ_CMODEL = GetKeyInt(gameconf, "cmodel_sizeof", 40);
 
   // Sanity.
   if (OFF_NUMBRUSHES < 0 || OFF_MAP_BRUSHES < 0 || OFF_NUMBRUSHSIDES < 0 ||
@@ -186,6 +218,58 @@ int DebugGetOff(const char *name) {
   if (!strcmp(name, "map_leafs"))
     return OFF_MAP_LEAFS;
   return -1;
+}
+
+void DebugDumpBoxBrushes(int maxCount) {
+  if (!g_pBSPData || OFF_MAP_BOXBRUSHES == 0 || SZ_CBOXBRUSH <= 0)
+    return;
+  int n = GetNumBoxBrushes();
+  if (n <= 0)
+    return;
+  const uint8_t *table = reinterpret_cast<const uint8_t *>(
+      ReadPtr(g_pBSPData, OFF_MAP_BOXBRUSHES));
+  if (!table)
+    return;
+  if (maxCount > n)
+    maxCount = n;
+  smutils->LogMessage(myself,
+                      "BoxBrushDump: count=%d sizeof=%d table=%p dumping %d", n,
+                      SZ_CBOXBRUSH, (const void *)table, maxCount);
+  for (int i = 0; i < maxCount; ++i) {
+    const uint8_t *p = table + (size_t)i * SZ_CBOXBRUSH;
+    smutils->LogMessage(myself,
+                        "  bb[%d] @+00..0F: "
+                        "%02X %02X %02X %02X %02X %02X %02X %02X "
+                        "%02X %02X %02X %02X %02X %02X %02X %02X",
+                        i, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8],
+                        p[9], p[10], p[11], p[12], p[13], p[14], p[15]);
+    smutils->LogMessage(myself,
+                        "  bb[%d] @+10..1F: "
+                        "%02X %02X %02X %02X %02X %02X %02X %02X "
+                        "%02X %02X %02X %02X %02X %02X %02X %02X",
+                        i, p[16], p[17], p[18], p[19], p[20], p[21], p[22],
+                        p[23], p[24], p[25], p[26], p[27], p[28], p[29], p[30],
+                        p[31]);
+    smutils->LogMessage(myself,
+                        "  bb[%d] @+20..2F: "
+                        "%02X %02X %02X %02X %02X %02X %02X %02X "
+                        "%02X %02X %02X %02X %02X %02X %02X %02X",
+                        i, p[32], p[33], p[34], p[35], p[36], p[37], p[38],
+                        p[39], p[40], p[41], p[42], p[43], p[44], p[45], p[46],
+                        p[47]);
+    // Decoded interpretations as floats at common offsets:
+    // assuming layout might mirror cmodel_t (mins[3] @0, maxs[3] @12) or
+    // SIMD-aligned VectorAligned (16B mins, 16B maxs, 16B meta).
+    float f00 = ReadF32(p, 0), f04 = ReadF32(p, 4), f08 = ReadF32(p, 8);
+    float f12 = ReadF32(p, 12), f16 = ReadF32(p, 16), f20 = ReadF32(p, 20);
+    float f24 = ReadF32(p, 24), f28 = ReadF32(p, 28), f32 = ReadF32(p, 32);
+    int i32 = ReadI32(p, 32), i36 = ReadI32(p, 36);
+    smutils->LogMessage(
+        myself,
+        "  bb[%d] floats: f00=%.2f f04=%.2f f08=%.2f | f12=%.2f f16=%.2f "
+        "f20=%.2f | f24=%.2f f28=%.2f f32=%.2f | i@32=%d i@36=%d",
+        i, f00, f04, f08, f12, f16, f20, f24, f28, f32, i32, i36);
+  }
 }
 
 // Internal helpers - table-relative pointer resolution
@@ -251,6 +335,16 @@ int GetNumNodes() {
   if (!g_pBSPData || OFF_NUMNODES == 0)
     return 0;
   return ReadI32(g_pBSPData, OFF_NUMNODES);
+}
+int GetNumBoxBrushes() {
+  if (!g_pBSPData || OFF_NUMBOXBRUSHES == 0)
+    return 0;
+  return ReadI32(g_pBSPData, OFF_NUMBOXBRUSHES);
+}
+int GetNumCModels() {
+  if (!g_pBSPData || OFF_NUMCMODELS == 0)
+    return 0;
+  return ReadI32(g_pBSPData, OFF_NUMCMODELS);
 }
 
 // Point queries
@@ -485,10 +579,9 @@ int LeafFlags(int leafIdx) {
 bool LeafBounds(int leafIdx, float mins[3], float maxs[3]) {
   if (leafIdx < 0 || leafIdx >= GetNumLeaves())
     return false;
-  // Build leaf cache lazily under lock.
+  // Build leaf cache lazily under lock. Independent of brush cache:
+  // walks BSP tree from root and splits AABB on axis-aligned planes.
   std::lock_guard<std::mutex> lk(g_brushCacheMutex);
-  if (!g_brushCacheBuilt)
-    BuildBrushCache();
   if (!g_leafCacheBuilt)
     BuildLeafCache();
   if (!g_leafCacheBuilt || (size_t)leafIdx >= g_leafCache.size())
@@ -539,6 +632,88 @@ bool PlaneAt(int planeIdx, float normal[3], float &dist) {
   normal[1] = ReadF32(plane, OFF_CPLANE_NORMAL + 4);
   normal[2] = ReadF32(plane, OFF_CPLANE_NORMAL + 8);
   dist = ReadF32(plane, OFF_CPLANE_DIST);
+  return true;
+}
+
+// Submodel (cmodel_t) accessors.
+static const uint8_t *cmodel_at(int idx) {
+  if (!g_pBSPData || OFF_MAP_CMODELS == 0 || idx < 0 || idx >= GetNumCModels())
+    return nullptr;
+  const uint8_t *table =
+      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_CMODELS));
+  if (!table)
+    return nullptr;
+  return table + (size_t)idx * SZ_CMODEL;
+}
+
+bool CModelBounds(int idx, float mins[3], float maxs[3]) {
+  const uint8_t *m = cmodel_at(idx);
+  if (!m)
+    return false;
+  mins[0] = ReadF32(m, OFF_CMODEL_MINS + 0);
+  mins[1] = ReadF32(m, OFF_CMODEL_MINS + 4);
+  mins[2] = ReadF32(m, OFF_CMODEL_MINS + 8);
+  maxs[0] = ReadF32(m, OFF_CMODEL_MAXS + 0);
+  maxs[1] = ReadF32(m, OFF_CMODEL_MAXS + 4);
+  maxs[2] = ReadF32(m, OFF_CMODEL_MAXS + 8);
+  return true;
+}
+
+bool CModelOrigin(int idx, float origin[3]) {
+  const uint8_t *m = cmodel_at(idx);
+  if (!m)
+    return false;
+  origin[0] = ReadF32(m, OFF_CMODEL_ORIGIN + 0);
+  origin[1] = ReadF32(m, OFF_CMODEL_ORIGIN + 4);
+  origin[2] = ReadF32(m, OFF_CMODEL_ORIGIN + 8);
+  return true;
+}
+
+int CModelHeadnode(int idx) {
+  const uint8_t *m = cmodel_at(idx);
+  if (!m)
+    return -1;
+  return ReadI32(m, OFF_CMODEL_HEADNODE);
+}
+
+// Box brush (cboxbrush_t) accessors - SIMD-optimized axis-aligned brushes.
+static const uint8_t *boxbrush_at(int idx) {
+  if (!g_pBSPData || OFF_MAP_BOXBRUSHES == 0 || idx < 0 ||
+      idx >= GetNumBoxBrushes())
+    return nullptr;
+  const uint8_t *table = reinterpret_cast<const uint8_t *>(
+      ReadPtr(g_pBSPData, OFF_MAP_BOXBRUSHES));
+  if (!table)
+    return nullptr;
+  return table + (size_t)idx * SZ_CBOXBRUSH;
+}
+
+bool BoxBrushBounds(int idx, float mins[3], float maxs[3]) {
+  const uint8_t *b = boxbrush_at(idx);
+  if (!b)
+    return false;
+  mins[0] = ReadF32(b, OFF_CBOXBRUSH_MINS + 0);
+  mins[1] = ReadF32(b, OFF_CBOXBRUSH_MINS + 4);
+  mins[2] = ReadF32(b, OFF_CBOXBRUSH_MINS + 8);
+  maxs[0] = ReadF32(b, OFF_CBOXBRUSH_MAXS + 0);
+  maxs[1] = ReadF32(b, OFF_CBOXBRUSH_MAXS + 4);
+  maxs[2] = ReadF32(b, OFF_CBOXBRUSH_MAXS + 8);
+  return true;
+}
+
+int BoxBrushOriginalBrush(int idx) {
+  const uint8_t *b = boxbrush_at(idx);
+  if (!b)
+    return -1;
+  return ReadI32(b, OFF_CBOXBRUSH_BRUSHNUM);
+}
+
+bool BoxBrushSurfaceIndex(int idx, int outSurf[6]) {
+  const uint8_t *b = boxbrush_at(idx);
+  if (!b)
+    return false;
+  for (int i = 0; i < 6; ++i)
+    outSurf[i] = (int)ReadU16(b, OFF_CBOXBRUSH_SURFIDX + i * 2);
   return true;
 }
 
@@ -614,58 +789,100 @@ static void BuildBrushCache() {
   g_brushCacheBuilt = true;
 }
 
-// Per-map leaf AABB cache (union of member brush AABBs).
-// Built lazily by LeafBounds; not called from RebuildCache to avoid the
-// O(numleafs * numleafbrushes) cost on map load when callers may never
-// need leaf bounds.
+// Per-map leaf AABB cache via BSP tree descent.
+// Engine doesn't preserve per-leaf bounds (cleaf_t has no mins/maxs), and
+// unioning leafbrush AABBs is wrong: Source maps reference huge world-hull
+// SOLID brushes from most leaves, so the union always collapses to that
+// filler's AABB. Walk from root carrying current AABB, split by axis-aligned
+// node planes, write final box on leaf hit. Oblique planes don't tighten
+// (leaf bounds remain a superset of the true cell, but bounded by every
+// axis-aligned split along the path).
 static void BuildLeafCache() {
   g_leafCache.clear();
   g_leafCacheBuilt = false;
   int nleaf = GetNumLeaves();
-  if (nleaf <= 0 || nleaf > 200000)
-    return;
-  if (!g_brushCacheBuilt)
-    BuildBrushCache();
-  if (!g_brushCacheBuilt)
+  int nnode = GetNumNodes();
+  if (nleaf <= 0 || nleaf > 200000 || nnode <= 0)
     return;
 
-  const uint16_t *lbtable = reinterpret_cast<const uint16_t *>(
-      ReadPtr(g_pBSPData, OFF_MAP_LEAFBRUSHES));
-  if (!lbtable)
+  // Seed bounds from world cmodel (cmodel[0]).
+  float world_mins[3], world_maxs[3];
+  if (!CModelBounds(0, world_mins, world_maxs))
     return;
 
   g_leafCache.resize(nleaf);
-  int nbrush = (int)g_brushCache.size();
-  for (int i = 0; i < nleaf; ++i) {
-    LeafCacheEntry &le = g_leafCache[i];
+  for (LeafCacheEntry &le : g_leafCache) {
     le.valid = false;
     le.mins[0] = le.mins[1] = le.mins[2] = 1e30f;
     le.maxs[0] = le.maxs[1] = le.maxs[2] = -1e30f;
-
-    const uint8_t *leaf = leaf_at(i);
-    if (!leaf)
-      continue;
-    uint16_t first = ReadU16(leaf, OFF_CLEAF_FIRSTLEAFBRUSH);
-    uint16_t count = ReadU16(leaf, OFF_CLEAF_NUMLEAFBRUSHES);
-    if (count == 0)
-      continue;
-
-    for (uint16_t j = 0; j < count; ++j) {
-      int brushIdx = (int)lbtable[(size_t)first + j];
-      if (brushIdx < 0 || brushIdx >= nbrush)
-        continue;
-      const BrushCacheEntry &be = g_brushCache[brushIdx];
-      if (!be.valid)
-        continue;
-      for (int k = 0; k < 3; ++k) {
-        if (be.mins[k] < le.mins[k])
-          le.mins[k] = be.mins[k];
-        if (be.maxs[k] > le.maxs[k])
-          le.maxs[k] = be.maxs[k];
-      }
-      le.valid = true;
-    }
   }
+
+  struct Frame {
+    int node;
+    float mins[3];
+    float maxs[3];
+  };
+  std::vector<Frame> stack;
+  stack.reserve(64);
+  Frame root;
+  root.node = 0;
+  memcpy(root.mins, world_mins, 12);
+  memcpy(root.maxs, world_maxs, 12);
+  stack.push_back(root);
+
+  while (!stack.empty()) {
+    Frame f = stack.back();
+    stack.pop_back();
+
+    if (f.node < 0) {
+      int leafIdx = -1 - f.node;
+      if (leafIdx >= 0 && leafIdx < nleaf) {
+        LeafCacheEntry &le = g_leafCache[leafIdx];
+        memcpy(le.mins, f.mins, 12);
+        memcpy(le.maxs, f.maxs, 12);
+        le.valid = true;
+      }
+      continue;
+    }
+    if (f.node >= nnode)
+      continue;
+
+    float normal[3], dist;
+    if (!NodePlane(f.node, normal, dist))
+      continue;
+    int leftChild, rightChild;
+    if (!NodeChildren(f.node, leftChild, rightChild))
+      continue;
+
+    Frame fr = f;
+    fr.node = leftChild;
+    Frame bk = f;
+    bk.node = rightChild;
+
+    // Tighten on axis-aligned splits. Source PLANE_X/Y/Z always have
+    // positive-axis normals, but check sign defensively.
+    for (int ax = 0; ax < 3; ++ax) {
+      if (std::fabs(normal[ax]) > 0.999f) {
+        if (normal[ax] > 0.0f) {
+          if (fr.mins[ax] < dist)
+            fr.mins[ax] = dist;
+          if (bk.maxs[ax] > dist)
+            bk.maxs[ax] = dist;
+        } else {
+          float d = -dist;
+          if (fr.maxs[ax] > d)
+            fr.maxs[ax] = d;
+          if (bk.mins[ax] < d)
+            bk.mins[ax] = d;
+        }
+        break;
+      }
+    }
+
+    stack.push_back(fr);
+    stack.push_back(bk);
+  }
+
   g_leafCacheBuilt = true;
 }
 

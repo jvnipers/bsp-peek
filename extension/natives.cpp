@@ -52,6 +52,12 @@ cell_t N_NumNodes(IPluginContext *, const cell_t *) {
 cell_t N_NumPlanes(IPluginContext *, const cell_t *) {
   return BSPData::GetNumPlanes();
 }
+cell_t N_NumBoxBrushes(IPluginContext *, const cell_t *) {
+  return BSPData::GetNumBoxBrushes();
+}
+cell_t N_NumCModels(IPluginContext *, const cell_t *) {
+  return BSPData::GetNumCModels();
+}
 
 // Point queries
 cell_t N_LeafAtPoint(IPluginContext *pCtx, const cell_t *params) {
@@ -187,6 +193,62 @@ cell_t N_PlaneAt(IPluginContext *pCtx, const cell_t *params) {
     outNormal[i] = sp_ftoc(normal[i]);
   *outDist = sp_ftoc(dist);
   return ok ? 1 : 0;
+}
+
+// Box brush (cboxbrush_t) accessors
+cell_t N_BoxBrushBounds(IPluginContext *pCtx, const cell_t *params) {
+  float mins[3], maxs[3];
+  bool ok = BSPData::BoxBrushBounds(params[1], mins, maxs);
+  cell_t *outMins = nullptr, *outMaxs = nullptr;
+  pCtx->LocalToPhysAddr(params[2], &outMins);
+  pCtx->LocalToPhysAddr(params[3], &outMaxs);
+  for (int i = 0; i < 3; ++i) {
+    outMins[i] = sp_ftoc(ok ? mins[i] : 0.0f);
+    outMaxs[i] = sp_ftoc(ok ? maxs[i] : 0.0f);
+  }
+  return ok ? 1 : 0;
+}
+
+cell_t N_BoxBrushOriginalBrush(IPluginContext *, const cell_t *params) {
+  return BSPData::BoxBrushOriginalBrush(params[1]);
+}
+
+cell_t N_BoxBrushSurfaceIndex(IPluginContext *pCtx, const cell_t *params) {
+  int surf[6] = {0};
+  bool ok = BSPData::BoxBrushSurfaceIndex(params[1], surf);
+  cell_t *out = nullptr;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 6; ++i)
+    out[i] = ok ? surf[i] : 0;
+  return ok ? 1 : 0;
+}
+
+// Submodel (cmodel_t) accessors
+cell_t N_CModelBounds(IPluginContext *pCtx, const cell_t *params) {
+  float mins[3], maxs[3];
+  bool ok = BSPData::CModelBounds(params[1], mins, maxs);
+  cell_t *outMins = nullptr, *outMaxs = nullptr;
+  pCtx->LocalToPhysAddr(params[2], &outMins);
+  pCtx->LocalToPhysAddr(params[3], &outMaxs);
+  for (int i = 0; i < 3; ++i) {
+    outMins[i] = sp_ftoc(ok ? mins[i] : 0.0f);
+    outMaxs[i] = sp_ftoc(ok ? maxs[i] : 0.0f);
+  }
+  return ok ? 1 : 0;
+}
+
+cell_t N_CModelOrigin(IPluginContext *pCtx, const cell_t *params) {
+  float origin[3] = {0, 0, 0};
+  bool ok = BSPData::CModelOrigin(params[1], origin);
+  cell_t *outOrigin = nullptr;
+  pCtx->LocalToPhysAddr(params[2], &outOrigin);
+  for (int i = 0; i < 3; ++i)
+    outOrigin[i] = sp_ftoc(origin[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_CModelHeadnode(IPluginContext *pCtx, const cell_t *params) {
+  return BSPData::CModelHeadnode(params[1]);
 }
 
 // "High-level" pixelsurf
@@ -383,6 +445,8 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_NumLeaves", N_NumLeaves},
     {"BSP_NumNodes", N_NumNodes},
     {"BSP_NumPlanes", N_NumPlanes},
+    {"BSP_NumBoxBrushes", N_NumBoxBrushes},
+    {"BSP_NumCModels", N_NumCModels},
 
     // Point queries
     {"BSP_LeafAtPoint", N_LeafAtPoint},
@@ -409,6 +473,16 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 
     // Plane access
     {"BSP_PlaneAt", N_PlaneAt},
+
+    // Box brush (cboxbrush_t) accessors
+    {"BSP_BoxBrushBounds", N_BoxBrushBounds},
+    {"BSP_BoxBrushOriginalBrush", N_BoxBrushOriginalBrush},
+    {"BSP_BoxBrushSurfaceIndex", N_BoxBrushSurfaceIndex},
+
+    // Submodels (cmodel_t)
+    {"BSP_CModelBounds", N_CModelBounds},
+    {"BSP_CModelOrigin", N_CModelOrigin},
+    {"BSP_CModelHeadnode", N_CModelHeadnode},
 
     // High-level pixelsurf
     {"BSP_FindBrushPairAtSeam", N_FindBrushPairAtSeam},

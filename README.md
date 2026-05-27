@@ -15,6 +15,8 @@ native int  BSP_NumBrushSides();
 native int  BSP_NumLeaves();
 native int  BSP_NumNodes();
 native int  BSP_NumPlanes();
+native int  BSP_NumBoxBrushes();   // CSGO SIMD box-brush table (cboxbrush_t)
+native int  BSP_NumCModels();      // submodels (func_brush, doors, etc.)
 
 // Point queries
 native int  BSP_LeafAtPoint(const float pos[3]);        // O(log N) BSP node-walk; -1 on failure
@@ -42,6 +44,16 @@ native bool BSP_NodeChildren(int nodeIdx, int &leftChild, int &rightChild);
 // Plane table access
 native bool BSP_PlaneAt(int planeIdx, float normal[3], float &dist);
 
+// Box brush (cboxbrush_t) - SIMD-optimized axis-aligned brushes
+native bool BSP_BoxBrushBounds(int idx, float mins[3], float maxs[3]);
+native int  BSP_BoxBrushOriginalBrush(int idx);   // original cbrush_t index; -1 if invalid
+native bool BSP_BoxBrushSurfaceIndex(int idx, int surf[6]);  // per-face surface props: {-X,+X,-Y,+Y,-Z,+Z}
+
+// Submodels (cmodel_t) - for func_brush, doors, breakables. idx 0 = world.
+native bool BSP_CModelBounds(int idx, float mins[3], float maxs[3]);
+native bool BSP_CModelOrigin(int idx, float origin[3]);
+native int  BSP_CModelHeadnode(int idx);   // root BSP node for this submodel; pass to manual NodePlane/NodeChildren walks
+
 // "High-level" pixelsurf
 native bool BSP_FindBrushPairAtSeam(const float samplePos[3], float seamZ,
                                     int &outLowerBrush, int &outUpperBrush);
@@ -54,7 +66,7 @@ native bool BSP_CacheIsBuilding();      // true between RebuildCacheAsync and sw
 
 `LeafAtPoint` is an O(log N) BSP node-walk (descends `map_nodes` via signed plane distance, leaf = `-1 - child` per Source convention).
 
-All natives read directly from the live `CCollisionBSPData` global. The brush table is AABB-cached per-map to avoid repeated plane-pointer walks during seam queries; the leaf AABB cache (built lazily by `LeafBounds`) reuses that brush cache.
+All natives read directly from the live `CCollisionBSPData` global. The brush table is AABB-cached per-map to avoid repeated plane-pointer walks during seam queries. The leaf AABB cache (built lazily by `LeafBounds`) descends the BSP node tree from root and splits the parent AABB on axis-aligned plane nodes, unioning leafbrush AABBs would collapse to the world-hull SOLID filler that most leaves reference. Oblique-plane splits don't tighten the box (leaf bounds remain a valid superset).
 
 ### Displacements
 

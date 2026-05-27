@@ -11,7 +11,8 @@ public:
   bool QueryRunning(char *error, size_t maxlen) override;
 
   // Notified when a new map's BSP collision data is ready to query.
-  void OnMapStartHook();
+  void OnCoreMapStart(edict_t *pEdictList, int edictCount,
+                      int clientMax) override;
 };
 
 extern BSPPeek g_BSPPeek;

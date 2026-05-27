@@ -22,6 +22,8 @@ native int  BSP_NumBrushSides();
 native int  BSP_NumLeaves();
 native int  BSP_NumNodes();
 native int  BSP_NumPlanes();
+native int  BSP_NumBoxBrushes();    // CSGO SIMD box-brush table (cboxbrush_t)
+native int  BSP_NumCModels();       // Submodels (func_brush, doors, breakables, etc.)
 
 // Point queries
 // O(log N) BSP node-walk; -1 on failure.
@@ -49,7 +51,7 @@ native int  BSP_LeafContents(int leafIdx);
 native int  BSP_LeafCluster(int leafIdx);    // PVS cluster index
 native int  BSP_LeafArea(int leafIdx);       // area portal grouping (low 9 bits)
 native int  BSP_LeafFlags(int leafIdx);      // misc flags (high 7 bits of the same short)
-// Leaf AABB = union of member brush AABBs. Lazy-builds leaf cache on first call.
+// Leaf AABB via BSP tree-walk (splits parent box on axis-aligned planes). Lazy-built.
 native bool BSP_LeafBounds(int leafIdx, float mins[3], float maxs[3]);
 
 // Node accessors (manual BSP walking; LeafAtPoint usually suffices)
@@ -60,6 +62,21 @@ native bool BSP_NodeChildren(int nodeIdx, int &leftChild, int &rightChild);
 // Plane table access
 // planeIdx in [0, BSP_NumPlanes())
 native bool BSP_PlaneAt(int planeIdx, float normal[3], float &dist);
+
+// Box brush (cboxbrush_t) - SIMD-optimized axis-aligned brushes.
+// idx in [0, BSP_NumBoxBrushes()). VectorAligned mins/maxs (16B each).
+native bool BSP_BoxBrushBounds(int idx, float mins[3], float maxs[3]);
+// Original cbrush_t index this box brush was derived from. -1 if invalid.
+native int  BSP_BoxBrushOriginalBrush(int idx);
+// Per-face surface property indices: surf[6] = {-X,+X,-Y,+Y,-Z,+Z}.
+native bool BSP_BoxBrushSurfaceIndex(int idx, int surf[6]);
+
+// Submodels (cmodel_t) - for func_brush, doors, breakables etc.
+// idx in [0, BSP_NumCModels()). idx 0 is the world model.
+native bool BSP_CModelBounds(int idx, float mins[3], float maxs[3]);
+native bool BSP_CModelOrigin(int idx, float origin[3]);
+// Root BSP node for this submodel's collision tree. -1 if invalid.
+native int  BSP_CModelHeadnode(int idx);
 
 // "High-level" pixelsurf
 // Iterates all brushes for any whose XY AABB contains samplePos AND whose top/bottom equals seamZ.

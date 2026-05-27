@@ -162,18 +162,33 @@
             //   0xC0  int numbrushes       | 0xC4 map_brushes.ptr     | 0xC8 count
 
             "off_map_rootnode"       "0"
-            "off_numbrushsides"      "100"
-            "off_map_brushsides"     "104"
-            "off_numplanes"          "124"
-            "off_map_planes"         "128"
-            "off_numnodes"           "136"
-            "off_map_nodes"          "140"
-            "off_numleafs"           "148"
-            "off_map_leafs"          "152"
-            "off_numleafbrushes"     "168"
-            "off_map_leafbrushes"    "172"
-            "off_numbrushes"         "192"
-            "off_map_brushes"        "196"
+            "off_numbrushsides"      "100"   // 0x64
+            "off_map_brushsides"     "104"   // 0x68
+            "off_numboxbrushes"      "112"   // 0x70  (SIMD box-brush count)
+            "off_map_boxbrushes"     "116"   // 0x74  CRangeValidatedArray<cboxbrush_t>.ptr
+            // cboxbrush_t layout (SIMD-aligned, verified via runtime byte dump):
+            //   0x00  VectorAligned mins (16B: float[3] + 4B pad)
+            //   0x10  VectorAligned maxs (16B: float[3] + 4B pad)
+            //   0x20  ushort surfaceIndex[6] (per-face: -X,+X,-Y,+Y,-Z,+Z)
+            //   0x2C  int originalBrushNumber (index into map_brushes)
+            //   sizeof = 48 (0x30), verified via lea+eax*3, shl 4 pattern
+            "cboxbrush_sizeof"       "48"
+            "cboxbrush_mins"         "0"
+            "cboxbrush_maxs"         "16"
+            "cboxbrush_surfidx"      "32"
+            "cboxbrush_brushnum"     "44"
+            "off_numplanes"          "124"   // 0x7C
+            "off_map_planes"         "128"   // 0x80
+            "off_numnodes"           "136"   // 0x88
+            "off_map_nodes"          "140"   // 0x8C
+            "off_numleafs"           "148"   // 0x94
+            "off_map_leafs"          "152"   // 0x98
+            "off_numleafbrushes"     "168"   // 0xA8
+            "off_map_leafbrushes"    "172"   // 0xAC
+            "off_numcmodels"         "180"   // 0xB4
+            "off_map_cmodels"        "184"   // 0xB8
+            "off_numbrushes"         "192"   // 0xC0
+            "off_map_brushes"        "196"   // 0xC4
 
             "cbrush_contents"        "0"
             "cbrush_numsides"        "4"
@@ -191,6 +206,19 @@
             //   cplane_t* plane;     // 0x00 (4 bytes)
             //   int       children[2]; // 0x04 (8 bytes)
             //   sizeof(cnode_t) = 12. Negative child encodes leaf: leafIdx = -1 - child.
+            // cmodel_t (submodels): verified via Linux LoadSubmodels disasm
+            // (lea +0Ch maxs, lea +18h origin, mov [edx+24h] headnode write).
+            //   0x00  Vector mins
+            //   0x0C  Vector maxs
+            //   0x18  Vector origin
+            //   0x24  int    headnode
+            //   sizeof = 40 (0x28)
+            "cmodel_mins"            "0"
+            "cmodel_maxs"            "12"
+            "cmodel_origin"          "24"
+            "cmodel_headnode"        "36"
+            "cmodel_sizeof"          "40"
+
             "cnode_plane"            "0"
             "cnode_children"         "4"
             "cnode_sizeof"           "12"

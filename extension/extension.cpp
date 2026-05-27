@@ -51,7 +51,8 @@ void BSPPeek::SDK_OnAllLoaded() {}
 
 bool BSPPeek::QueryRunning(char *error, size_t maxlen) { return true; }
 
-void BSPPeek::OnMapStartHook() {
+void BSPPeek::OnCoreMapStart(edict_t *pEdictList, int edictCount,
+                             int clientMax) {
   BSPData::OnMapStart();
 
   const char *mapname = gamehelpers->GetCurrentMap();

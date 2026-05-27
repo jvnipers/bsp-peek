@@ -9,6 +9,8 @@ cell_t N_NumBrushSides(IPluginContext *pCtx, const cell_t *params);
 cell_t N_NumLeaves(IPluginContext *pCtx, const cell_t *params);
 cell_t N_NumNodes(IPluginContext *pCtx, const cell_t *params);
 cell_t N_NumPlanes(IPluginContext *pCtx, const cell_t *params);
+cell_t N_NumBoxBrushes(IPluginContext *pCtx, const cell_t *params);
+cell_t N_NumCModels(IPluginContext *pCtx, const cell_t *params);
 
 // Point queries
 cell_t N_LeafAtPoint(IPluginContext *pCtx, const cell_t *params);
@@ -35,6 +37,16 @@ cell_t N_NodeChildren(IPluginContext *pCtx, const cell_t *params);
 
 // Plane access
 cell_t N_PlaneAt(IPluginContext *pCtx, const cell_t *params);
+
+// Box brush (cboxbrush_t)
+cell_t N_BoxBrushBounds(IPluginContext *pCtx, const cell_t *params);
+cell_t N_BoxBrushOriginalBrush(IPluginContext *pCtx, const cell_t *params);
+cell_t N_BoxBrushSurfaceIndex(IPluginContext *pCtx, const cell_t *params);
+
+// Submodels (cmodel_t)
+cell_t N_CModelBounds(IPluginContext *pCtx, const cell_t *params);
+cell_t N_CModelOrigin(IPluginContext *pCtx, const cell_t *params);
+cell_t N_CModelHeadnode(IPluginContext *pCtx, const cell_t *params);
 
 // High-level pixelsurf
 cell_t N_FindBrushPairAtSeam(IPluginContext *pCtx, const cell_t *params);

@@ -16,6 +16,8 @@ void OnMapStart();
 // Debug accessors (used by extension.cpp load logging)
 void *DebugGetBase();
 int DebugGetOff(const char *name);
+// Raw hex dump of first N box brushes for layout RE. Logs via smutils.
+void DebugDumpBoxBrushes(int maxCount);
 
 // Counts
 int GetNumBrushes();
@@ -24,6 +26,8 @@ int GetNumPlanes();
 int GetNumLeafBrushes();
 int GetNumLeaves();
 int GetNumNodes();
+int GetNumBoxBrushes();
+int GetNumCModels(); // Submodels (func_brush etc.)
 
 // Point queries
 // O(log N) BSP node-walk via `map_nodes`. Returns leaf index, -1 on failure.
@@ -56,7 +60,7 @@ int LeafCluster(int leafIdx);
 int LeafArea(int leafIdx);
 // Leaf flags (high 7 bits of cleaf_t+6 short). -1 if invalid.
 int LeafFlags(int leafIdx);
-// Leaf AABB = union of member brush AABBs. Builds leaf cache lazily.
+// Leaf AABB via BSP tree-walk. Builds leaf cache lazily on first call.
 bool LeafBounds(int leafIdx, float mins[3], float maxs[3]);
 
 // Node accessors (manual BSP walking)
@@ -68,6 +72,20 @@ bool NodeChildren(int nodeIdx, int &leftChild, int &rightChild);
 // Plane table access
 // planeIdx in [0, GetNumPlanes()).
 bool PlaneAt(int planeIdx, float normal[3], float &dist);
+
+// Box brush (cboxbrush_t) accessors - SIMD-optimized axis-aligned brushes.
+// idx in [0, GetNumBoxBrushes()).
+bool BoxBrushBounds(int idx, float mins[3], float maxs[3]);
+// Original cbrush_t index this box brush was derived from. -1 if invalid.
+int BoxBrushOriginalBrush(int idx);
+// Per-face surface property indices (-X,+X,-Y,+Y,-Z,+Z). Returns false if invalid.
+bool BoxBrushSurfaceIndex(int idx, int outSurf[6]);
+
+// Submodel (cmodel_t) accessors - used for func_brush, doors, breakables etc.
+bool CModelBounds(int idx, float mins[3], float maxs[3]);
+bool CModelOrigin(int idx, float origin[3]);
+// Root BSP node for this submodel's collision tree. -1 if invalid.
+int CModelHeadnode(int idx);
 
 // "High-level" pixelsurf
 // For a sample point and seam Z, search all brushes for:
