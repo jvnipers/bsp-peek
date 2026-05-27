@@ -185,8 +185,8 @@ jobs:
               export PATH=/usr/local/bin:$PATH
 
               # musl cpython (glibc build needs >=2.17, scout has 2.15)
-              uv python install cpython-3.11-x86_64-unknown-linux-musl
-              uv venv --python cpython-3.11-x86_64-unknown-linux-musl /opt/venv
+              uv python install cpython-3.11-linux-x86_64-musl
+              uv venv --python cpython-3.11-linux-x86_64-musl /opt/venv
               export PATH=/opt/venv/bin:$PATH
               uv pip install --python /opt/venv/bin/python \
                   git+https://github.com/alliedmodders/ambuild.git@master
