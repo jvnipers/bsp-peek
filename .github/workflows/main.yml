@@ -93,8 +93,8 @@ jobs:
         runtime:
           - name: sniper
             image: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
-          - name: scout
-            image: registry.gitlab.steamos.cloud/steamrt/scout/sdk:latest
+          #- name: scout
+          #  image: registry.gitlab.steamos.cloud/steamrt/scout/sdk:latest
       fail-fast: false
     runs-on: ubuntu-latest
     name: linux-x86-docker-${{ matrix.runtime.name }}
