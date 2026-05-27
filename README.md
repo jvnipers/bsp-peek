@@ -47,12 +47,14 @@ native bool BSP_PlaneAt(int planeIdx, float normal[3], float &dist);
 // Box brush (cboxbrush_t) - SIMD-optimized axis-aligned brushes
 native bool BSP_BoxBrushBounds(int idx, float mins[3], float maxs[3]);
 native int  BSP_BoxBrushOriginalBrush(int idx);   // original cbrush_t index; -1 if invalid
-native bool BSP_BoxBrushSurfaceIndex(int idx, int surf[6]);  // per-face surface props: {-X,+X,-Y,+Y,-Z,+Z}
+native bool BSP_BoxBrushSurfaceIndex(int idx, int surf[6]);  // per-face surface props:
+                                                             // {-X,+X,-Y,+Y,-Z,+Z}
 
 // Submodels (cmodel_t) - for func_brush, doors, breakables. idx 0 = world.
 native bool BSP_CModelBounds(int idx, float mins[3], float maxs[3]);
 native bool BSP_CModelOrigin(int idx, float origin[3]);
-native int  BSP_CModelHeadnode(int idx);   // root BSP node for this submodel; pass to manual NodePlane/NodeChildren walks
+native int  BSP_CModelHeadnode(int idx);   // root BSP node for this submodel
+                                           // pass to manual NodePlane/NodeChildren walks
 
 // "High-level" pixelsurf
 native bool BSP_FindBrushPairAtSeam(const float samplePos[3], float seamZ,
