@@ -1,16 +1,8 @@
-# BSP-Peek - SourceMod extension for BSP leaf/brush queries
+# BSP-Peek - SourceMod extension for BSP queries
 
-Exposes engine-internal `CCollisionBSPData` (brushes, leaves, planes, nodes) to SourceMod plugins.
+Exposes engine-internal `CCollisionBSPData` (brushes, leaves, planes, nodes) and `CDispCollTree` (displacements) to SourceMod plugins.
 
 Currently only support CS:GO
-
-## Example usecase (What I built this for)
-
-Filter pixelsurf candidates by checking:
-
-- bottom brush has SOLID contents
-- bottom brush listed BEFORE upper brush in their shared BSP leaf
-  (the engine visits leaf brushes in BSP order; first-visited wins collision)
 
 ## Natives
 
