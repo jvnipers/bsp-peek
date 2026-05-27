@@ -39,6 +39,9 @@ static int OFF_CBOXBRUSH_SURFIDX = 32;
 static int OFF_CBOXBRUSH_BRUSHNUM = 44;
 static int OFF_NUMCMODELS = 0;
 static int OFF_MAP_CMODELS = 0;
+static int OFF_MAP_PATHNAME = 4;
+static int OFF_EMPTYLEAF = 160;
+static int OFF_SOLIDLEAF = 164;
 
 // cbrush_t layout
 static int OFF_CBRUSH_CONTENTS = 0;
@@ -48,11 +51,15 @@ static int SZ_CBRUSH = 8;
 
 // cbrushside_t layout
 static int OFF_CBRUSHSIDE_PLANE = 0;
+static int OFF_CBRUSHSIDE_TEXINFO = 4;
+static int OFF_CBRUSHSIDE_BEVEL = 6;
+static int OFF_CBRUSHSIDE_THIN = 7;
 static int SZ_CBRUSHSIDE = 8;
 
 // cplane_t layout
 static int OFF_CPLANE_NORMAL = 0;
 static int OFF_CPLANE_DIST = 12;
+static int OFF_CPLANE_TYPE = 16;
 static int SZ_CPLANE = 20;
 
 // cleaf_t layout
@@ -61,6 +68,8 @@ static int OFF_CLEAF_CLUSTER = 4;
 static int OFF_CLEAF_AREA_FLAGS = 6; // packed: area:9 flags:7 (short)
 static int OFF_CLEAF_FIRSTLEAFBRUSH = 8;
 static int OFF_CLEAF_NUMLEAFBRUSHES = 10;
+static int OFF_CLEAF_FIRSTLEAFFACE = 12;
+static int OFF_CLEAF_NUMLEAFFACES = 14;
 static int SZ_CLEAF = 16;
 
 // cnode_t layout
@@ -92,7 +101,10 @@ struct LeafCacheEntry {
 static std::vector<BrushCacheEntry> g_brushCache;
 static bool g_brushCacheBuilt = false;
 static std::vector<LeafCacheEntry> g_leafCache;
-static bool g_leafCacheBuilt = false;
+// reuse same struct for node AABB
+static std::vector<LeafCacheEntry> g_nodeCache;
+
+static bool g_leafCacheBuilt = false; // gates both leaf + node caches
 
 // Mutex guards both caches against the async worker that builds a fresh
 // brush cache on a side thread. Reads (FindBrushPairAtSeam, LeafBounds)
@@ -139,6 +151,9 @@ bool Init(IGameConfig *gameconf, char *error, size_t maxlen) {
   OFF_CBOXBRUSH_BRUSHNUM = GetKeyInt(gameconf, "cboxbrush_brushnum", 44);
   OFF_NUMCMODELS = GetKeyInt(gameconf, "off_numcmodels", 0);
   OFF_MAP_CMODELS = GetKeyInt(gameconf, "off_map_cmodels", 0);
+  OFF_MAP_PATHNAME = GetKeyInt(gameconf, "off_map_pathname", 4);
+  OFF_EMPTYLEAF = GetKeyInt(gameconf, "off_emptyleaf", 160);
+  OFF_SOLIDLEAF = GetKeyInt(gameconf, "off_solidleaf", 164);
 
   // cbrush_t / cbrushside_t / cplane_t
   OFF_CBRUSH_CONTENTS = GetKeyInt(gameconf, "cbrush_contents", 0);
@@ -147,10 +162,14 @@ bool Init(IGameConfig *gameconf, char *error, size_t maxlen) {
   SZ_CBRUSH = GetKeyInt(gameconf, "cbrush_sizeof", 8);
 
   OFF_CBRUSHSIDE_PLANE = GetKeyInt(gameconf, "cbrushside_plane", 0);
+  OFF_CBRUSHSIDE_TEXINFO = GetKeyInt(gameconf, "cbrushside_texinfo", 4);
+  OFF_CBRUSHSIDE_BEVEL = GetKeyInt(gameconf, "cbrushside_bevel", 6);
+  OFF_CBRUSHSIDE_THIN = GetKeyInt(gameconf, "cbrushside_thin", 7);
   SZ_CBRUSHSIDE = GetKeyInt(gameconf, "cbrushside_sizeof", 8);
 
   OFF_CPLANE_NORMAL = GetKeyInt(gameconf, "cplane_normal", 0);
   OFF_CPLANE_DIST = GetKeyInt(gameconf, "cplane_dist", 12);
+  OFF_CPLANE_TYPE = GetKeyInt(gameconf, "cplane_type", 16);
   SZ_CPLANE = GetKeyInt(gameconf, "cplane_sizeof", 20);
 
   // cleaf_t
@@ -159,6 +178,8 @@ bool Init(IGameConfig *gameconf, char *error, size_t maxlen) {
   OFF_CLEAF_AREA_FLAGS = GetKeyInt(gameconf, "cleaf_area_flags", 6);
   OFF_CLEAF_FIRSTLEAFBRUSH = GetKeyInt(gameconf, "cleaf_firstleafbrush", 8);
   OFF_CLEAF_NUMLEAFBRUSHES = GetKeyInt(gameconf, "cleaf_numleafbrushes", 10);
+  OFF_CLEAF_FIRSTLEAFFACE = GetKeyInt(gameconf, "cleaf_firstleafface", 12);
+  OFF_CLEAF_NUMLEAFFACES = GetKeyInt(gameconf, "cleaf_numleaffaces", 14);
   SZ_CLEAF = GetKeyInt(gameconf, "cleaf_sizeof", 16);
 
   // cnode_t
@@ -190,6 +211,7 @@ void Shutdown() {
   g_brushCache.clear();
   g_brushCacheBuilt = false;
   g_leafCache.clear();
+  g_nodeCache.clear();
   g_leafCacheBuilt = false;
 }
 
@@ -198,6 +220,7 @@ void OnMapStart() {
   g_brushCache.clear();
   g_brushCacheBuilt = false;
   g_leafCache.clear();
+  g_nodeCache.clear();
   g_leafCacheBuilt = false;
 }
 
@@ -346,6 +369,25 @@ int GetNumCModels() {
     return 0;
   return ReadI32(g_pBSPData, OFF_NUMCMODELS);
 }
+
+// Misc accessors
+int MapPathName(char *buf, int maxlen) {
+  if (!g_pBSPData || maxlen <= 0)
+    return 0;
+  const char *src =
+      reinterpret_cast<const char *>(g_pBSPData + OFF_MAP_PATHNAME);
+  int len = 0;
+  while (len < 95 && len < maxlen - 1 && src[len] != '\0') {
+    buf[len] = src[len];
+    ++len;
+  }
+  buf[len] = '\0';
+  return len;
+}
+
+int EmptyLeaf() { return g_pBSPData ? ReadI32(g_pBSPData, OFF_EMPTYLEAF) : -1; }
+
+int SolidLeaf() { return g_pBSPData ? ReadI32(g_pBSPData, OFF_SOLIDLEAF) : -1; }
 
 // Point queries
 int LeafAtPoint(const float pos[3]) {
@@ -525,6 +567,48 @@ bool BrushSidePlane(int brushIdx, int sideIdx, float normal[3], float &dist) {
   return true;
 }
 
+int BrushSideBevel(int brushIdx, int sideIdx) {
+  const uint8_t *b = brush_at(brushIdx);
+  if (!b)
+    return -1;
+  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
+  uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
+  if (sideIdx < 0 || sideIdx >= (int)numsides)
+    return -1;
+  const uint8_t *side = brushside_at((int)first + sideIdx);
+  if (!side)
+    return -1;
+  return (int)*(side + OFF_CBRUSHSIDE_BEVEL); // byte read
+}
+
+int BrushSideThin(int brushIdx, int sideIdx) {
+  const uint8_t *b = brush_at(brushIdx);
+  if (!b)
+    return -1;
+  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
+  uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
+  if (sideIdx < 0 || sideIdx >= (int)numsides)
+    return -1;
+  const uint8_t *side = brushside_at((int)first + sideIdx);
+  if (!side)
+    return -1;
+  return (int)*(side + OFF_CBRUSHSIDE_THIN);
+}
+
+int BrushSideTexInfo(int brushIdx, int sideIdx) {
+  const uint8_t *b = brush_at(brushIdx);
+  if (!b)
+    return -1;
+  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
+  uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
+  if (sideIdx < 0 || sideIdx >= (int)numsides)
+    return -1;
+  const uint8_t *side = brushside_at((int)first + sideIdx);
+  if (!side)
+    return -1;
+  return (int)ReadU16(side, OFF_CBRUSHSIDE_TEXINFO);
+}
+
 // Leaf accessors
 int LeafBrushes(int leafIdx, int *outBuf, int maxOut) {
   const uint8_t *leaf = leaf_at(leafIdx);
@@ -576,6 +660,20 @@ int LeafFlags(int leafIdx) {
   return (int)((v >> 9) & 0x7F); // high 7 bits = flags
 }
 
+int LeafFirstFace(int leafIdx) {
+  const uint8_t *leaf = leaf_at(leafIdx);
+  if (!leaf)
+    return -1;
+  return (int)ReadU16(leaf, OFF_CLEAF_FIRSTLEAFFACE);
+}
+
+int LeafNumFaces(int leafIdx) {
+  const uint8_t *leaf = leaf_at(leafIdx);
+  if (!leaf)
+    return -1;
+  return (int)ReadU16(leaf, OFF_CLEAF_NUMLEAFFACES);
+}
+
 bool LeafBounds(int leafIdx, float mins[3], float maxs[3]) {
   if (leafIdx < 0 || leafIdx >= GetNumLeaves())
     return false;
@@ -591,6 +689,22 @@ bool LeafBounds(int leafIdx, float mins[3], float maxs[3]) {
     return false;
   memcpy(mins, le.mins, 12);
   memcpy(maxs, le.maxs, 12);
+  return true;
+}
+
+bool NodeBounds(int nodeIdx, float mins[3], float maxs[3]) {
+  if (nodeIdx < 0 || nodeIdx >= GetNumNodes())
+    return false;
+  std::lock_guard<std::mutex> lk(g_brushCacheMutex);
+  if (!g_leafCacheBuilt)
+    BuildLeafCache();
+  if (!g_leafCacheBuilt || (size_t)nodeIdx >= g_nodeCache.size())
+    return false;
+  const LeafCacheEntry &ne = g_nodeCache[nodeIdx];
+  if (!ne.valid)
+    return false;
+  memcpy(mins, ne.mins, 12);
+  memcpy(maxs, ne.maxs, 12);
   return true;
 }
 
@@ -633,6 +747,16 @@ bool PlaneAt(int planeIdx, float normal[3], float &dist) {
   normal[2] = ReadF32(plane, OFF_CPLANE_NORMAL + 8);
   dist = ReadF32(plane, OFF_CPLANE_DIST);
   return true;
+}
+
+int PlaneType(int planeIdx) {
+  if (!g_pBSPData || planeIdx < 0 || planeIdx >= GetNumPlanes())
+    return -1;
+  const uint8_t *table =
+      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_PLANES));
+  if (!table)
+    return -1;
+  return (int)*(table + (size_t)planeIdx * SZ_CPLANE + OFF_CPLANE_TYPE);
 }
 
 // Submodel (cmodel_t) accessors.
@@ -717,6 +841,13 @@ bool BoxBrushSurfaceIndex(int idx, int outSurf[6]) {
   return true;
 }
 
+int BoxBrushContents(int idx) {
+  int orig = BoxBrushOriginalBrush(idx);
+  if (orig < 0)
+    return 0;
+  return GetBrushContents(orig);
+}
+
 // "High-level" pixelsurf
 bool FindBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower,
                          int &outUpper) {
@@ -799,6 +930,7 @@ static void BuildBrushCache() {
 // axis-aligned split along the path).
 static void BuildLeafCache() {
   g_leafCache.clear();
+  g_nodeCache.clear();
   g_leafCacheBuilt = false;
   int nleaf = GetNumLeaves();
   int nnode = GetNumNodes();
@@ -815,6 +947,12 @@ static void BuildLeafCache() {
     le.valid = false;
     le.mins[0] = le.mins[1] = le.mins[2] = 1e30f;
     le.maxs[0] = le.maxs[1] = le.maxs[2] = -1e30f;
+  }
+  g_nodeCache.resize(nnode);
+  for (LeafCacheEntry &ne : g_nodeCache) {
+    ne.valid = false;
+    ne.mins[0] = ne.mins[1] = ne.mins[2] = 1e30f;
+    ne.maxs[0] = ne.maxs[1] = ne.maxs[2] = -1e30f;
   }
 
   struct Frame {
@@ -846,6 +984,12 @@ static void BuildLeafCache() {
     }
     if (f.node >= nnode)
       continue;
+
+    // Record this node's AABB (the parent-propagated box at this split).
+    LeafCacheEntry &ne = g_nodeCache[f.node];
+    memcpy(ne.mins, f.mins, 12);
+    memcpy(ne.maxs, f.maxs, 12);
+    ne.valid = true;
 
     float normal[3], dist;
     if (!NodePlane(f.node, normal, dist))
@@ -891,6 +1035,7 @@ void RebuildCache() {
   g_brushCache.clear();
   g_brushCacheBuilt = false;
   g_leafCache.clear();
+  g_nodeCache.clear();
   g_leafCacheBuilt = false;
   BuildBrushCache();
 }
@@ -911,6 +1056,7 @@ void RebuildCacheAsync() {
     g_brushCache.clear();
     g_brushCacheBuilt = false;
     g_leafCache.clear();
+    g_nodeCache.clear();
     g_leafCacheBuilt = false;
   }
 

@@ -3,6 +3,11 @@
 
 #include "smsdk_ext.h"
 
+// Misc
+cell_t N_MapPathName(IPluginContext *pCtx, const cell_t *params);
+cell_t N_EmptyLeaf(IPluginContext *pCtx, const cell_t *params);
+cell_t N_SolidLeaf(IPluginContext *pCtx, const cell_t *params);
+
 // Counts
 cell_t N_NumBrushes(IPluginContext *pCtx, const cell_t *params);
 cell_t N_NumBrushSides(IPluginContext *pCtx, const cell_t *params);
@@ -22,6 +27,9 @@ cell_t N_BrushBounds(IPluginContext *pCtx, const cell_t *params);
 cell_t N_IsBoxBrush(IPluginContext *pCtx, const cell_t *params);
 cell_t N_BrushNumSides(IPluginContext *pCtx, const cell_t *params);
 cell_t N_BrushSidePlane(IPluginContext *pCtx, const cell_t *params);
+cell_t N_BrushSideBevel(IPluginContext *pCtx, const cell_t *params);
+cell_t N_BrushSideThin(IPluginContext *pCtx, const cell_t *params);
+cell_t N_BrushSideTexInfo(IPluginContext *pCtx, const cell_t *params);
 
 // Leaf accessors
 cell_t N_LeafBrushes(IPluginContext *pCtx, const cell_t *params);
@@ -29,19 +37,24 @@ cell_t N_LeafContents(IPluginContext *pCtx, const cell_t *params);
 cell_t N_LeafCluster(IPluginContext *pCtx, const cell_t *params);
 cell_t N_LeafArea(IPluginContext *pCtx, const cell_t *params);
 cell_t N_LeafFlags(IPluginContext *pCtx, const cell_t *params);
+cell_t N_LeafFirstFace(IPluginContext *pCtx, const cell_t *params);
+cell_t N_LeafNumFaces(IPluginContext *pCtx, const cell_t *params);
 cell_t N_LeafBounds(IPluginContext *pCtx, const cell_t *params);
 
 // Node accessors
 cell_t N_NodePlane(IPluginContext *pCtx, const cell_t *params);
 cell_t N_NodeChildren(IPluginContext *pCtx, const cell_t *params);
+cell_t N_NodeBounds(IPluginContext *pCtx, const cell_t *params);
 
 // Plane access
 cell_t N_PlaneAt(IPluginContext *pCtx, const cell_t *params);
+cell_t N_PlaneType(IPluginContext *pCtx, const cell_t *params);
 
 // Box brush (cboxbrush_t)
 cell_t N_BoxBrushBounds(IPluginContext *pCtx, const cell_t *params);
 cell_t N_BoxBrushOriginalBrush(IPluginContext *pCtx, const cell_t *params);
 cell_t N_BoxBrushSurfaceIndex(IPluginContext *pCtx, const cell_t *params);
+cell_t N_BoxBrushContents(IPluginContext *pCtx, const cell_t *params);
 
 // Submodels (cmodel_t)
 cell_t N_CModelBounds(IPluginContext *pCtx, const cell_t *params);

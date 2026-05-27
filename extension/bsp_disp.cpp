@@ -21,9 +21,20 @@ namespace BSPDisp {
 // ENGINE - reads CDispCollTree array from engine process memory
 namespace engine {
 
+// Address-of-globals. The engine writes the actual pointer values into these
+// slots each map load (CMod_LoadDispInfo). We must dereference at access
+// time, NOT cache the value at init, old map's tree arrays get freed and
+// caching the stale pointer = use-after-free on map change.
 static int *g_pTreeCount = nullptr;
-static uint8_t *g_pTreeArrayBase = nullptr;
-static uint8_t *g_pBoundsArrayBase = nullptr;
+static uint8_t **g_ppTreeArrayBase = nullptr;
+static uint8_t **g_ppBoundsArrayBase = nullptr;
+
+inline uint8_t *TreeArrayBase() {
+  return g_ppTreeArrayBase ? *g_ppTreeArrayBase : nullptr;
+}
+inline uint8_t *BoundsArrayBase() {
+  return g_ppBoundsArrayBase ? *g_ppBoundsArrayBase : nullptr;
+}
 
 static int SZ_DISPCOLL_TREE = 268;
 static int OFF_TREE_MINS = 4;
@@ -44,9 +55,35 @@ static int OFF_TRI_NORMAL = 8; // Vector m_vecNormal within CDispCollTri
 static int SZ_VERT = 12;
 
 inline const uint8_t *TreePtr(int idx) {
-  if (!g_pTreeArrayBase || SZ_DISPCOLL_TREE <= 0)
+  uint8_t *base = TreeArrayBase();
+  if (!base || SZ_DISPCOLL_TREE <= 0)
     return nullptr;
-  return g_pTreeArrayBase + (size_t)idx * SZ_DISPCOLL_TREE;
+  return base + (size_t)idx * SZ_DISPCOLL_TREE;
+}
+
+// Returns true if the tree at idx has plausible struct fields.
+// Defends against garbage reads when engine globals resolve to stale memory.
+inline bool IsTreeSane(const uint8_t *tree) {
+  if (!tree)
+    return false;
+  int power = ReadI32(tree, OFF_TREE_POWER);
+  if (power < 2 || power > 4)
+    return false;
+  int vertsCnt = ReadI32(tree, OFF_TREE_VERTS_CNT);
+  int trisCnt = ReadI32(tree, OFF_TREE_TRIS_CNT);
+  // power=2 -> 25 verts, 32 tris ; power=3 -> 81/128 ; power=4 -> 289/512
+  // Loose check: count must be > 0 and < a sane cap.
+  if (vertsCnt <= 0 || vertsCnt > 512)
+    return false;
+  if (trisCnt <= 0 || trisCnt > 1024)
+    return false;
+  uintptr_t vp = reinterpret_cast<uintptr_t>(ReadPtr(tree, OFF_TREE_VERTS_PTR));
+  uintptr_t tp = reinterpret_cast<uintptr_t>(ReadPtr(tree, OFF_TREE_TRIS_PTR));
+  if (vp < 0x10000 || vp >= 0xF0000000)
+    return false;
+  if (tp < 0x10000 || tp >= 0xF0000000)
+    return false;
+  return true;
 }
 
 } // namespace engine
@@ -267,8 +304,7 @@ inline float TriHeightZ(const Triangle &t, float x, float y) {
 
 } // namespace disk
 
-// API
-
+// API - lifecycle
 bool InitEngine(IGameConfig *gc, char *err, size_t errLen) {
   void *addr = nullptr;
 
@@ -284,10 +320,10 @@ bool InitEngine(IGameConfig *gc, char *err, size_t errLen) {
                   "gamedata Address 'g_pDispCollTrees' did not resolve");
     return false;
   }
-  engine::g_pTreeArrayBase = *reinterpret_cast<uint8_t **>(addr);
+  engine::g_ppTreeArrayBase = reinterpret_cast<uint8_t **>(addr);
 
   if (gc->GetAddress("g_pDispBounds", &addr) && addr)
-    engine::g_pBoundsArrayBase = *reinterpret_cast<uint8_t **>(addr);
+    engine::g_ppBoundsArrayBase = reinterpret_cast<uint8_t **>(addr);
 
   engine::SZ_DISPCOLL_TREE = GetKeyInt(gc, "dispcoll_tree_sizeof", 268);
   engine::OFF_TREE_MINS = GetKeyInt(gc, "dispcoll_tree_mins", 4);
@@ -314,8 +350,8 @@ bool InitEngine(IGameConfig *gc, char *err, size_t errLen) {
 
 void ShutdownEngine() {
   engine::g_pTreeCount = nullptr;
-  engine::g_pTreeArrayBase = nullptr;
-  engine::g_pBoundsArrayBase = nullptr;
+  engine::g_ppTreeArrayBase = nullptr;
+  engine::g_ppBoundsArrayBase = nullptr;
 }
 
 void Clear() {
@@ -424,9 +460,8 @@ bool LoadFromMap(const char *bspPath, char *err, size_t errLen) {
 }
 
 // API - Engine queries
-
 bool EngineReady() {
-  return engine::g_pTreeCount && engine::g_pTreeArrayBase &&
+  return engine::g_pTreeCount && engine::TreeArrayBase() &&
          engine::SZ_DISPCOLL_TREE > 0 && EngineCount() > 0;
 }
 
@@ -447,7 +482,7 @@ float EngineHeightAtDebug(float x, float y, int &outIdx) {
 
   for (int i = 0; i < count; i++) {
     const uint8_t *tree = engine::TreePtr(i);
-    if (!tree)
+    if (!engine::IsTreeSane(tree))
       continue;
 
     float minX = ReadF32(tree, engine::OFF_TREE_MINS + 0);
@@ -463,10 +498,6 @@ float EngineHeightAtDebug(float x, float y, int &outIdx) {
     const uint8_t *trisPtr =
         (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
     int trisCnt = ReadI32(tree, engine::OFF_TREE_TRIS_CNT);
-    if (!vertsPtr || !trisPtr || vertsCnt <= 0 || trisCnt <= 0)
-      continue;
-    if (vertsCnt > 2000 || trisCnt > 4000)
-      continue;
 
     for (int t = 0; t < trisCnt; t++) {
       const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;
@@ -622,7 +653,6 @@ int EngineDiagnoseQuery(float x, float y, char *buf, size_t bufLen) {
 }
 
 // API - Disk queries
-
 int DiskCount() { return (int)disk::g_disps.size(); }
 
 bool DiskGetBounds(int idx, float mins[3], float maxs[3]) {
@@ -678,7 +708,6 @@ int DiskDebugDispInfo(int idx, char *buf, size_t bufLen) {
 }
 
 // Engine per-tree accessors
-
 bool EngineGetBounds(int idx, float mins[3], float maxs[3]) {
   if (!EngineReady() || idx < 0 || idx >= EngineCount())
     return false;
@@ -752,14 +781,12 @@ bool EngineGetVert(int idx, int vertIdx, float pos[3]) {
   if (!EngineReady() || idx < 0 || idx >= EngineCount())
     return false;
   const uint8_t *tree = engine::TreePtr(idx);
-  if (!tree)
+  if (!engine::IsTreeSane(tree))
     return false;
   const uint8_t *vertsPtr =
       (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_VERTS_PTR);
   int vertsCnt = ReadI32(tree, engine::OFF_TREE_VERTS_CNT);
-  if (!vertsPtr || vertIdx < 0 || vertIdx >= vertsCnt)
-    return false;
-  if (vertsCnt > 2000)
+  if (vertIdx < 0 || vertIdx >= vertsCnt)
     return false;
   Vec3 v;
   std::memcpy(&v, vertsPtr + (size_t)vertIdx * engine::SZ_VERT, sizeof(Vec3));
@@ -783,7 +810,7 @@ static float EngineSurfaceNormalAt(float x, float y, float outNormal[3]) {
 
   for (int i = 0; i < count; i++) {
     const uint8_t *tree = engine::TreePtr(i);
-    if (!tree)
+    if (!engine::IsTreeSane(tree))
       continue;
     float minX = ReadF32(tree, engine::OFF_TREE_MINS + 0);
     float minY = ReadF32(tree, engine::OFF_TREE_MINS + 4);
@@ -798,10 +825,6 @@ static float EngineSurfaceNormalAt(float x, float y, float outNormal[3]) {
     const uint8_t *trisPtr =
         (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
     int trisCnt = ReadI32(tree, engine::OFF_TREE_TRIS_CNT);
-    if (!vertsPtr || !trisPtr || vertsCnt <= 0 || trisCnt <= 0)
-      continue;
-    if (vertsCnt > 2000 || trisCnt > 4000)
-      continue;
 
     for (int t = 0; t < trisCnt; t++) {
       const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;
@@ -839,7 +862,6 @@ static float EngineSurfaceNormalAt(float x, float y, float outNormal[3]) {
 }
 
 // API - Unified (engine-first, disk fallback)
-
 float HeightAt(float x, float y) {
   int dummy = -1;
   return HeightAtDebug(x, y, dummy);
@@ -922,7 +944,7 @@ int HeightAtMulti(float x, float y, float *results, int maxResults) {
     int treeCount = EngineCount();
     for (int i = 0; i < treeCount && count < maxResults; i++) {
       const uint8_t *tree = engine::TreePtr(i);
-      if (!tree)
+      if (!engine::IsTreeSane(tree))
         continue;
       float minX = ReadF32(tree, engine::OFF_TREE_MINS + 0);
       float minY = ReadF32(tree, engine::OFF_TREE_MINS + 4);
@@ -937,10 +959,6 @@ int HeightAtMulti(float x, float y, float *results, int maxResults) {
       const uint8_t *trisPtr =
           (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
       int trisCnt = ReadI32(tree, engine::OFF_TREE_TRIS_CNT);
-      if (!vertsPtr || !trisPtr || vertsCnt <= 0 || trisCnt <= 0)
-        continue;
-      if (vertsCnt > 2000 || trisCnt > 4000)
-        continue;
 
       for (int t = 0; t < trisCnt && count < maxResults; t++) {
         const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;

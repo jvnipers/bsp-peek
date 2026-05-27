@@ -59,6 +59,19 @@ cell_t N_NumCModels(IPluginContext *, const cell_t *) {
   return BSPData::GetNumCModels();
 }
 
+// Misc
+cell_t N_MapPathName(IPluginContext *pCtx, const cell_t *params) {
+  char *buf = nullptr;
+  pCtx->LocalToString(params[1], &buf);
+  return BSPData::MapPathName(buf, params[2]);
+}
+cell_t N_EmptyLeaf(IPluginContext *, const cell_t *) {
+  return BSPData::EmptyLeaf();
+}
+cell_t N_SolidLeaf(IPluginContext *, const cell_t *) {
+  return BSPData::SolidLeaf();
+}
+
 // Point queries
 cell_t N_LeafAtPoint(IPluginContext *pCtx, const cell_t *params) {
   float p[3];
@@ -112,6 +125,16 @@ cell_t N_BrushSidePlane(IPluginContext *pCtx, const cell_t *params) {
   return ok ? 1 : 0;
 }
 
+cell_t N_BrushSideBevel(IPluginContext *, const cell_t *params) {
+  return BSPData::BrushSideBevel(params[1], params[2]);
+}
+cell_t N_BrushSideThin(IPluginContext *, const cell_t *params) {
+  return BSPData::BrushSideThin(params[1], params[2]);
+}
+cell_t N_BrushSideTexInfo(IPluginContext *, const cell_t *params) {
+  return BSPData::BrushSideTexInfo(params[1], params[2]);
+}
+
 // Leaf accessors
 cell_t N_LeafBrushes(IPluginContext *pCtx, const cell_t *params) {
   int leafIdx = params[1];
@@ -142,6 +165,12 @@ cell_t N_LeafArea(IPluginContext *pCtx, const cell_t *params) {
 }
 cell_t N_LeafFlags(IPluginContext *pCtx, const cell_t *params) {
   return BSPData::LeafFlags(params[1]);
+}
+cell_t N_LeafFirstFace(IPluginContext *, const cell_t *params) {
+  return BSPData::LeafFirstFace(params[1]);
+}
+cell_t N_LeafNumFaces(IPluginContext *, const cell_t *params) {
+  return BSPData::LeafNumFaces(params[1]);
 }
 cell_t N_LeafBounds(IPluginContext *pCtx, const cell_t *params) {
   float mins[3], maxs[3];
@@ -181,6 +210,19 @@ cell_t N_NodeChildren(IPluginContext *pCtx, const cell_t *params) {
   return ok ? 1 : 0;
 }
 
+cell_t N_NodeBounds(IPluginContext *pCtx, const cell_t *params) {
+  float mins[3], maxs[3];
+  bool ok = BSPData::NodeBounds(params[1], mins, maxs);
+  cell_t *outMins = nullptr, *outMaxs = nullptr;
+  pCtx->LocalToPhysAddr(params[2], &outMins);
+  pCtx->LocalToPhysAddr(params[3], &outMaxs);
+  for (int i = 0; i < 3; ++i) {
+    outMins[i] = sp_ftoc(ok ? mins[i] : 0.0f);
+    outMaxs[i] = sp_ftoc(ok ? maxs[i] : 0.0f);
+  }
+  return ok ? 1 : 0;
+}
+
 // Plane table access
 cell_t N_PlaneAt(IPluginContext *pCtx, const cell_t *params) {
   float normal[3] = {0, 0, 0};
@@ -193,6 +235,10 @@ cell_t N_PlaneAt(IPluginContext *pCtx, const cell_t *params) {
     outNormal[i] = sp_ftoc(normal[i]);
   *outDist = sp_ftoc(dist);
   return ok ? 1 : 0;
+}
+
+cell_t N_PlaneType(IPluginContext *, const cell_t *params) {
+  return BSPData::PlaneType(params[1]);
 }
 
 // Box brush (cboxbrush_t) accessors
@@ -221,6 +267,10 @@ cell_t N_BoxBrushSurfaceIndex(IPluginContext *pCtx, const cell_t *params) {
   for (int i = 0; i < 6; ++i)
     out[i] = ok ? surf[i] : 0;
   return ok ? 1 : 0;
+}
+
+cell_t N_BoxBrushContents(IPluginContext *, const cell_t *params) {
+  return BSPData::BoxBrushContents(params[1]);
 }
 
 // Submodel (cmodel_t) accessors
@@ -439,6 +489,11 @@ cell_t N_DispDiskDebugInfo(IPluginContext *pCtx, const cell_t *params) {
 }
 
 extern const sp_nativeinfo_t g_BSPNatives[] = {
+    // Misc
+    {"BSP_MapPathName", N_MapPathName},
+    {"BSP_EmptyLeaf", N_EmptyLeaf},
+    {"BSP_SolidLeaf", N_SolidLeaf},
+
     // Counts
     {"BSP_NumBrushes", N_NumBrushes},
     {"BSP_NumBrushSides", N_NumBrushSides},
@@ -458,6 +513,9 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_IsBoxBrush", N_IsBoxBrush},
     {"BSP_BrushNumSides", N_BrushNumSides},
     {"BSP_BrushSidePlane", N_BrushSidePlane},
+    {"BSP_BrushSideBevel", N_BrushSideBevel},
+    {"BSP_BrushSideThin", N_BrushSideThin},
+    {"BSP_BrushSideTexInfo", N_BrushSideTexInfo},
 
     // Leaf accessors
     {"BSP_LeafBrushes", N_LeafBrushes},
@@ -465,19 +523,24 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_LeafCluster", N_LeafCluster},
     {"BSP_LeafArea", N_LeafArea},
     {"BSP_LeafFlags", N_LeafFlags},
+    {"BSP_LeafFirstFace", N_LeafFirstFace},
+    {"BSP_LeafNumFaces", N_LeafNumFaces},
     {"BSP_LeafBounds", N_LeafBounds},
 
     // Node accessors
     {"BSP_NodePlane", N_NodePlane},
     {"BSP_NodeChildren", N_NodeChildren},
+    {"BSP_NodeBounds", N_NodeBounds},
 
     // Plane access
     {"BSP_PlaneAt", N_PlaneAt},
+    {"BSP_PlaneType", N_PlaneType},
 
     // Box brush (cboxbrush_t) accessors
     {"BSP_BoxBrushBounds", N_BoxBrushBounds},
     {"BSP_BoxBrushOriginalBrush", N_BoxBrushOriginalBrush},
     {"BSP_BoxBrushSurfaceIndex", N_BoxBrushSurfaceIndex},
+    {"BSP_BoxBrushContents", N_BoxBrushContents},
 
     // Submodels (cmodel_t)
     {"BSP_CModelBounds", N_CModelBounds},

@@ -177,6 +177,11 @@
             "cboxbrush_maxs"         "16"
             "cboxbrush_surfidx"      "32"
             "cboxbrush_brushnum"     "44"
+
+            "off_map_pathname"       "4"     // char mapPathName[96] at +0x04..0x63
+            "off_emptyleaf"          "160"   // 0xA0 sentinel leaf index (empty)
+            "off_solidleaf"          "164"   // 0xA4 sentinel leaf index (solid)
+
             "off_numplanes"          "124"   // 0x7C
             "off_map_planes"         "128"   // 0x80
             "off_numnodes"           "136"   // 0x88
@@ -195,11 +200,20 @@
             "cbrush_firstbrushside"  "6"
             "cbrush_sizeof"          "8"
 
+            // cbrushside_t (verified via runtime dump):
+            //   +0  cplane_t* plane   (4B)
+            //   +4  ushort texinfo    (2B)
+            //   +6  byte bBevel       (1B, 0/1)
+            //   +7  byte thin         (1B, 0/1)
             "cbrushside_plane"       "0"
+            "cbrushside_texinfo"     "4"
+            "cbrushside_bevel"       "6"
+            "cbrushside_thin"        "7"
             "cbrushside_sizeof"      "8"
 
             "cplane_normal"          "0"
             "cplane_dist"            "12"
+            "cplane_type"            "16"    // byte: PLANE_X(0)/Y(1)/Z(2)/ANYX(3)/ANYY(4)/ANYZ(5)
             "cplane_sizeof"          "20"
 
             // cnode_t (cstrike15_src/engine/cmodel_private.h):
@@ -239,6 +253,10 @@
             "cleaf_area_flags"       "6"   // short {area:9, flags:7} (Linux fn 0x1E93C0 reads byte at +7)
             "cleaf_firstleafbrush"   "8"
             "cleaf_numleafbrushes"   "10"
+            // +12 is firstleafface (ushort), NOT leafWaterDataID.
+            // leafWaterDataID not preserved in CSGO runtime cleaf_t.
+            "cleaf_firstleafface"    "12"
+            "cleaf_numleaffaces"     "14"
             "cleaf_sizeof"           "16"  // engine does `shl idx, 4`
         }
     }
