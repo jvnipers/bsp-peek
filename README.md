@@ -52,7 +52,7 @@ native int  BSP_RebuildCacheAsync();    // async worker thread; reads block unti
 native bool BSP_CacheIsBuilding();      // true between RebuildCacheAsync and swap-in
 ```
 
-`LeafAtPoint` is an O(log N) BSP node-walk (descends `map_nodes` via signed plane distance, leaf = `-1 - child` per Source convention). `PointContents` chains `LeafAtPoint` + `LeafContents` for the universal "in solid / water / playerclip" check. `LeafCluster` is the foundation for PVS / visibility queries. `BrushSidePlane` exposes individual side plane normals for slope/wall analysis.
+`LeafAtPoint` is an O(log N) BSP node-walk (descends `map_nodes` via signed plane distance, leaf = `-1 - child` per Source convention).
 
 All natives read directly from the live `CCollisionBSPData` global. The brush table is AABB-cached per-map to avoid repeated plane-pointer walks during seam queries; the leaf AABB cache (built lazily by `LeafBounds`) reuses that brush cache.
 
@@ -61,9 +61,9 @@ All natives read directly from the live `CCollisionBSPData` global. The brush ta
 Two backends:
 
 - **Engine** (primary): reads `CDispCollTree` array directly from engine process memory via gamedata sigscan. Gives canonical post-stitching verts - matches what `TR_TraceRay` would hit.
-- **Disk** (fallback): parses BSP file lumps (`DISPINFO` / `DISP_VERTS` / `FACES`) at map load and builds triangle meshes from scratch. Used when the engine reader can't initialize (missing/wrong gamedata sigs).
+- **Disk** (fallback): parses BSP file lumps (`DISPINFO` / `DISP_VERTS` / `FACES`) at map load and builds triangle meshes from scratch.
 
-Unified queries (`BSP_DispHeightAt` etc.) try engine first, fall back to disk automatically. Engine-only accessors return safe defaults when the reader is unavailable; check `BSP_DispReady()` first if you need certainty.
+Unified queries try engine first, fall back to disk automatically. Engine-only accessors return safe defaults when the reader is unavailable; check `BSP_DispReady()` first if you need certainty.
 
 ```sp
 #define BSP_DISP_NO_HIT -1.0e30    // sentinel for "no XY match"
@@ -93,10 +93,6 @@ native int   BSP_DispDiskCount();
 native bool  BSP_DispDiskBounds(int idx, float mins[3], float maxs[3]);
 native int   BSP_DispDiskDebugInfo(int idx, char[] buf, int maxlen);
 ```
-
-Engine reader resolves three globals from gamedata sigscan: `g_DispCollTreeCount`, `g_pDispCollTrees`, `g_pDispBounds` (anchored on `CMod_LoadDispInfo`). Field offsets within `CDispCollTree` (mins/maxs/power, `m_aVerts` / `m_aTris` CUtlVector members) and `CDispCollTri` (3 byte indices + edge flags + plane).
-
-For `HeightAt` queries, AABB-rejects the disp first, then iterates triangles testing XY containment + barycentric Z interpolation. Picks the highest matching Z across all tris (matches a downward trace).
 
 ## Build
 
@@ -133,3 +129,7 @@ Required toolchain:
 
 - `cnode_t` is 12 bytes: `cplane_t* plane` + `int children[2]`.
   Negative child encodes a leaf index via `leafIdx = -1 - child`.
+
+- Engine reader resolves three globals from gamedata sigscan: `g_DispCollTreeCount`, `g_pDispCollTrees`, `g_pDispBounds` (anchored on `CMod_LoadDispInfo`). Field offsets within `CDispCollTree` (mins/maxs/power, `m_aVerts` / `m_aTris` CUtlVector members) and `CDispCollTri` (3 byte indices + edge flags + plane).
+
+- For `HeightAt` queries, AABB-rejects the disp first, then iterates triangles testing XY containment + barycentric Z interpolation. Picks the highest matching Z across all tris (matches a downward trace).
