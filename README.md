@@ -14,26 +14,55 @@ Filter pixelsurf candidates by checking:
 
 ## Natives
 
-### Brush / leaf / cache
+### BSP queries
 
 ```sp
-native int  BSP_LeafAtPoint(const float pos[3]);
-native int  BSP_LeafBrushes(int leaf, int[] buf, int max);   // ordered (BSP order)
-native bool BSP_IsBoxBrush(int brushIdx);
+// Counts
+native int  BSP_NumBrushes();
+native int  BSP_NumBrushSides();
+native int  BSP_NumLeaves();
+native int  BSP_NumNodes();
+native int  BSP_NumPlanes();
+
+// Point queries
+native int  BSP_LeafAtPoint(const float pos[3]);        // O(log N) BSP node-walk; -1 on failure
+native int  BSP_PointContents(const float pos[3]);      // walks BSP to leaf, returns contents flags
+
+// Brush accessors
 native int  BSP_BrushContents(int brushIdx);
 native void BSP_BrushBounds(int brushIdx, float mins[3], float maxs[3]);
-native int  BSP_NumBrushes();
-native int  BSP_NumLeaves();
+native bool BSP_IsBoxBrush(int brushIdx);
+native int  BSP_BrushNumSides(int brushIdx);
+native bool BSP_BrushSidePlane(int brushIdx, int sideIdx, float normal[3], float &dist);
+
+// Leaf accessors
+native int  BSP_LeafBrushes(int leaf, int[] buf, int max);   // ordered (BSP order)
+native int  BSP_LeafContents(int leafIdx);                   // contents flags @ cleaf_t+0
+native int  BSP_LeafCluster(int leafIdx);                    // PVS cluster (short @ +4)
+native int  BSP_LeafArea(int leafIdx);                       // area portal grouping (low 9 bits of +6)
+native int  BSP_LeafFlags(int leafIdx);                      // misc flags (high 7 bits of +6)
+native bool BSP_LeafBounds(int leafIdx, float mins[3], float maxs[3]);
+
+// Node accessors (manual BSP walking)
+native bool BSP_NodePlane(int nodeIdx, float normal[3], float &dist);
+native bool BSP_NodeChildren(int nodeIdx, int &leftChild, int &rightChild);
+
+// Plane table access
+native bool BSP_PlaneAt(int planeIdx, float normal[3], float &dist);
+
+// "High-level" pixelsurf
 native bool BSP_FindBrushPairAtSeam(const float samplePos[3], float seamZ,
                                     int &outLowerBrush, int &outUpperBrush);
+
+// Brush AABB cache
 native int  BSP_RebuildCache();         // synchronous; blocks until done
 native int  BSP_RebuildCacheAsync();    // async worker thread; reads block until swap-in
 native bool BSP_CacheIsBuilding();      // true between RebuildCacheAsync and swap-in
 ```
 
-`LeafAtPoint` is a O(log N) BSP node-walk (descends `map_nodes` via signed plane distance, leaf = `-1 - child` per Source convention)
+`LeafAtPoint` is an O(log N) BSP node-walk (descends `map_nodes` via signed plane distance, leaf = `-1 - child` per Source convention). `PointContents` chains `LeafAtPoint` + `LeafContents` for the universal "in solid / water / playerclip" check. `LeafCluster` is the foundation for PVS / visibility queries. `BrushSidePlane` exposes individual side plane normals for slope/wall analysis.
 
-All other natives read directly from the live `CCollisionBSPData` global; the brush table is additionally AABB-cached per-map to avoid repeated plane-pointer walks during seam queries.
+All natives read directly from the live `CCollisionBSPData` global. The brush table is AABB-cached per-map to avoid repeated plane-pointer walks during seam queries; the leaf AABB cache (built lazily by `LeafBounds`) reuses that brush cache.
 
 ### Displacements
 

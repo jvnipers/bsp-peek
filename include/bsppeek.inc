@@ -16,22 +16,58 @@
 #define BSPP_CONTENTS_PLAYERCLIP 0x10000
 #define BSPP_CONTENTS_GRATE      0x8
 
-native int  BSP_LeafAtPoint(const float pos[3]);              // O(log N) BSP node-walk; -1 on failure
-native int  BSP_LeafBrushes(int leaf, int[] buf, int max);    // BSP visit order; -1 on bad leafIdx
+// Counts
+native int  BSP_NumBrushes();
+native int  BSP_NumBrushSides();
+native int  BSP_NumLeaves();
+native int  BSP_NumNodes();
+native int  BSP_NumPlanes();
+
+// Point queries
+// O(log N) BSP node-walk; -1 on failure.
+native int  BSP_LeafAtPoint(const float pos[3]);
+
+// One-call "what's at this point?" (in solid? water? playerclip?).
+// Walks BSP to leaf, returns leaf's contents flags. 0 if outside map.
+native int  BSP_PointContents(const float pos[3]);
+
+// Brush accessors
+native int  BSP_BrushContents(int brushIdx);
+native void BSP_BrushBounds(int brushIdx, float mins[3], float maxs[3]);
 // Heuristic only - CSGO splits box brushes into a parallel `cboxbrush_t` table
 // so the result can false-negative. Treat as informational, not a hard filter.
 native bool BSP_IsBoxBrush(int brushIdx);
-native int  BSP_BrushContents(int brushIdx);
-native void BSP_BrushBounds(int brushIdx, float mins[3], float maxs[3]);
-native int  BSP_NumBrushes();
-native int  BSP_NumLeaves();
+native int  BSP_BrushNumSides(int brushIdx);
+// Read one side's plane normal + signed distance. sideIdx in [0, BSP_BrushNumSides(brushIdx)).
+native bool BSP_BrushSidePlane(int brushIdx, int sideIdx, float normal[3], float &dist);
 
-// Brush-pair detection used for pixelsurf filtering.
+// Leaf accessors
+// Brushes belonging to a leaf in BSP visit order (first SOLID hit wins).
+native int  BSP_LeafBrushes(int leaf, int[] buf, int max);
+
+native int  BSP_LeafContents(int leafIdx);
+native int  BSP_LeafCluster(int leafIdx);    // PVS cluster index
+native int  BSP_LeafArea(int leafIdx);       // area portal grouping (low 9 bits)
+native int  BSP_LeafFlags(int leafIdx);      // misc flags (high 7 bits of the same short)
+// Leaf AABB = union of member brush AABBs. Lazy-builds leaf cache on first call.
+native bool BSP_LeafBounds(int leafIdx, float mins[3], float maxs[3]);
+
+// Node accessors (manual BSP walking; LeafAtPoint usually suffices)
+native bool BSP_NodePlane(int nodeIdx, float normal[3], float &dist);
+// Negative child encodes a leaf via `leafIdx = -1 - child`.
+native bool BSP_NodeChildren(int nodeIdx, int &leftChild, int &rightChild);
+
+// Plane table access
+// planeIdx in [0, BSP_NumPlanes())
+native bool BSP_PlaneAt(int planeIdx, float normal[3], float &dist);
+
+// "High-level" pixelsurf
 // Iterates all brushes for any whose XY AABB contains samplePos AND whose top/bottom equals seamZ.
 // Returns true if BOTH found. outLower = brush w/ maxs.z == seamZ, outUpper = brush w/ mins.z == seamZ.
 native bool BSP_FindBrushPairAtSeam(const float samplePos[3], float seamZ,
                                     int &outLowerBrush, int &outUpperBrush);
 
+// Brush AABB cache
 // Force a fresh build of the per-map brush AABB cache (synchronous; blocks).
 // Returns the brush count after rebuild (0 = ext unable to read BSP data).
 native int  BSP_RebuildCache();
@@ -46,9 +82,10 @@ native int  BSP_RebuildCacheAsync();
 native bool BSP_CacheIsBuilding();
 
 // Displacements
-// Primary path: reads CDispCollTree array directly from engine memory
+// Primary path: reads CDispCollTree array directly from engine memory.
 //   (canonical post-stitching verts; matches what TR_TraceRay would hit).
-// Fallback: parses BSP file lumps (DISPINFO/DISP_VERTS/FACES/etc) at map load.
+// Fallback: parses BSP file lumps (DISPINFO/DISP_VERTS/FACES) at map load
+//   and builds triangle meshes from scratch.
 // Check BSP_DispReady() to know if the engine reader is initialized; if not,
 // unified queries fall back to disk-parsed data automatically.
 
@@ -85,12 +122,6 @@ native int   BSP_DispCount();
 // Engine AABB for disp tree[idx]. false if not ready or out of range.
 native bool  BSP_DispGetBounds(int idx, float mins[3], float maxs[3]);
 
-// Diagnostic: dump tree[idx]'s bbox + power + counts + raw bytes for verification.
-native int   BSP_DispDebugInfo(int idx, char[] buf, int maxlen);
-
-// Diagnostic: explain why BSP_DispHeightAt returned its result at (x,y).
-native int   BSP_DispDiagnoseQuery(float x, float y, char[] buf, int maxlen);
-
 // m_nPower from engine tree[idx]. -1 if unavailable.
 native int   BSP_DispGetPower(int idx);
 
@@ -107,6 +138,12 @@ native int   BSP_DispTriCount(int idx);
 // Read a single vertex position from engine tree's m_aVerts buffer.
 // false if out of range or engine not ready.
 native bool  BSP_DispGetVert(int idx, int vertIdx, float pos[3]);
+
+// Diagnostic: dump tree[idx]'s bbox + power + counts + raw bytes for verification.
+native int   BSP_DispDebugInfo(int idx, char[] buf, int maxlen);
+
+// Diagnostic: explain why BSP_DispHeightAt returned its result at (x,y).
+native int   BSP_DispDiagnoseQuery(float x, float y, char[] buf, int maxlen);
 
 // - Disk-only explicit access -
 // Disk-parsed disp data, separate from engine reader.

@@ -160,7 +160,7 @@
             //   0xA8  int numleafbrushes   | 0xAC map_leafbrushes.ptr | 0xB0 count
             //   0xB4  int numcmodels       | 0xB8 map_cmodels.ptr     | 0xBC count
             //   0xC0  int numbrushes       | 0xC4 map_brushes.ptr     | 0xC8 count
-            //
+
             "off_map_rootnode"       "0"
             "off_numbrushsides"      "100"
             "off_map_brushsides"     "104"
@@ -206,9 +206,12 @@
             //   short   dispCount;         // 0x10
             //   short   dispListStart;     // 0x12
             //   sizeof(cleaf_t)            = 0x14
+            "cleaf_contents"         "0"   // int contents (Linux fn 0x1E9340 reads at +0)
+            "cleaf_cluster"          "4"   // short cluster  (Linux fn 0x1E9380 reads at +4)
+            "cleaf_area_flags"       "6"   // short {area:9, flags:7} (Linux fn 0x1E93C0 reads byte at +7)
             "cleaf_firstleafbrush"   "8"
             "cleaf_numleafbrushes"   "10"
-            "cleaf_sizeof"           "16"
+            "cleaf_sizeof"           "16"  // engine does `shl idx, 4`
         }
     }
 }
