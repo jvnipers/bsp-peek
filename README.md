@@ -28,6 +28,8 @@ native void BSP_BrushBounds(int brushIdx, float mins[3], float maxs[3]);
 native bool BSP_IsBoxBrush(int brushIdx);
 native int  BSP_BrushNumSides(int brushIdx);
 native bool BSP_BrushSidePlane(int brushIdx, int sideIdx, float normal[3], float &dist);
+native bool BSP_FindBrushPairAtSeam(const float samplePos[3], float seamZ,
+                                    int &outLowerBrush, int &outUpperBrush);
 
 // Leaf accessors
 native int  BSP_LeafBrushes(int leaf, int[] buf, int max);   // ordered (BSP order)
@@ -55,10 +57,6 @@ native bool BSP_CModelBounds(int idx, float mins[3], float maxs[3]);
 native bool BSP_CModelOrigin(int idx, float origin[3]);
 native int  BSP_CModelHeadnode(int idx);   // root BSP node for this submodel
                                            // pass to manual NodePlane/NodeChildren walks
-
-// "High-level" pixelsurf
-native bool BSP_FindBrushPairAtSeam(const float samplePos[3], float seamZ,
-                                    int &outLowerBrush, int &outUpperBrush);
 
 // Brush AABB cache
 native int  BSP_RebuildCache();         // synchronous; blocks until done
