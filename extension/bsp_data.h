@@ -36,7 +36,8 @@ int LeafBrushes(int leafIdx, int *outBuf, int maxOut);
 // Force rebuild of the per-map brush AABB cache.
 // Plugin should call once in OnMapStart
 // so the first user-triggered query doesn't pay the build cost.
-// Probably want to use the async version to avoid stalling the server during map load.
+// Probably want to use the async version to avoid stalling the server during
+// map load.
 void RebuildCache();
 
 // Same as RebuildCache() but builds on a worker thread; returns immediately.

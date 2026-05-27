@@ -12,6 +12,17 @@
                 "linux"     "\x55\x89\xE5\x56\x53\x8B\x5D\x08\x83\xEC\x08\x8B\x75\x0C\x53\x68\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x83\xC4\x10\x85\xC0"
                 "windows"   "\x55\x8B\xEC\x56\x8B\xF1\xC7\x05\x2A\x2A\x2A\x2A\x01\x00\x00\x00\xC7\x05\x2A\x2A\x2A\x2A\x00\x00\x00\x00\xC7\x05\x2A\x2A\x2A\x2A\x01\x00\x00\x00"
             }
+
+            // Anchor: CMod_LoadDispInfo (a.k.a. DispCollTrees_AllocateData).
+            // Writes all three disp globals (g_DispCollTreeCount, g_pDispCollTrees, g_pDispBounds).
+            //   Linux  : 0x1F30A0  (CSGO engine.so)
+            //   Windows: 0x101E6650 (CSGO engine.dll)
+            "DispCollTrees_Globals"
+            {
+                "library"   "engine"
+                "linux"     "\x55\x89\xE5\x57\x56\x53\x81\xEC\x2A\x2A\x2A\x2A\x8B\x45\x2A\x6A\x01\x6A\x1A\x89\x85\x2A\x2A\x2A\x2A\x8B\x45\x2A\x89\x85"
+                "windows"   "\x55\x8B\xEC\xB8\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x53\x56\x57\x51\x89\x4D\x2A\x8D\x8D\x2A\x2A\x2A\x2A\x6A\x1A\x89\x55\x2A\xE8"
+            }
         }
 
         "Addresses"
@@ -28,12 +39,115 @@
                     "read"  "88"
                 }
             }
-        }
 
+            // Engine disp reader globals.
+            // read = byte offset of imm32 operand of `mov [global], reg`
+            // write inside CMod_LoadDispInfo, measured from anchor sig start.
+            //   Linux  count:   0x1F2 (mov ds:0x74A4D8, eax @ 0x1F3291)
+            //   Linux  trees:   0x29E (mov ds:0x74A4D0, edi @ 0x1F333C)
+            //   Linux  bounds:  0x1FC (mov ds:0x74A4D4, eax @ 0x1F329B)
+            //   Win    count:   0x17B (mov 0x1391CBE4, esi @ 0x101E67C9)
+            //   Win    trees:   0x185 (mov 0x1391CBDC, eax @ 0x101E67D4)
+            //   Win    bounds:  0x1D8 (mov 0x1391CBE0, eax @ 0x101E6827)
+            "g_DispCollTreeCount"
+            {
+                "signature" "DispCollTrees_Globals"
+                "linux"
+                {
+                    "read"  "498"
+                }
+                "windows"
+                {
+                    "read"  "379"
+                }
+            }
+            // NOTE: Both Windows + Linux had g_pDispCollTrees / g_pDispBounds initially swapped;
+            // probe data on both showed VectorAligned alignedbbox_t pattern at the "trees" address 
+            // (Win 0x1391CBDC, Linux 0x74A4D0).
+            // source declares bounds before trees in CSGO engine;
+            // both compilers laid bounds at the lower address.
+            "g_pDispCollTrees"
+            {
+                "signature" "DispCollTrees_Globals"
+                "linux"
+                {
+                    "read"  "508"
+                }
+                "windows"
+                {
+                    "read"  "472"
+                }
+            }
+            "g_pDispBounds"
+            {
+                "signature" "DispCollTrees_Globals"
+                "linux"
+                {
+                    "read"  "670"
+                }
+                "windows"
+                {
+                    "read"  "389"
+                }
+            }
+        }
         "Keys"
         {
+            // CDispCollTree
+            // (probe[434] bbox matched disk-parse + 1u slop):
+            //   0x00  vftable*
+            //   0x04  Vector m_mins             (0x04..0x0F)
+            //   0x10  int    m_iCounter        (0x10..0x13)
+            //   0x14  Vector m_maxs             (0x14..0x1F)
+            //   0x20  int    m_nContents       (0x20..0x23)
+            //   0x24  memhandle_t m_hCache     (0x24..0x27)
+            //   0x28  int    m_nPower          (0x28..0x2B)
+            //   0x2C  uint16 m_nFlags          (0x2C..0x2D)
+            //   0x2E  uint16 m_nTexinfoFlags   (0x2E..0x2F)
+            //   0x30  Vector m_vecSurfPoints[4] (0x30..0x5F)
+            //   0x60  Vector m_vecStabDir       (0x60..0x6B)
+            //   0x6C  short  m_nSurfaceProps[4] (0x6C..0x73)
+            //   (4B pad for 16B align of next CUtlMemoryAligned)
+            //   0x78  CDispVector<Vector>           m_aVerts       (20B)
+            //   0x8C  CDispVector<CDispCollTri>     m_aTris        (20B)
+            //   0xA0  CDispVector<CDispCollNode>    m_nodes        (20B)
+            //   0xB4  CDispVector<CDispCollLeaf>    m_leaves       (20B)
+            //   0xC8  CUtlVector<CDispCollTriCache> m_aTrisCache   (20B, plain alloc)
+            //   0xDC  CUtlVector<Vector>            m_aEdgePlanes  (20B)
+            //   0xF0  CDispCollHelper m_Helper                     (~24B)
+            //   ...   unsigned int m_nSize at end. Total = 268 (0x10C).
             //
-            // Final CCollisionBSPData offsets (x86, MAX_QPATH=96, CRangeValidatedArray<T>=8 bytes = {T* ptr; int count}).
+            // CUtlVector: pMemory(4) + growSize(4) + allocCount(4)
+            //   + size(4) + pMemoryBase-alias(4) = 20 bytes.
+            //   (Aligned variant adds the pMemoryBase backup; size still at +12.)
+            // sizeof(CDispCollTree) = 0x10C = 268 bytes.
+            // DispCollTrees_FreeAll loop stride:
+            // (Windows engine.dll @0x101E4768: `add edi, 10Ch`)
+            // and CMod_LoadDispInfo allocation:
+            // (Linux engine.so @0x1F3976: `imul edi, [..], 10Ch`).
+            "dispcoll_tree_sizeof"    "268"
+            "dispcoll_tree_mins"        "4"
+            "dispcoll_tree_maxs"       "20"
+            "dispcoll_tree_power"      "40"
+            "dispcoll_tree_verts_ptr" "120"
+            "dispcoll_tree_verts_cnt" "132"
+            "dispcoll_tree_tris_ptr"  "140"
+            "dispcoll_tree_tris_cnt"  "152"
+            "dispcoll_tree_contents"   "32"
+            "dispcoll_tree_surfprops" "108"
+            // CDispCollTri (raw-byte dump):
+            //   0x00..0x05  ushort m_uiVerts[3]  (low 10 bits = index,
+            //               high 6 bits = edge flags). Mask with 0x3FF.
+            //   0x06..0x07  ushort m_nFlags
+            //   0x08..0x13  Vector m_vecNormal
+            //   0x14..0x17  float  m_flDist
+            //   total 24 bytes. Layout differs from cstrike15_src --
+            //   CSGO engine packs flags into the upper bits of vert idx.
+            "dispcoll_tri_sizeof"     "24"
+            "dispcoll_tri_indices"     "0"
+            "dispcoll_tri_normal"      "8"
+
+            // CCollisionBSPData offsets (x86, MAX_QPATH=96, CRangeValidatedArray<T>=8 bytes = {T* ptr; int count}).
             // cstrike15_src/engine/cmodel_private.h.
             //   0x00  cnode_t* map_rootnode
             //   0x04..0x63  char mapPathName[96]
@@ -73,7 +187,7 @@
             "cplane_dist"            "12"
             "cplane_sizeof"          "20"
 
-            // cnode_t (cstrike15_src/engine/cmodel_private.h, x86):
+            // cnode_t (cstrike15_src/engine/cmodel_private.h):
             //   cplane_t* plane;     // 0x00 (4 bytes)
             //   int       children[2]; // 0x04 (8 bytes)
             //   sizeof(cnode_t) = 12. Negative child encodes leaf: leafIdx = -1 - child.

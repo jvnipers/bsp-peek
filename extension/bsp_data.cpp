@@ -1,4 +1,5 @@
 #include "bsp_data.h"
+#include "bsp_util.h"
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
@@ -6,14 +7,16 @@
 #include <thread>
 #include <vector>
 
-// All offsets / sizes are populated from gamedata Keys at Init() time.
+using BSPUtil::GetKeyInt;
+using BSPUtil::ReadF32;
+using BSPUtil::ReadI32;
+using BSPUtil::ReadPtr;
+using BSPUtil::ReadU16;
 
 namespace BSPData {
-// Base address of CCollisionBSPData global
-// (resolved from "Addresses/g_BSPData").
+
 static uint8_t *g_pBSPData = nullptr;
 
-// Field offsets within CCollisionBSPData (bytes).
 static int OFF_NUMPLANES = 0;
 static int OFF_MAP_PLANES = 0;
 static int OFF_NUMBRUSHSIDES = 0;
@@ -22,64 +25,31 @@ static int OFF_NUMBRUSHES = 0;
 static int OFF_MAP_BRUSHES = 0;
 static int OFF_NUMLEAFBRUSHES = 0;
 static int OFF_MAP_LEAFBRUSHES = 0;
-static int OFF_NUMLEAFS = 0;  // optional (0 = not derived)
-static int OFF_MAP_LEAFS = 0; // optional
+static int OFF_NUMLEAFS = 0;
+static int OFF_MAP_LEAFS = 0;
 
-// cbrush_t layout.
 static int OFF_CBRUSH_CONTENTS = 0;
 static int OFF_CBRUSH_NUMSIDES = 4;
 static int OFF_CBRUSH_FIRSTBRUSHSIDE = 6;
 static int SZ_CBRUSH = 8;
 
-// cbrushside_t layout.
 static int OFF_CBRUSHSIDE_PLANE = 0;
 static int SZ_CBRUSHSIDE = 8;
 
-// cplane_t layout.
 static int OFF_CPLANE_NORMAL = 0;
 static int OFF_CPLANE_DIST = 12;
 static int SZ_CPLANE = 20;
 
-// cleaf_t layout.
 static int OFF_CLEAF_FIRSTLEAFBRUSH = 8;
 static int OFF_CLEAF_NUMLEAFBRUSHES = 10;
 static int SZ_CLEAF = 16;
 
-// cnode_t layout.
 static int OFF_CNODE_PLANE = 0;
 static int OFF_CNODE_CHILDREN = 4;
 static int SZ_CNODE = 12;
 
-// Node table offsets within CCollisionBSPData.
 static int OFF_NUMNODES = 0;
 static int OFF_MAP_NODES = 0;
-
-// helpers
-static inline int read_i32(const uint8_t *p, int off) {
-  int v;
-  memcpy(&v, p + off, 4);
-  return v;
-}
-static inline uint16_t read_u16(const uint8_t *p, int off) {
-  uint16_t v;
-  memcpy(&v, p + off, 2);
-  return v;
-}
-static inline void *read_ptr(const uint8_t *p, int off) {
-  uint32_t v;
-  memcpy(&v, p + off, 4);
-  return reinterpret_cast<void *>(static_cast<uintptr_t>(v));
-}
-static inline float read_f32(const uint8_t *p, int off) {
-  float v;
-  memcpy(&v, p + off, 4);
-  return v;
-}
-
-static int get_key_int(IGameConfig *gc, const char *key, int defaultVal) {
-  const char *s = gc->GetKeyValue(key);
-  return (s && *s) ? atoi(s) : defaultVal;
-}
 
 bool Init(IGameConfig *gameconf, char *error, size_t maxlen) {
   // Resolve g_BSPData base via Addresses chain.
@@ -91,39 +61,39 @@ bool Init(IGameConfig *gameconf, char *error, size_t maxlen) {
   g_pBSPData = reinterpret_cast<uint8_t *>(addr);
 
   // Load all field offsets from "Keys".
-  OFF_NUMPLANES = get_key_int(gameconf, "off_numplanes", -1);
-  OFF_MAP_PLANES = get_key_int(gameconf, "off_map_planes", -1);
-  OFF_NUMBRUSHSIDES = get_key_int(gameconf, "off_numbrushsides", -1);
-  OFF_MAP_BRUSHSIDES = get_key_int(gameconf, "off_map_brushsides", -1);
-  OFF_NUMBRUSHES = get_key_int(gameconf, "off_numbrushes", -1);
-  OFF_MAP_BRUSHES = get_key_int(gameconf, "off_map_brushes", -1);
-  OFF_NUMLEAFBRUSHES = get_key_int(gameconf, "off_numleafbrushes", -1);
-  OFF_MAP_LEAFBRUSHES = get_key_int(gameconf, "off_map_leafbrushes", -1);
-  OFF_NUMLEAFS = get_key_int(gameconf, "off_numleafs", 0);
-  OFF_MAP_LEAFS = get_key_int(gameconf, "off_map_leafs", 0);
+  OFF_NUMPLANES = GetKeyInt(gameconf, "off_numplanes", -1);
+  OFF_MAP_PLANES = GetKeyInt(gameconf, "off_map_planes", -1);
+  OFF_NUMBRUSHSIDES = GetKeyInt(gameconf, "off_numbrushsides", -1);
+  OFF_MAP_BRUSHSIDES = GetKeyInt(gameconf, "off_map_brushsides", -1);
+  OFF_NUMBRUSHES = GetKeyInt(gameconf, "off_numbrushes", -1);
+  OFF_MAP_BRUSHES = GetKeyInt(gameconf, "off_map_brushes", -1);
+  OFF_NUMLEAFBRUSHES = GetKeyInt(gameconf, "off_numleafbrushes", -1);
+  OFF_MAP_LEAFBRUSHES = GetKeyInt(gameconf, "off_map_leafbrushes", -1);
+  OFF_NUMLEAFS = GetKeyInt(gameconf, "off_numleafs", 0);
+  OFF_MAP_LEAFS = GetKeyInt(gameconf, "off_map_leafs", 0);
 
-  OFF_CBRUSH_CONTENTS = get_key_int(gameconf, "cbrush_contents", 0);
-  OFF_CBRUSH_NUMSIDES = get_key_int(gameconf, "cbrush_numsides", 4);
-  OFF_CBRUSH_FIRSTBRUSHSIDE = get_key_int(gameconf, "cbrush_firstbrushside", 6);
-  SZ_CBRUSH = get_key_int(gameconf, "cbrush_sizeof", 8);
+  OFF_CBRUSH_CONTENTS = GetKeyInt(gameconf, "cbrush_contents", 0);
+  OFF_CBRUSH_NUMSIDES = GetKeyInt(gameconf, "cbrush_numsides", 4);
+  OFF_CBRUSH_FIRSTBRUSHSIDE = GetKeyInt(gameconf, "cbrush_firstbrushside", 6);
+  SZ_CBRUSH = GetKeyInt(gameconf, "cbrush_sizeof", 8);
 
-  OFF_CBRUSHSIDE_PLANE = get_key_int(gameconf, "cbrushside_plane", 0);
-  SZ_CBRUSHSIDE = get_key_int(gameconf, "cbrushside_sizeof", 8);
+  OFF_CBRUSHSIDE_PLANE = GetKeyInt(gameconf, "cbrushside_plane", 0);
+  SZ_CBRUSHSIDE = GetKeyInt(gameconf, "cbrushside_sizeof", 8);
 
-  OFF_CPLANE_NORMAL = get_key_int(gameconf, "cplane_normal", 0);
-  OFF_CPLANE_DIST = get_key_int(gameconf, "cplane_dist", 12);
-  SZ_CPLANE = get_key_int(gameconf, "cplane_sizeof", 20);
+  OFF_CPLANE_NORMAL = GetKeyInt(gameconf, "cplane_normal", 0);
+  OFF_CPLANE_DIST = GetKeyInt(gameconf, "cplane_dist", 12);
+  SZ_CPLANE = GetKeyInt(gameconf, "cplane_sizeof", 20);
 
-  OFF_CLEAF_FIRSTLEAFBRUSH = get_key_int(gameconf, "cleaf_firstleafbrush", 8);
-  OFF_CLEAF_NUMLEAFBRUSHES = get_key_int(gameconf, "cleaf_numleafbrushes", 10);
-  SZ_CLEAF = get_key_int(gameconf, "cleaf_sizeof", 16);
+  OFF_CLEAF_FIRSTLEAFBRUSH = GetKeyInt(gameconf, "cleaf_firstleafbrush", 8);
+  OFF_CLEAF_NUMLEAFBRUSHES = GetKeyInt(gameconf, "cleaf_numleafbrushes", 10);
+  SZ_CLEAF = GetKeyInt(gameconf, "cleaf_sizeof", 16);
 
-  OFF_CNODE_PLANE = get_key_int(gameconf, "cnode_plane", 0);
-  OFF_CNODE_CHILDREN = get_key_int(gameconf, "cnode_children", 4);
-  SZ_CNODE = get_key_int(gameconf, "cnode_sizeof", 12);
+  OFF_CNODE_PLANE = GetKeyInt(gameconf, "cnode_plane", 0);
+  OFF_CNODE_CHILDREN = GetKeyInt(gameconf, "cnode_children", 4);
+  SZ_CNODE = GetKeyInt(gameconf, "cnode_sizeof", 12);
 
-  OFF_NUMNODES = get_key_int(gameconf, "off_numnodes", 0);
-  OFF_MAP_NODES = get_key_int(gameconf, "off_map_nodes", 0);
+  OFF_NUMNODES = GetKeyInt(gameconf, "off_numnodes", 0);
+  OFF_MAP_NODES = GetKeyInt(gameconf, "off_map_nodes", 0);
 
   // Sanity.
   if (OFF_NUMBRUSHES < 0 || OFF_MAP_BRUSHES < 0 || OFF_NUMBRUSHSIDES < 0 ||
@@ -175,7 +145,7 @@ static std::atomic<bool> g_asyncBuildInProgress{false};
 // unload cleanly without the worker outliving the engine module.
 static std::thread g_asyncBuildThread;
 
-// per-map leaf AABB cache (defined later, declared here for visibility)
+// per-map leaf AABB cache (defined later)
 struct LeafCacheEntry {
   float mins[3];
   float maxs[3];
@@ -274,28 +244,28 @@ bool CacheIsBuilding() { return g_asyncBuildInProgress.load(); }
 
 // top-level field accessors
 int GetNumBrushes() {
-  return g_pBSPData ? read_i32(g_pBSPData, OFF_NUMBRUSHES) : 0;
+  return g_pBSPData ? ReadI32(g_pBSPData, OFF_NUMBRUSHES) : 0;
 }
 int GetNumBrushSides() {
-  return g_pBSPData ? read_i32(g_pBSPData, OFF_NUMBRUSHSIDES) : 0;
+  return g_pBSPData ? ReadI32(g_pBSPData, OFF_NUMBRUSHSIDES) : 0;
 }
 int GetNumPlanes() {
-  return g_pBSPData ? read_i32(g_pBSPData, OFF_NUMPLANES) : 0;
+  return g_pBSPData ? ReadI32(g_pBSPData, OFF_NUMPLANES) : 0;
 }
 int GetNumLeafBrushes() {
-  return g_pBSPData ? read_i32(g_pBSPData, OFF_NUMLEAFBRUSHES) : 0;
+  return g_pBSPData ? ReadI32(g_pBSPData, OFF_NUMLEAFBRUSHES) : 0;
 }
 int GetNumLeaves() {
   if (!g_pBSPData || OFF_NUMLEAFS == 0)
     return 0;
-  return read_i32(g_pBSPData, OFF_NUMLEAFS);
+  return ReadI32(g_pBSPData, OFF_NUMLEAFS);
 }
 
 static const uint8_t *brush_at(int idx) {
   if (!g_pBSPData || idx < 0 || idx >= GetNumBrushes())
     return nullptr;
   const uint8_t *table =
-      reinterpret_cast<const uint8_t *>(read_ptr(g_pBSPData, OFF_MAP_BRUSHES));
+      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_BRUSHES));
   if (!table)
     return nullptr;
   return table + (size_t)idx * SZ_CBRUSH;
@@ -305,7 +275,7 @@ static const uint8_t *brushside_at(int idx) {
   if (!g_pBSPData || idx < 0 || idx >= GetNumBrushSides())
     return nullptr;
   const uint8_t *table = reinterpret_cast<const uint8_t *>(
-      read_ptr(g_pBSPData, OFF_MAP_BRUSHSIDES));
+      ReadPtr(g_pBSPData, OFF_MAP_BRUSHSIDES));
   if (!table)
     return nullptr;
   return table + (size_t)idx * SZ_CBRUSHSIDE;
@@ -315,15 +285,15 @@ int GetBrushContents(int brushIdx) {
   const uint8_t *b = brush_at(brushIdx);
   if (!b)
     return 0;
-  return read_i32(b, OFF_CBRUSH_CONTENTS);
+  return ReadI32(b, OFF_CBRUSH_CONTENTS);
 }
 
 bool GetBrushBounds(int brushIdx, float mins[3], float maxs[3]) {
   const uint8_t *b = brush_at(brushIdx);
   if (!b)
     return false;
-  uint16_t numsides = read_u16(b, OFF_CBRUSH_NUMSIDES);
-  uint16_t first = read_u16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
+  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
+  uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
   if (numsides == 0)
     return false;
 
@@ -335,13 +305,13 @@ bool GetBrushBounds(int brushIdx, float mins[3], float maxs[3]) {
     if (!side)
       continue;
     const uint8_t *plane =
-        reinterpret_cast<const uint8_t *>(read_ptr(side, OFF_CBRUSHSIDE_PLANE));
+        reinterpret_cast<const uint8_t *>(ReadPtr(side, OFF_CBRUSHSIDE_PLANE));
     if (!plane)
       continue;
-    float nx = read_f32(plane, OFF_CPLANE_NORMAL + 0);
-    float ny = read_f32(plane, OFF_CPLANE_NORMAL + 4);
-    float nz = read_f32(plane, OFF_CPLANE_NORMAL + 8);
-    float d = read_f32(plane, OFF_CPLANE_DIST);
+    float nx = ReadF32(plane, OFF_CPLANE_NORMAL + 0);
+    float ny = ReadF32(plane, OFF_CPLANE_NORMAL + 4);
+    float nz = ReadF32(plane, OFF_CPLANE_NORMAL + 8);
+    float d = ReadF32(plane, OFF_CPLANE_DIST);
     if (nx > 0.99f) {
       if (d > maxs[0])
         maxs[0] = d;
@@ -377,8 +347,8 @@ bool IsBoxBrush(int brushIdx) {
   const uint8_t *b = brush_at(brushIdx);
   if (!b)
     return false;
-  uint16_t numsides = read_u16(b, OFF_CBRUSH_NUMSIDES);
-  uint16_t first = read_u16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
+  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
+  uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
   if (numsides != 6)
     return false;
   int axisHit[6] = {0, 0, 0, 0, 0, 0};
@@ -387,12 +357,12 @@ bool IsBoxBrush(int brushIdx) {
     if (!side)
       return false;
     const uint8_t *plane =
-        reinterpret_cast<const uint8_t *>(read_ptr(side, OFF_CBRUSHSIDE_PLANE));
+        reinterpret_cast<const uint8_t *>(ReadPtr(side, OFF_CBRUSHSIDE_PLANE));
     if (!plane)
       return false;
-    float nx = read_f32(plane, OFF_CPLANE_NORMAL + 0);
-    float ny = read_f32(plane, OFF_CPLANE_NORMAL + 4);
-    float nz = read_f32(plane, OFF_CPLANE_NORMAL + 8);
+    float nx = ReadF32(plane, OFF_CPLANE_NORMAL + 0);
+    float ny = ReadF32(plane, OFF_CPLANE_NORMAL + 4);
+    float nz = ReadF32(plane, OFF_CPLANE_NORMAL + 8);
     if (nx > 0.999f)
       axisHit[0]++;
     else if (nx < -0.999f)
@@ -419,7 +389,7 @@ static const uint8_t *leaf_at(int idx) {
   if (!g_pBSPData || OFF_MAP_LEAFS == 0 || idx < 0 || idx >= GetNumLeaves())
     return nullptr;
   const uint8_t *table =
-      reinterpret_cast<const uint8_t *>(read_ptr(g_pBSPData, OFF_MAP_LEAFS));
+      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_LEAFS));
   if (!table)
     return nullptr;
   return table + (size_t)idx * SZ_CLEAF;
@@ -430,11 +400,11 @@ int LeafBrushes(int leafIdx, int *outBuf, int maxOut) {
   if (!leaf || OFF_MAP_LEAFBRUSHES == 0)
     return -1;
   const uint16_t *table = reinterpret_cast<const uint16_t *>(
-      read_ptr(g_pBSPData, OFF_MAP_LEAFBRUSHES));
+      ReadPtr(g_pBSPData, OFF_MAP_LEAFBRUSHES));
   if (!table)
     return -1;
-  uint16_t first = read_u16(leaf, OFF_CLEAF_FIRSTLEAFBRUSH);
-  uint16_t count = read_u16(leaf, OFF_CLEAF_NUMLEAFBRUSHES);
+  uint16_t first = ReadU16(leaf, OFF_CLEAF_FIRSTLEAFBRUSH);
+  uint16_t count = ReadU16(leaf, OFF_CLEAF_NUMLEAFBRUSHES);
   int n = (int)count;
   if (n > maxOut)
     n = maxOut;
@@ -460,7 +430,7 @@ static void BuildLeafCache() {
     return;
 
   const uint16_t *lbtable = reinterpret_cast<const uint16_t *>(
-      read_ptr(g_pBSPData, OFF_MAP_LEAFBRUSHES));
+      ReadPtr(g_pBSPData, OFF_MAP_LEAFBRUSHES));
   if (!lbtable)
     return;
 
@@ -475,8 +445,8 @@ static void BuildLeafCache() {
     const uint8_t *leaf = leaf_at(i);
     if (!leaf)
       continue;
-    uint16_t first = read_u16(leaf, OFF_CLEAF_FIRSTLEAFBRUSH);
-    uint16_t count = read_u16(leaf, OFF_CLEAF_NUMLEAFBRUSHES);
+    uint16_t first = ReadU16(leaf, OFF_CLEAF_FIRSTLEAFBRUSH);
+    uint16_t count = ReadU16(leaf, OFF_CLEAF_NUMLEAFBRUSHES);
     if (count == 0)
       continue;
 
@@ -506,11 +476,11 @@ int LeafAtPoint(const float pos[3]) {
   // O(log N).
   if (!g_pBSPData || OFF_MAP_NODES == 0 || SZ_CNODE == 0)
     return -1;
-  int numnodes = (OFF_NUMNODES != 0) ? read_i32(g_pBSPData, OFF_NUMNODES) : 0;
+  int numnodes = (OFF_NUMNODES != 0) ? ReadI32(g_pBSPData, OFF_NUMNODES) : 0;
   if (numnodes <= 0)
     return -1;
   const uint8_t *nodes =
-      reinterpret_cast<const uint8_t *>(read_ptr(g_pBSPData, OFF_MAP_NODES));
+      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_NODES));
   if (!nodes)
     return -1;
 
@@ -522,16 +492,16 @@ int LeafAtPoint(const float pos[3]) {
       return -1; // out-of-bounds (corrupt)
     const uint8_t *node = nodes + (size_t)idx * SZ_CNODE;
     const uint8_t *plane =
-        reinterpret_cast<const uint8_t *>(read_ptr(node, OFF_CNODE_PLANE));
+        reinterpret_cast<const uint8_t *>(ReadPtr(node, OFF_CNODE_PLANE));
     if (!plane)
       return -1;
-    float nx = read_f32(plane, OFF_CPLANE_NORMAL + 0);
-    float ny = read_f32(plane, OFF_CPLANE_NORMAL + 4);
-    float nz = read_f32(plane, OFF_CPLANE_NORMAL + 8);
+    float nx = ReadF32(plane, OFF_CPLANE_NORMAL + 0);
+    float ny = ReadF32(plane, OFF_CPLANE_NORMAL + 4);
+    float nz = ReadF32(plane, OFF_CPLANE_NORMAL + 8);
     float d = pos[0] * nx + pos[1] * ny + pos[2] * nz -
-              read_f32(plane, OFF_CPLANE_DIST);
+              ReadF32(plane, OFF_CPLANE_DIST);
     int childOff = OFF_CNODE_CHILDREN + (d >= 0.0f ? 0 : 4);
-    idx = read_i32(node, childOff);
+    idx = ReadI32(node, childOff);
   }
   return -1;
 }

@@ -1,5 +1,7 @@
 #include "extension.h"
 #include "bsp_data.h"
+#include "bsp_disp.h"
+#include <IGameHelpers.h>
 
 BSPPeek g_BSPPeek;
 SMEXT_LINK(&g_BSPPeek);
@@ -13,6 +15,15 @@ bool BSPPeek::SDK_OnLoad(char *error, size_t maxlen, bool late) {
     gameconfs->CloseGameConfigFile(gameconf);
     return false;
   }
+
+  char dispEngErr[256] = {0};
+  if (!BSPDisp::InitEngine(gameconf, dispEngErr, sizeof(dispEngErr))) {
+    smutils->LogMessage(myself, "Engine displacement reader disabled: %s",
+                        dispEngErr);
+  } else {
+    smutils->LogMessage(myself, "Engine displacement reader initialized");
+  }
+
   gameconfs->CloseGameConfigFile(gameconf);
 
   sharesys->AddNatives(myself, g_BSPNatives);
@@ -21,8 +32,8 @@ bool BSPPeek::SDK_OnLoad(char *error, size_t maxlen, bool late) {
   void *base = BSPData::DebugGetBase();
   smutils->LogMessage(
       myself,
-      "Loaded. g_BSPData base = %p  | offs: brushes %d/%d  planes %d/%d "
-      " leafs %d/%d",
+      "Loaded. g_BSPData base = %p  | offs: brushes %d/%d  planes %d/%d"
+      "  leafs %d/%d",
       base, BSPData::DebugGetOff("numbrushes"),
       BSPData::DebugGetOff("map_brushes"), BSPData::DebugGetOff("numplanes"),
       BSPData::DebugGetOff("map_planes"), BSPData::DebugGetOff("numleafs"),
@@ -30,10 +41,30 @@ bool BSPPeek::SDK_OnLoad(char *error, size_t maxlen, bool late) {
   return true;
 }
 
-void BSPPeek::SDK_OnUnload() { BSPData::Shutdown(); }
+void BSPPeek::SDK_OnUnload() {
+  BSPData::Shutdown();
+  BSPDisp::Clear();
+  BSPDisp::ShutdownEngine();
+}
 
 void BSPPeek::SDK_OnAllLoaded() {}
 
 bool BSPPeek::QueryRunning(char *error, size_t maxlen) { return true; }
 
-void BSPPeek::OnMapStartHook() { BSPData::OnMapStart(); }
+void BSPPeek::OnMapStartHook() {
+  BSPData::OnMapStart();
+
+  const char *mapname = gamehelpers->GetCurrentMap();
+  if (!mapname || !mapname[0])
+    return;
+  char bspPath[260];
+  smutils->BuildPath(Path_Game, bspPath, sizeof(bspPath), "maps/%s.bsp",
+                     mapname);
+  char err[256] = {0};
+  if (BSPDisp::EnsureLoaded(mapname, bspPath, err, sizeof(err))) {
+    smutils->LogMessage(myself, "Loaded %d displacements for map '%s'",
+                        BSPDisp::DiskCount(), mapname);
+  } else {
+    smutils->LogError(myself, "Displacement load failed: %s", err);
+  }
+}

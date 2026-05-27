@@ -14,6 +14,8 @@ Filter pixelsurf candidates by checking:
 
 ## Natives
 
+### Brush / leaf / cache
+
 ```sp
 native int  BSP_LeafAtPoint(const float pos[3]);
 native int  BSP_LeafBrushes(int leaf, int[] buf, int max);   // ordered (BSP order)
@@ -32,6 +34,48 @@ native bool BSP_CacheIsBuilding();      // true between RebuildCacheAsync and sw
 `LeafAtPoint` is a O(log N) BSP node-walk (descends `map_nodes` via signed plane distance, leaf = `-1 - child` per Source convention)
 
 All other natives read directly from the live `CCollisionBSPData` global; the brush table is additionally AABB-cached per-map to avoid repeated plane-pointer walks during seam queries.
+
+### Displacements
+
+Two backends:
+
+- **Engine** (primary): reads `CDispCollTree` array directly from engine process memory via gamedata sigscan. Gives canonical post-stitching verts - matches what `TR_TraceRay` would hit.
+- **Disk** (fallback): parses BSP file lumps (`DISPINFO` / `DISP_VERTS` / `FACES`) at map load and builds triangle meshes from scratch. Used when the engine reader can't initialize (missing/wrong gamedata sigs).
+
+Unified queries (`BSP_DispHeightAt` etc.) try engine first, fall back to disk automatically. Engine-only accessors return safe defaults when the reader is unavailable; check `BSP_DispReady()` first if you need certainty.
+
+```sp
+#define BSP_DISP_NO_HIT -1.0e30    // sentinel for "no XY match"
+
+// Unified (engine-first, disk fallback)
+native float BSP_DispHeightAt(float x, float y);
+native float BSP_DispHeightAtDebug(float x, float y, int &outIdx);
+native float BSP_DispSurfaceNormalAt(float x, float y, float normal[3]);  // Z + tri plane normal
+native bool  BSP_DispIsPointOnDisp(float x, float y);
+native int   BSP_DispHeightAtMulti(float x, float y, float[] results, int maxResults);
+
+// Engine accessors (require BSP_DispReady)
+native bool  BSP_DispReady();
+native int   BSP_DispCount();
+native bool  BSP_DispGetBounds(int idx, float mins[3], float maxs[3]);
+native int   BSP_DispGetPower(int idx);                   // mesh resolution (2-4)
+native int   BSP_DispGetContents(int idx);                // CONTENTS_* flags
+native bool  BSP_DispGetSurfaceProps(int idx, int props[4]);
+native int   BSP_DispVertCount(int idx);
+native int   BSP_DispTriCount(int idx);
+native bool  BSP_DispGetVert(int idx, int vertIdx, float pos[3]);
+native int   BSP_DispDebugInfo(int idx, char[] buf, int maxlen);
+native int   BSP_DispDiagnoseQuery(float x, float y, char[] buf, int maxlen);
+
+// Disk-only (explicit fallback access; indices != engine indices)
+native int   BSP_DispDiskCount();
+native bool  BSP_DispDiskBounds(int idx, float mins[3], float maxs[3]);
+native int   BSP_DispDiskDebugInfo(int idx, char[] buf, int maxlen);
+```
+
+Engine reader resolves three globals from gamedata sigscan: `g_DispCollTreeCount`, `g_pDispCollTrees`, `g_pDispBounds` (anchored on `CMod_LoadDispInfo`). Field offsets within `CDispCollTree` (mins/maxs/power, `m_aVerts` / `m_aTris` CUtlVector members) and `CDispCollTri` (3 byte indices + edge flags + plane).
+
+For `HeightAt` queries, AABB-rejects the disp first, then iterates triangles testing XY containment + barycentric Z interpolation. Picks the highest matching Z across all tris (matches a downward trace).
 
 ## Build
 
