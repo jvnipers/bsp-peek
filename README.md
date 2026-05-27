@@ -1,8 +1,10 @@
 # BSP-Peek - SourceMod extension for BSP queries
 
-Exposes engine-internal `CCollisionBSPData` (brushes, leaves, planes, nodes) and `CDispCollTree` (displacements) to SourceMod plugins.
+Exposes engine-internal `CCollisionBSPData` (brushes, leaves, planes, nodes, submodels) and `CDispCollTree` (displacements) to SourceMod plugins.
 
-Currently only support CS:GO
+Currently only supports CS:GO (x86)
+
+MM:S 1.12+ SM 1.12+ (No SM 1.13 or MM:S 2.0 support (yet))
 
 ## Natives
 
