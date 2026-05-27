@@ -94,6 +94,10 @@ native bool  BSP_DispDiskBounds(int idx, float mins[3], float maxs[3]);
 native int   BSP_DispDiskDebugInfo(int idx, char[] buf, int maxlen);
 ```
 
+- Engine reader resolves three globals from gamedata sigscan: `g_DispCollTreeCount`, `g_pDispCollTrees`, `g_pDispBounds` (anchored on `CMod_LoadDispInfo`). Field offsets within `CDispCollTree` (mins/maxs/power, `m_aVerts` / `m_aTris` CUtlVector members) and `CDispCollTri` (3 byte indices + edge flags + plane).
+
+- For `HeightAt` queries, AABB-rejects the disp first, then iterates triangles testing XY containment + barycentric Z interpolation. Picks the highest matching Z across all tris (matches a downward trace).
+
 ## Build
 
 Produces `build/extension/bsppeek.ext/{platform}-x86/.` containing the ext binary regardless of if Docker or native.
@@ -129,7 +133,3 @@ Required toolchain:
 
 - `cnode_t` is 12 bytes: `cplane_t* plane` + `int children[2]`.
   Negative child encodes a leaf index via `leafIdx = -1 - child`.
-
-- Engine reader resolves three globals from gamedata sigscan: `g_DispCollTreeCount`, `g_pDispCollTrees`, `g_pDispBounds` (anchored on `CMod_LoadDispInfo`). Field offsets within `CDispCollTree` (mins/maxs/power, `m_aVerts` / `m_aTris` CUtlVector members) and `CDispCollTri` (3 byte indices + edge flags + plane).
-
-- For `HeightAt` queries, AABB-rejects the disp first, then iterates triangles testing XY containment + barycentric Z interpolation. Picks the highest matching Z across all tris (matches a downward trace).
