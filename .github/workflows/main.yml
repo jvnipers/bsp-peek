@@ -20,10 +20,8 @@ jobs:
           ]
           versions = [
               {"sm_ver": s, "mm_ver": m,
-               "sm_label": s.replace("-dev", ""),
-               "sm_label": s.replace("master", "1.13"),
-               "mm_label": m.replace("-dev", ""),
-               "mm_label": m.replace("master", "2.0"),}
+               "sm_label": s.replace("-dev", "").replace("master", "1.13"),
+               "mm_label": m.replace("-dev", "").replace("master", "2.0"),}
               for s, m in VERSIONS
           ]
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
