@@ -15,13 +15,13 @@ jobs:
           python3 - << 'PYEOF'
           import json, os
           VERSIONS = [
-              ("1.12", "1.12"),
-              ("1.13", "1.12"),
+              ("1.12-dev", "1.12-dev"),
+              ("master", "1.12-dev"),
           ]
           versions = [
               {"sm_ver": s, "mm_ver": m,
-               "sm_ver_flat": s.replace(".", ""),
-               "mm_ver_flat": m.replace(".", "")}
+               "sm_label": s.replace("-dev", ""),
+               "mm_label": m.replace("-dev", ""),}
               for s, m in VERSIONS
           ]
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
@@ -38,7 +38,7 @@ jobs:
         version: ${{ fromJSON(needs.config.outputs.versions) }}
       fail-fast: false
     runs-on: ${{ matrix.platform.os }}
-    name: ${{ matrix.platform.os_short }}-x86-mm${{ matrix.version.mm_ver }}-sm${{ matrix.version.sm_ver }}
+    name: ${{ matrix.platform.os_short }}-x86-mm${{ matrix.version.mm_label }}-sm${{ matrix.version.sm_label }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: alliedmodders/sourcemod
-          ref: ${{ matrix.version.sm_ver }}-dev
+          ref: ${{ matrix.version.sm_ver }}
           submodules: recursive
           path: sourcemod
 
@@ -57,7 +57,7 @@ jobs:
         with:
           repository: alliedmodders/metamod-source
           submodules: recursive
-          ref: ${{ matrix.version.mm_ver }}-dev
+          ref: ${{ matrix.version.mm_ver }}
           path: metamod-source
 
       - uses: actions/setup-python@v6
@@ -106,7 +106,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: bsp-peek-${{ matrix.platform.os_short }}-mm${{ matrix.version.mm_ver }}-sm${{ matrix.version.sm_ver }}
+          name: bsp-peek-${{ matrix.platform.os_short }}-mm${{ matrix.version.mm_label }}-sm${{ matrix.version.sm_label }}
           path: staging/*
 
   build-docker:
@@ -123,7 +123,7 @@ jobs:
         version: ${{ fromJSON(needs.config.outputs.versions) }}
       fail-fast: false
     runs-on: ubuntu-latest
-    name: linux-x86-${{ matrix.runtime.name }}-mm${{ matrix.version.mm_ver }}-sm${{ matrix.version.sm_ver }}
+    name: linux-x86-${{ matrix.runtime.name }}-mm${{ matrix.version.mm_label }}-sm${{ matrix.version.sm_label }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -133,7 +133,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: alliedmodders/sourcemod
-          ref: ${{ matrix.version.sm_ver }}-dev
+          ref: ${{ matrix.version.sm_ver }}
           submodules: recursive
           path: sourcemod
 
@@ -142,7 +142,7 @@ jobs:
         with:
           repository: alliedmodders/metamod-source
           submodules: recursive
-          ref: ${{ matrix.version.mm_ver }}-dev
+          ref: ${{ matrix.version.mm_ver }}
           path: metamod-source
 
       - name: Build inside container
@@ -151,8 +151,8 @@ jobs:
             -v "$GITHUB_WORKSPACE:/work" \
             -w /work/project \
             -e HL2SDKCSGO=/work/project/hl2sdk-csgo \
-            -e MMSOURCE${{ matrix.version.mm_ver_flat }}=/work/metamod-source \
-            -e SOURCEMOD${{ matrix.version.sm_ver_flat }}=/work/sourcemod \
+            -e MMSOURCE=/work/metamod-source \
+            -e SOURCEMOD=/work/sourcemod \
             ${{ matrix.runtime.image }} \
             bash -ec '
               dpkg --add-architecture i386 || true
@@ -183,7 +183,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: bsp-peek-linux-${{ matrix.runtime.name }}-mm${{ matrix.version.mm_ver }}-sm${{ matrix.version.sm_ver }}
+          name: bsp-peek-linux-${{ matrix.runtime.name }}-mm${{ matrix.version.mm_label }}-sm${{ matrix.version.sm_label }}
           path: staging/*
 
   release:
