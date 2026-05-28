@@ -36,7 +36,7 @@ jobs:
         version: ${{ fromJSON(needs.config.outputs.versions) }}
       fail-fast: false
     runs-on: ${{ matrix.platform.os }}
-    name: ${{ matrix.platform.os_short }}-x86-sm${{ matrix.version.sm_ver }}
+    name: ${{ matrix.platform.os_short }}-x86-mm${{ matrix.version.mm_ver }}-sm${{ matrix.version.sm_ver }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -114,8 +114,8 @@ jobs:
         runtime:
           - name: sniper
             image: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
-          - name: sourcemod-deb11
-            image: ghcr.io/alliedmodders/build-containers/debian11-clang22:latest
+          #- name: sourcemod-deb11
+          #  image: ghcr.io/alliedmodders/build-containers/debian11-clang22:latest
           #- name: scout
           #  image: registry.gitlab.steamos.cloud/steamrt/scout/sdk:latest
         version: ${{ fromJSON(needs.config.outputs.versions) }}
