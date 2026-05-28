@@ -21,7 +21,9 @@ jobs:
           versions = [
               {"sm_ver": s, "mm_ver": m,
                "sm_label": s.replace("-dev", ""),
-               "mm_label": m.replace("-dev", ""),}
+               "sm_label": s.replace("master", "1.13"),
+               "mm_label": m.replace("-dev", ""),
+               "mm_label": m.replace("master", "2.0"),}
               for s, m in VERSIONS
           ]
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
@@ -183,7 +185,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: bsp-peek--linux-${{ matrix.runtime.name }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
+          name: bsp-peek-linux-${{ matrix.runtime.name }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
           path: staging/*
 
   release:
