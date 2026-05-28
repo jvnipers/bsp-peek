@@ -38,7 +38,7 @@ jobs:
         version: ${{ fromJSON(needs.config.outputs.versions) }}
       fail-fast: false
     runs-on: ${{ matrix.platform.os }}
-    name: ${{ matrix.platform.os_short }}-x86-mm${{ matrix.version.mm_label }}-sm${{ matrix.version.sm_label }}
+    name: ${{ matrix.platform.os_short }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -106,7 +106,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: bsp-peek-${{ matrix.platform.os_short }}-mm${{ matrix.version.mm_label }}-sm${{ matrix.version.sm_label }}
+          name: bsp-peek-${{ matrix.platform.os_short }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
           path: staging/*
 
   build-docker:
@@ -123,7 +123,7 @@ jobs:
         version: ${{ fromJSON(needs.config.outputs.versions) }}
       fail-fast: false
     runs-on: ubuntu-latest
-    name: linux-x86-${{ matrix.runtime.name }}-mm${{ matrix.version.mm_label }}-sm${{ matrix.version.sm_label }}
+    name: linux-${{ matrix.runtime.name }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -183,7 +183,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: bsp-peek-linux-${{ matrix.runtime.name }}-mm${{ matrix.version.mm_label }}-sm${{ matrix.version.sm_label }}
+          name: bsp-peek--linux-${{ matrix.runtime.name }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
           path: staging/*
 
   release:
