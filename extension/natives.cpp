@@ -53,6 +53,16 @@ static inline void cell_to_float3(IPluginContext *pCtx, cell_t addr,
   out[2] = sp_ctof(src[2]);
 }
 
+// Debug
+cell_t N_DebugDumpCBSP(IPluginContext *, const cell_t *params) {
+  BSPData::DebugDumpCBSP(params[1], params[2]);
+  return 0;
+}
+cell_t N_DebugDumpCBSPPtr(IPluginContext *, const cell_t *params) {
+  BSPData::DebugDumpCBSPPtr(params[1], params[2]);
+  return 0;
+}
+
 // Counts
 cell_t N_NumBrushes(IPluginContext *, const cell_t *) {
   return BSPData::GetNumBrushes();
@@ -74,6 +84,72 @@ cell_t N_NumBoxBrushes(IPluginContext *, const cell_t *) {
 }
 cell_t N_NumCModels(IPluginContext *, const cell_t *) {
   return BSPData::GetNumCModels();
+}
+cell_t N_NumAreas(IPluginContext *, const cell_t *) {
+  return BSPData::GetNumAreas();
+}
+cell_t N_NumAreaPortals(IPluginContext *, const cell_t *) {
+  return BSPData::GetNumAreaPortals();
+}
+cell_t N_NumClusters(IPluginContext *, const cell_t *) {
+  return BSPData::GetNumClusters();
+}
+
+// Visibility (PVS)
+cell_t N_ClustersVisible(IPluginContext *, const cell_t *params) {
+  return BSPData::ClustersVisible(params[1], params[2]) ? 1 : 0;
+}
+
+cell_t N_LeavesVisible(IPluginContext *, const cell_t *params) {
+  return BSPData::LeavesVisible(params[1], params[2]) ? 1 : 0;
+}
+
+cell_t N_VisRowDecompress(IPluginContext *pCtx, const cell_t *params) {
+  int cluster = params[1];
+  int maxBytes = params[3];
+  if (maxBytes <= 0)
+    return 0;
+  if (maxBytes > 8192)
+    maxBytes = 8192;
+  uint8_t tmp[8192];
+  int n = BSPData::VisRowDecompress(cluster, tmp, maxBytes);
+  cell_t *buf = nullptr;
+  pCtx->LocalToPhysAddr(params[2], &buf);
+  for (int i = 0; i < n; ++i)
+    buf[i] = tmp[i];
+  return n;
+}
+
+// Areas / area portals
+cell_t N_AreaInfo(IPluginContext *pCtx, const cell_t *params) {
+  int numPortals = 0, firstPortal = 0;
+  bool ok = BSPData::AreaInfo(params[1], numPortals, firstPortal);
+  cell_t *outNum = nullptr, *outFirst = nullptr;
+  pCtx->LocalToPhysAddr(params[2], &outNum);
+  pCtx->LocalToPhysAddr(params[3], &outFirst);
+  *outNum = numPortals;
+  *outFirst = firstPortal;
+  return ok ? 1 : 0;
+}
+
+cell_t N_AreaPortalInfo(IPluginContext *pCtx, const cell_t *params) {
+  int portalKey = 0, otherArea = 0, firstClipVert = 0, clipVerts = 0,
+      planenum = 0;
+  bool ok = BSPData::AreaPortalInfo(params[1], portalKey, otherArea,
+                                    firstClipVert, clipVerts, planenum);
+  cell_t *o1 = nullptr, *o2 = nullptr, *o3 = nullptr, *o4 = nullptr,
+         *o5 = nullptr;
+  pCtx->LocalToPhysAddr(params[2], &o1);
+  pCtx->LocalToPhysAddr(params[3], &o2);
+  pCtx->LocalToPhysAddr(params[4], &o3);
+  pCtx->LocalToPhysAddr(params[5], &o4);
+  pCtx->LocalToPhysAddr(params[6], &o5);
+  *o1 = portalKey;
+  *o2 = otherArea;
+  *o3 = firstClipVert;
+  *o4 = clipVerts;
+  *o5 = planenum;
+  return ok ? 1 : 0;
 }
 
 // Misc
@@ -956,6 +1032,10 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_EmptyLeaf", N_EmptyLeaf},
     {"BSP_SolidLeaf", N_SolidLeaf},
 
+    // Debug
+    {"BSP_DebugDumpCBSP", N_DebugDumpCBSP},
+    {"BSP_DebugDumpCBSPPtr", N_DebugDumpCBSPPtr},
+
     // Counts
     {"BSP_NumBrushes", N_NumBrushes},
     {"BSP_NumBrushSides", N_NumBrushSides},
@@ -964,6 +1044,18 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_NumPlanes", N_NumPlanes},
     {"BSP_NumBoxBrushes", N_NumBoxBrushes},
     {"BSP_NumCModels", N_NumCModels},
+    {"BSP_NumAreas", N_NumAreas},
+    {"BSP_NumAreaPortals", N_NumAreaPortals},
+    {"BSP_NumClusters", N_NumClusters},
+
+    // Visibility (PVS)
+    {"BSP_ClustersVisible", N_ClustersVisible},
+    {"BSP_LeavesVisible", N_LeavesVisible},
+    {"BSP_VisRowDecompress", N_VisRowDecompress},
+
+    // Areas / area portals
+    {"BSP_AreaInfo", N_AreaInfo},
+    {"BSP_AreaPortalInfo", N_AreaPortalInfo},
 
     // Point queries
     {"BSP_LeafAtPoint", N_LeafAtPoint},

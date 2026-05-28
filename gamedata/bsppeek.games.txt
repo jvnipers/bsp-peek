@@ -195,6 +195,42 @@
             "off_numbrushes"         "192"   // 0xC0
             "off_map_brushes"        "196"   // 0xC4
 
+            // Visibility (PVS) - compressed blob, decompressed per query.
+            //   0xD8  int   numvisibility  (size of blob in bytes)
+            //   0xDC  byte* map_visibility (mmap'd vis blob; dvis_t header
+            //         at +0: {int numclusters; int bitofs[numclusters][2];}
+            //         bitofs[c][0] = byte offset of cluster c's PVS row
+            //         bitofs[c][1] = byte offset of cluster c's PAS row)
+            // monotonic bitofs table starts at +4.
+            "off_numvisibility"      "216"   // 0xD8
+            "off_map_visibility"     "220"   // 0xDC
+
+            // Areas and area portals
+            "off_numareas"           "548"   // 0x224
+            "off_map_areas"          "552"   // 0x228 darea_t[]
+            "off_numareaportals"     "568"   // 0x238
+            "off_map_areaportals"    "572"   // 0x23C dareaportal_t[]
+
+            // darea_t (8 bytes):
+            //   0x00  int numareaportals      (count of portals in this area)
+            //   0x04  int firstareaportal     (index into map_areaportals)
+            "darea_numportals"       "0"
+            "darea_firstportal"      "4"
+            "darea_sizeof"           "8"
+
+            // dareaportal_t (12 bytes, CSGO standard):
+            //   0x00  ushort portalKey
+            //   0x02  ushort otherarea
+            //   0x04  ushort firstClipPortalVert
+            //   0x06  ushort clipPortalVerts
+            //   0x08  int    planenum
+            "dareaportal_portalkey"     "0"
+            "dareaportal_otherarea"     "2"
+            "dareaportal_firstclipvert" "4"
+            "dareaportal_clipverts"     "6"
+            "dareaportal_planenum"      "8"
+            "dareaportal_sizeof"       "12"
+
             "cbrush_contents"        "0"
             "cbrush_numsides"        "4"
             "cbrush_firstbrushside"  "6"

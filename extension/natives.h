@@ -8,6 +8,10 @@ cell_t N_MapPathName(IPluginContext *pCtx, const cell_t *params);
 cell_t N_EmptyLeaf(IPluginContext *pCtx, const cell_t *params);
 cell_t N_SolidLeaf(IPluginContext *pCtx, const cell_t *params);
 
+// Debug helpers (no SP wrappers in stable header; informational logs)
+cell_t N_DebugDumpCBSP(IPluginContext *pCtx, const cell_t *params);
+cell_t N_DebugDumpCBSPPtr(IPluginContext *pCtx, const cell_t *params);
+
 // Counts
 cell_t N_NumBrushes(IPluginContext *pCtx, const cell_t *params);
 cell_t N_NumBrushSides(IPluginContext *pCtx, const cell_t *params);
@@ -16,6 +20,18 @@ cell_t N_NumNodes(IPluginContext *pCtx, const cell_t *params);
 cell_t N_NumPlanes(IPluginContext *pCtx, const cell_t *params);
 cell_t N_NumBoxBrushes(IPluginContext *pCtx, const cell_t *params);
 cell_t N_NumCModels(IPluginContext *pCtx, const cell_t *params);
+cell_t N_NumAreas(IPluginContext *pCtx, const cell_t *params);
+cell_t N_NumAreaPortals(IPluginContext *pCtx, const cell_t *params);
+cell_t N_NumClusters(IPluginContext *pCtx, const cell_t *params);
+
+// Visibility (PVS)
+cell_t N_ClustersVisible(IPluginContext *pCtx, const cell_t *params);
+cell_t N_LeavesVisible(IPluginContext *pCtx, const cell_t *params);
+cell_t N_VisRowDecompress(IPluginContext *pCtx, const cell_t *params);
+
+// Areas / area portals
+cell_t N_AreaInfo(IPluginContext *pCtx, const cell_t *params);
+cell_t N_AreaPortalInfo(IPluginContext *pCtx, const cell_t *params);
 
 // Point queries
 cell_t N_LeafAtPoint(IPluginContext *pCtx, const cell_t *params);

@@ -18,6 +18,15 @@ void *DebugGetBase();
 int DebugGetOff(const char *name);
 // Raw hex dump of first N box brushes for layout RE. Logs via smutils.
 void DebugDumpBoxBrushes(int maxCount);
+// Hex dump of `g_pBSPData + [startOff, endOff)` for offset RE.
+// One line per dword: hex bytes + int + float + pointer-like flag.
+// Range clamped to [0, 4096] and (end-start) <= 2048. Logs via smutils.
+void DebugDumpCBSP(int startOff, int endOff);
+// Read a pointer at `g_pBSPData + ptrOff`, hex-dump `bytes` bytes from there.
+// `bytes` clamped to [0, 1024]. Logs via smutils.
+// No validation - caller must be sure offset holds a real pointer;
+// bad inputs may crash.
+void DebugDumpCBSPPtr(int ptrOff, int bytes);
 
 // Misc accessors
 int MapPathName(char *buf, int maxlen);
@@ -32,7 +41,30 @@ int GetNumLeafBrushes();
 int GetNumLeaves();
 int GetNumNodes();
 int GetNumBoxBrushes();
-int GetNumCModels(); // Submodels (func_brush etc.)
+int GetNumCModels();     // Submodels (func_brush etc.)
+int GetNumAreas();       // Area-portal groupings (engine `numareas`).
+int GetNumAreaPortals(); // dareaportal_t count.
+// Cluster count from dvis_t header in visibility blob. 0 if no vis data.
+int GetNumClusters();
+
+// Visibility (PVS)
+// True if cluster c1 can see c2 per compressed PVS row.
+// Auto-true when c1==c2; false if either index invalid or no vis data.
+bool ClustersVisible(int c1, int c2);
+// Convenience: LeafCluster(leaf1) + LeafCluster(leaf2) + ClustersVisible.
+bool LeavesVisible(int leaf1, int leaf2);
+// Decompress cluster's PVS row into outBuf. Returns bytes written.
+// Output is (numclusters+7)/8 bytes (or maxBytes, whichever smaller).
+int VisRowDecompress(int cluster, uint8_t *outBuf, int maxBytes);
+
+// Areas (darea_t)
+// Read numportals + firstportal for area. false if invalid.
+bool AreaInfo(int areaIdx, int &numPortals, int &firstPortal);
+
+// Area portals (dareaportal_t)
+// Read all dareaportal_t fields. false if invalid.
+bool AreaPortalInfo(int portalIdx, int &portalKey, int &otherArea,
+                    int &firstClipVert, int &clipVerts, int &planenum);
 
 // Point queries
 // O(log N) BSP node-walk via `map_nodes`. Returns leaf index, -1 on failure.

@@ -42,6 +42,25 @@ static int OFF_MAP_CMODELS = 0;
 static int OFF_MAP_PATHNAME = 4;
 static int OFF_EMPTYLEAF = 160;
 static int OFF_SOLIDLEAF = 164;
+static int OFF_NUMVISIBILITY = 0;
+static int OFF_MAP_VISIBILITY = 0;
+static int OFF_NUMAREAS = 0;
+static int OFF_MAP_AREAS = 0;
+static int OFF_NUMAREAPORTALS = 0;
+static int OFF_MAP_AREAPORTALS = 0;
+
+// darea_t layout
+static int OFF_DAREA_NUMPORTALS = 0;
+static int OFF_DAREA_FIRSTPORTAL = 4;
+static int SZ_DAREA = 8;
+
+// dareaportal_t layout
+static int OFF_DAP_PORTALKEY = 0;
+static int OFF_DAP_OTHERAREA = 2;
+static int OFF_DAP_FIRSTCLIPVERT = 4;
+static int OFF_DAP_CLIPVERTS = 6;
+static int OFF_DAP_PLANENUM = 8;
+static int SZ_DAP = 12;
 
 // cbrush_t layout
 static int OFF_CBRUSH_CONTENTS = 0;
@@ -154,6 +173,25 @@ bool Init(IGameConfig *gameconf, char *error, size_t maxlen) {
   OFF_MAP_PATHNAME = GetKeyInt(gameconf, "off_map_pathname", 4);
   OFF_EMPTYLEAF = GetKeyInt(gameconf, "off_emptyleaf", 160);
   OFF_SOLIDLEAF = GetKeyInt(gameconf, "off_solidleaf", 164);
+
+  // Visibility / areas / area portals
+  OFF_NUMVISIBILITY = GetKeyInt(gameconf, "off_numvisibility", 0);
+  OFF_MAP_VISIBILITY = GetKeyInt(gameconf, "off_map_visibility", 0);
+  OFF_NUMAREAS = GetKeyInt(gameconf, "off_numareas", 0);
+  OFF_MAP_AREAS = GetKeyInt(gameconf, "off_map_areas", 0);
+  OFF_NUMAREAPORTALS = GetKeyInt(gameconf, "off_numareaportals", 0);
+  OFF_MAP_AREAPORTALS = GetKeyInt(gameconf, "off_map_areaportals", 0);
+
+  // darea_t / dareaportal_t
+  OFF_DAREA_NUMPORTALS = GetKeyInt(gameconf, "darea_numportals", 0);
+  OFF_DAREA_FIRSTPORTAL = GetKeyInt(gameconf, "darea_firstportal", 4);
+  SZ_DAREA = GetKeyInt(gameconf, "darea_sizeof", 8);
+  OFF_DAP_PORTALKEY = GetKeyInt(gameconf, "dareaportal_portalkey", 0);
+  OFF_DAP_OTHERAREA = GetKeyInt(gameconf, "dareaportal_otherarea", 2);
+  OFF_DAP_FIRSTCLIPVERT = GetKeyInt(gameconf, "dareaportal_firstclipvert", 4);
+  OFF_DAP_CLIPVERTS = GetKeyInt(gameconf, "dareaportal_clipverts", 6);
+  OFF_DAP_PLANENUM = GetKeyInt(gameconf, "dareaportal_planenum", 8);
+  SZ_DAP = GetKeyInt(gameconf, "dareaportal_sizeof", 12);
 
   // cbrush_t / cbrushside_t / cplane_t
   OFF_CBRUSH_CONTENTS = GetKeyInt(gameconf, "cbrush_contents", 0);
@@ -295,6 +333,67 @@ void DebugDumpBoxBrushes(int maxCount) {
   }
 }
 
+void DebugDumpCBSP(int startOff, int endOff) {
+  if (!g_pBSPData)
+    return;
+  if (startOff < 0)
+    startOff = 0;
+  if (endOff > 4096)
+    endOff = 4096;
+  if (endOff <= startOff)
+    return;
+  if (endOff - startOff > 2048)
+    endOff = startOff + 2048;
+  startOff &= ~3; // dword-align
+  endOff = (endOff + 3) & ~3;
+
+  smutils->LogMessage(myself, "CBSPDump base=%p range=+0x%X..+0x%X",
+                      (void *)g_pBSPData, startOff, endOff);
+  for (int off = startOff; off < endOff; off += 4) {
+    const uint8_t *p = g_pBSPData + off;
+    uint32_t v = (uint32_t)ReadI32(p, 0);
+    float f = ReadF32(p, 0);
+    int hasPtrShape = (v >= 0x10000u && v < 0x80000000u) ? 1 : 0;
+    smutils->LogMessage(
+        myself,
+        "  +0x%03X: %02X %02X %02X %02X  int=%-11d float=%-12.4g ptr=0x%08X%s",
+        off, p[0], p[1], p[2], p[3], (int)v, f, v, hasPtrShape ? " *" : "");
+  }
+}
+
+void DebugDumpCBSPPtr(int ptrOff, int bytes) {
+  if (!g_pBSPData || ptrOff < 0 || ptrOff > 4092)
+    return;
+  if (bytes <= 0)
+    return;
+  if (bytes > 1024)
+    bytes = 1024;
+  const uint8_t *p =
+      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, ptrOff));
+  if (!p) {
+    smutils->LogMessage(myself, "CBSPPtrDump +0x%X = NULL", ptrOff);
+    return;
+  }
+  smutils->LogMessage(myself, "CBSPPtrDump +0x%X -> %p (%d bytes)", ptrOff,
+                      (void *)p, bytes);
+  // 16 bytes per line: hex + ascii + 4x interp dwords.
+  int rounded = (bytes + 15) & ~15;
+  for (int row = 0; row < rounded; row += 16) {
+    const uint8_t *r = p + row;
+    char hex[64], ascii[20];
+    int hi = 0;
+    for (int i = 0; i < 16; ++i)
+      hi += snprintf(hex + hi, sizeof(hex) - hi, "%02X ", r[i]);
+    for (int i = 0; i < 16; ++i)
+      ascii[i] = (r[i] >= 32 && r[i] < 127) ? (char)r[i] : '.';
+    ascii[16] = 0;
+    int d0 = ReadI32(r, 0), d1 = ReadI32(r, 4), d2 = ReadI32(r, 8),
+        d3 = ReadI32(r, 12);
+    smutils->LogMessage(myself, "  +%02X: %s |%s|  d0=%d d1=%d d2=%d d3=%d",
+                        row, hex, ascii, d0, d1, d2, d3);
+  }
+}
+
 // Internal helpers - table-relative pointer resolution
 static const uint8_t *brush_at(int idx) {
   if (!g_pBSPData || idx < 0 || idx >= GetNumBrushes())
@@ -368,6 +467,129 @@ int GetNumCModels() {
   if (!g_pBSPData || OFF_NUMCMODELS == 0)
     return 0;
   return ReadI32(g_pBSPData, OFF_NUMCMODELS);
+}
+int GetNumAreas() {
+  if (!g_pBSPData || OFF_NUMAREAS == 0)
+    return 0;
+  return ReadI32(g_pBSPData, OFF_NUMAREAS);
+}
+int GetNumAreaPortals() {
+  if (!g_pBSPData || OFF_NUMAREAPORTALS == 0)
+    return 0;
+  return ReadI32(g_pBSPData, OFF_NUMAREAPORTALS);
+}
+int GetNumClusters() {
+  if (!g_pBSPData || OFF_MAP_VISIBILITY == 0)
+    return 0;
+  const uint8_t *vis = reinterpret_cast<const uint8_t *>(
+      ReadPtr(g_pBSPData, OFF_MAP_VISIBILITY));
+  if (!vis)
+    return 0;
+  return ReadI32(vis, 0);
+}
+
+// Areas / area portals
+static const uint8_t *area_at(int idx) {
+  if (!g_pBSPData || OFF_MAP_AREAS == 0 || idx < 0 || idx >= GetNumAreas())
+    return nullptr;
+  const uint8_t *table =
+      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_AREAS));
+  if (!table)
+    return nullptr;
+  return table + (size_t)idx * SZ_DAREA;
+}
+
+static const uint8_t *areaportal_at(int idx) {
+  if (!g_pBSPData || OFF_MAP_AREAPORTALS == 0 || idx < 0 ||
+      idx >= GetNumAreaPortals())
+    return nullptr;
+  const uint8_t *table = reinterpret_cast<const uint8_t *>(
+      ReadPtr(g_pBSPData, OFF_MAP_AREAPORTALS));
+  if (!table)
+    return nullptr;
+  return table + (size_t)idx * SZ_DAP;
+}
+
+bool AreaInfo(int areaIdx, int &numPortals, int &firstPortal) {
+  const uint8_t *a = area_at(areaIdx);
+  if (!a)
+    return false;
+  numPortals = ReadI32(a, OFF_DAREA_NUMPORTALS);
+  firstPortal = ReadI32(a, OFF_DAREA_FIRSTPORTAL);
+  return true;
+}
+
+bool AreaPortalInfo(int portalIdx, int &portalKey, int &otherArea,
+                    int &firstClipVert, int &clipVerts, int &planenum) {
+  const uint8_t *p = areaportal_at(portalIdx);
+  if (!p)
+    return false;
+  portalKey = (int)ReadU16(p, OFF_DAP_PORTALKEY);
+  otherArea = (int)ReadU16(p, OFF_DAP_OTHERAREA);
+  firstClipVert = (int)ReadU16(p, OFF_DAP_FIRSTCLIPVERT);
+  clipVerts = (int)ReadU16(p, OFF_DAP_CLIPVERTS);
+  planenum = ReadI32(p, OFF_DAP_PLANENUM);
+  return true;
+}
+
+// Visibility (PVS)
+int VisRowDecompress(int cluster, uint8_t *outBuf, int maxBytes) {
+  if (cluster < 0 || !outBuf || maxBytes <= 0 || !g_pBSPData ||
+      OFF_MAP_VISIBILITY == 0)
+    return 0;
+  const uint8_t *vis = reinterpret_cast<const uint8_t *>(
+      ReadPtr(g_pBSPData, OFF_MAP_VISIBILITY));
+  if (!vis)
+    return 0;
+  int nc = ReadI32(vis, 0);
+  if (cluster >= nc)
+    return 0;
+  // dvis_t: { int numclusters; int bitofs[numclusters][2]; }
+  // bitofs[cluster][0] = byte offset of PVS row from start of vis blob.
+  int rowOff = ReadI32(vis, 4 + cluster * 8 + 0);
+  int rowBytes = (nc + 7) >> 3;
+  if (rowBytes > maxBytes)
+    rowBytes = maxBytes;
+  const uint8_t *in = vis + rowOff;
+  int outIdx = 0;
+  // Standard Source RLE: nonzero byte verbatim; zero byte followed by N
+  // (count of zero bytes to emit).
+  while (outIdx < rowBytes) {
+    uint8_t b = *in++;
+    if (b) {
+      outBuf[outIdx++] = b;
+    } else {
+      int rep = *in++;
+      while (rep > 0 && outIdx < rowBytes) {
+        outBuf[outIdx++] = 0;
+        --rep;
+      }
+    }
+  }
+  return outIdx;
+}
+
+bool ClustersVisible(int c1, int c2) {
+  if (c1 < 0 || c2 < 0)
+    return false;
+  if (c1 == c2)
+    return true;
+  int nc = GetNumClusters();
+  if (nc <= 0 || c1 >= nc || c2 >= nc)
+    return false;
+  // MAX_MAP_CLUSTERS = 65536 -> 8192 bytes max row.
+  uint8_t row[8192];
+  int got = VisRowDecompress(c1, row, (int)sizeof(row));
+  int targetByte = c2 >> 3;
+  if (got <= targetByte)
+    return false;
+  return (row[targetByte] & (1 << (c2 & 7))) != 0;
+}
+
+bool LeavesVisible(int leaf1, int leaf2) {
+  int c1 = LeafCluster(leaf1);
+  int c2 = LeafCluster(leaf2);
+  return ClustersVisible(c1, c2);
 }
 
 // Misc accessors

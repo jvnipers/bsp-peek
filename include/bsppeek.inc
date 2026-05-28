@@ -20,14 +20,45 @@
 // Engine's internal map path string. Returns string length.
 native int  BSP_MapPathName(char[] buf, int maxlen);
 
+// Debug: hex-dump CCollisionBSPData bytes from [startOff, endOff) to SourceMod log.
+// Used to RE field offsets. Range clamped server-side.
+native void BSP_DebugDumpCBSP(int startOff, int endOff);
+// Debug: read pointer at CCollisionBSPData+ptrOff, dump `bytes` bytes from there.
+// UNSAFE: bad ptrOff may crash. Use only with known-pointer offsets.
+native void BSP_DebugDumpCBSPPtr(int ptrOff, int bytes);
+
 // Counts
 native int  BSP_NumBrushes();
 native int  BSP_NumBrushSides();
 native int  BSP_NumLeaves();
 native int  BSP_NumNodes();
 native int  BSP_NumPlanes();
-native int  BSP_NumBoxBrushes();    // CSGO SIMD box-brush table (cboxbrush_t)
-native int  BSP_NumCModels();       // Submodels (func_brush, doors, breakables, etc.)
+native int  BSP_NumBoxBrushes();     // CSGO SIMD box-brush table (cboxbrush_t)
+native int  BSP_NumCModels();        // Submodels (func_brush, doors, breakables, etc.)
+native int  BSP_NumAreas();          // darea_t count (area-portal groupings)
+native int  BSP_NumAreaPortals();    // dareaportal_t count
+native int  BSP_NumClusters();       // PVS cluster count (from dvis_t header, 0 if no vis data)
+
+// Visibility (PVS) - compressed per-cluster bit-vectors.
+// True if c1 can see c2. Auto-true when c1==c2. False if either idx invalid.
+native bool BSP_ClustersVisible(int c1, int c2);
+// BSP_LeafCluster(leaf1) + BSP_LeafCluster(leaf2) + ClustersVisible.
+native bool BSP_LeavesVisible(int leaf1, int leaf2);
+// Decompress cluster's PVS row into buf as a bit-vector.
+// Output is (BSP_NumClusters()+7)/8 bytes (or maxBytes, whichever smaller).
+// Returns bytes written. Bit `c2` set iff c1 can see c2.
+native int  BSP_VisRowDecompress(int cluster, int[] buf, int maxBytes);
+
+// Areas (darea_t) - area-portal grouping.
+// Each area is a connected region bounded by func_areaportals. Default area = 0.
+// Reads numportals + firstportal (index into map_areaportals). false if invalid.
+native bool BSP_AreaInfo(int areaIdx, int &numPortals, int &firstPortal);
+
+// Area portals (dareaportal_t) - one per portal-side. Two portals per door.
+// Reads all dareaportal_t fields. false if invalid.
+// otherArea = area on the far side. planenum = index into map_planes.
+native bool BSP_AreaPortalInfo(int portalIdx, int &portalKey, int &otherArea,
+                               int &firstClipVert, int &clipVerts, int &planenum);
 
 // Point queries
 // O(log N) BSP node-walk; -1 on failure.
