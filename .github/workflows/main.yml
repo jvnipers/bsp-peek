@@ -14,13 +14,15 @@ jobs:
         run: |
           python3 - << 'PYEOF'
           import json, os
-          SM_VER = ["1.12", "1.13"]
-          MM_VER = ["1.12"]
+          VERSIONS = [
+              ("1.12", "1.12"),
+              ("1.13", "1.12"),
+          ]
           versions = [
               {"sm_ver": s, "mm_ver": m,
                "sm_ver_flat": s.replace(".", ""),
                "mm_ver_flat": m.replace(".", "")}
-              for s, m in zip(SM_VER, MM_VER)
+              for s, m in VERSIONS
           ]
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write("versions=" + json.dumps(versions) + "\n")
