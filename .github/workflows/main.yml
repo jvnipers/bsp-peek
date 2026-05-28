@@ -2,20 +2,41 @@ name: Build
 on:
   push:
   pull_request:
+
 jobs:
+  config:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.set.outputs.versions }}
+    steps:
+      - id: set
+        name: Set version matrix
+        run: |
+          python3 - << 'PYEOF'
+          import json, os
+          SM_VER = ["1.12", "1.13"]
+          MM_VER = ["1.12"]
+          versions = [
+              {"sm_ver": s, "mm_ver": m,
+               "sm_ver_flat": s.replace(".", ""),
+               "mm_ver_flat": m.replace(".", "")}
+              for s, m in zip(SM_VER, MM_VER)
+          ]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("versions=" + json.dumps(versions) + "\n")
+          PYEOF
+
   build:
+    needs: config
     strategy:
       matrix:
-        include:
-          - os: ubuntu-latest
-            os_short: linux
-            ext: .so
-          - os: windows-latest
-            os_short: windows
-            ext: .dll
+        platform:
+          - { os: ubuntu-latest, os_short: linux, ext: .so }
+          - { os: windows-latest, os_short: windows, ext: .dll }
+        version: ${{ fromJSON(needs.config.outputs.versions) }}
       fail-fast: false
-    runs-on: ${{ matrix.os }}
-    name: ${{ matrix.os_short }}-x86
+    runs-on: ${{ matrix.platform.os }}
+    name: ${{ matrix.platform.os_short }}-x86-sm${{ matrix.version.sm_ver }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -25,7 +46,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: alliedmodders/sourcemod
-          ref: 1.12-dev
+          ref: ${{ matrix.version.sm_ver }}-dev
           submodules: recursive
           path: sourcemod
 
@@ -34,7 +55,7 @@ jobs:
         with:
           repository: alliedmodders/metamod-source
           submodules: recursive
-          ref: 1.12-dev
+          ref: ${{ matrix.version.mm_ver }}-dev
           path: metamod-source
 
       - uses: actions/setup-python@v6
@@ -76,17 +97,18 @@ jobs:
         shell: bash
         run: |
           mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include staging/addons/metamod/scripting
-          find project/build -name '*${{ matrix.ext }}' -exec cp {} staging/addons/sourcemod/extensions/ \;
+          find project/build -name '*${{ matrix.platform.ext }}' -exec cp {} staging/addons/sourcemod/extensions/ \;
           cp project/gamedata/*.txt staging/addons/sourcemod/gamedata/
           cp project/include/*.inc staging/addons/sourcemod/scripting/include/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: bsp-peek-${{ matrix.os_short }}
+          name: bsp-peek-${{ matrix.platform.os_short }}-mm${{ matrix.version.mm_ver }}-sm${{ matrix.version.sm_ver }}
           path: staging/*
 
   build-docker:
+    needs: config
     strategy:
       matrix:
         runtime:
@@ -96,9 +118,10 @@ jobs:
             image: ghcr.io/alliedmodders/build-containers/debian11-clang22:latest
           #- name: scout
           #  image: registry.gitlab.steamos.cloud/steamrt/scout/sdk:latest
+        version: ${{ fromJSON(needs.config.outputs.versions) }}
       fail-fast: false
     runs-on: ubuntu-latest
-    name: linux-x86-${{ matrix.runtime.name }}
+    name: linux-x86-${{ matrix.runtime.name }}-mm${{ matrix.version.mm_ver }}-sm${{ matrix.version.sm_ver }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -108,7 +131,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: alliedmodders/sourcemod
-          ref: 1.12-dev
+          ref: ${{ matrix.version.sm_ver }}-dev
           submodules: recursive
           path: sourcemod
 
@@ -117,7 +140,7 @@ jobs:
         with:
           repository: alliedmodders/metamod-source
           submodules: recursive
-          ref: 1.12-dev
+          ref: ${{ matrix.version.mm_ver }}-dev
           path: metamod-source
 
       - name: Build inside container
@@ -126,8 +149,8 @@ jobs:
             -v "$GITHUB_WORKSPACE:/work" \
             -w /work/project \
             -e HL2SDKCSGO=/work/project/hl2sdk-csgo \
-            -e MMSOURCE112=/work/metamod-source \
-            -e SOURCEMOD112=/work/sourcemod \
+            -e MMSOURCE${{ matrix.version.mm_ver_flat }}=/work/metamod-source \
+            -e SOURCEMOD${{ matrix.version.sm_ver_flat }}=/work/sourcemod \
             ${{ matrix.runtime.image }} \
             bash -ec '
               dpkg --add-architecture i386 || true
@@ -147,6 +170,7 @@ jobs:
                 --targets=x86
               ambuild
             '
+
       - name: Stage release files
         run: |
           mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include staging/addons/metamod/scripting
@@ -157,5 +181,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: bsp-peek-linux-${{ matrix.runtime.name }}
+          name: bsp-peek-linux-${{ matrix.runtime.name }}-mm${{ matrix.version.mm_ver }}-sm${{ matrix.version.sm_ver }}
           path: staging/*
