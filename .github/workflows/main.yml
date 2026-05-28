@@ -93,6 +93,8 @@ jobs:
         runtime:
           - name: sniper
             image: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
+          - name: sourcemod-deb11
+            image: ghcr.io/alliedmodders/build-containers/debian11-clang22:latest
           #- name: scout
           #  image: registry.gitlab.steamos.cloud/steamrt/scout/sdk:latest
       fail-fast: false
