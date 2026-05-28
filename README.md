@@ -1,6 +1,6 @@
 # BSP-Peek - SourceMod extension for BSP queries
 
-Exposes engine-internal `CCollisionBSPData` (brushes, leaves, planes, nodes, submodels) and `CDispCollTree` (displacements) to SourceMod plugins.
+Exposes engine-internal `CCollisionBSPData` (brushes, leaves, planes, nodes, submodels) and `CDispCollTree` (displacements) + disk-parsed BSP file lumps (entities, texinfo, leaffaces, worldlights, header) to SourceMod plugins.
 
 Currently only supports CS:GO (x86)
 
@@ -126,6 +126,65 @@ native int   BSP_DispDiskDebugInfo(int idx, char[] buf, int maxlen);
 - Tree/bounds array pointers stored as `T**` (address-of-pointer), dereferenced at access time. Engine re-allocates these arrays per map load (CMod_LoadDispInfo), so caching the dereferenced value at init = use-after-free across map changes.
 
 - For `HeightAt` queries, AABB-rejects the disp first, then iterates triangles testing XY containment + barycentric Z interpolation. Picks the highest matching Z across all tris (matches a downward trace).
+
+### BSP file lumps
+
+Parses BSP file lumps directly on map load (cached per-map). Independent of engine memory, works even if engine globals can't be resolved. Lazy-loads on first native call if the OnCoreMapStart hook fired before BSP data was ready.
+
+```sp
+// BSP file header
+native int   BSP_BSPVersion();      // typ. 21 on CSGO
+native int   BSP_BSPRevision();     // vbsp -revision build number
+native bool  BSP_LumpInfo(int lumpId, int &fileofs, int &length, int &version);
+
+// Entities (LUMP_ENTITIES = 0, raw KeyValues text)
+native int   BSP_EntityRawLen();
+native int   BSP_EntityRawCopy(char[] buf, int maxlen);
+native int   BSP_EntityCount();
+native int   BSP_EntityClassname(int idx, char[] buf, int maxlen);
+native bool  BSP_EntityOrigin(int idx, float origin[3]);    // false if "origin" key missing
+native int   BSP_EntityKeyValue(int idx, const char[] key, char[] buf, int maxlen);
+
+// Texinfo + Texdata + string table (LUMP_TEXINFO, LUMP_TEXDATA, LUMP_TEXDATA_STRING_*)
+native int   BSP_TexInfoCount();
+native int   BSP_TexInfoFlags(int idx);              // SURF_* flags
+native int   BSP_TexInfoTexData(int idx);            // texdata index, -1 if invalid
+native int   BSP_TexDataCount();
+native int   BSP_TexDataMaterialName(int texdataIdx, char[] buf, int maxlen);
+native bool  BSP_TexDataReflectivity(int texdataIdx, float refl[3]);
+
+// LeafFaces (LUMP_LEAFFACES = 16, uint16 face-index table)
+native int   BSP_LeafFacesCount();
+native int   BSP_LeafFaces(int leafIdx, int[] buf, int max);  // via cleaf_t.firstleafface/numleaffaces
+
+// Worldlights (LUMP_WORLDLIGHTS_LDR = 15; falls back to HDR = 54)
+native int   BSP_WorldlightCount();
+native bool  BSP_WorldlightOrigin(int idx, float origin[3]);
+native bool  BSP_WorldlightIntensity(int idx, float intensity[3]);
+native bool  BSP_WorldlightNormal(int idx, float normal[3]);
+native int   BSP_WorldlightType(int idx);    // emit_t: 0=surface 1=point 2=spot 3=skylight 4=quakelight 5=skyambient
+native int   BSP_WorldlightStyle(int idx);   // style index (animated lights)
+native int   BSP_WorldlightCluster(int idx); // PVS cluster
+native bool  BSP_WorldlightShadowCastOffset(int idx, float offset[3]);
+native float BSP_WorldlightStopDot(int idx);          // spotlight inner cone cos(angle)
+native float BSP_WorldlightStopDot2(int idx);         // spotlight outer cone cos(angle)
+native float BSP_WorldlightExponent(int idx);         // spotlight falloff exponent
+native float BSP_WorldlightRadius(int idx);           // max effective radius (0 = unlimited)
+native float BSP_WorldlightConstantAttn(int idx);     // attenuation: constant term
+native float BSP_WorldlightLinearAttn(int idx);       // attenuation: linear term
+native float BSP_WorldlightQuadraticAttn(int idx);    // attenuation: quadratic term
+native int   BSP_WorldlightFlags(int idx);            // DWL_FLAGS_* bitmask
+native int   BSP_WorldlightTexInfo(int idx);          // associated texinfo for surface lights, -1 if none
+native int   BSP_WorldlightOwner(int idx);            // owning entity index, -1 if none
+```
+
+- **Resolution chain for surface materials**: `BrushSidePlane` reveals a side's plane. `BrushSideTexInfo(brush, side)` -> texinfo index. `TexInfoTexData(idx)` → texdata index. `TexDataMaterialName(idx, buf, len)` -> material path like `'CONCRETE/HR_C/HR_CONCRETE_FLOOR_001'`. Same chain works for `BoxBrushSurfaceIndex`'s per-face entries (those are surfaceprop indices, not texinfo - different table).
+
+- **Entity parser** handles standard `{ "key" "value" }` blocks. Escape sequences not unescaped (raw value bytes preserved). `EntityKeyValue` is O(1) hashtable lookup per entity; `EntityClassname` and `EntityOrigin` are cached per-entity at parse time.
+
+- **Per-leaf face lists**: many leaves report `numFaces=0` even though they contain visible geometry - engine strips per-leaf face refs for leaves that aren't rendered via the BSP renderer (player-clip-only leaves, etc). Leaves with `numFaces > 0` reliably return face indices.
+
+- **Worldlight `dworldlight_t` = 100 bytes** for CSGO. Layout: origin (+0), intensity (+12), normal (+24), shadow_cast_offset (+36), cluster (+48), type (+52), style (+56), stopdot (+60), stopdot2 (+64), exponent (+68), radius (+72), constant_attn (+76), linear_attn (+80), quadratic_attn (+84), flags (+88), texinfo (+92), owner (+96).
 
 ## Build
 

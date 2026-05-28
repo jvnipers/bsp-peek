@@ -1,6 +1,7 @@
 #include "extension.h"
 #include "bsp_data.h"
 #include "bsp_disp.h"
+#include "bsp_lumps.h"
 #include <IGameHelpers.h>
 
 BSPPeek g_BSPPeek;
@@ -45,6 +46,7 @@ void BSPPeek::SDK_OnUnload() {
   BSPData::Shutdown();
   BSPDisp::Clear();
   BSPDisp::ShutdownEngine();
+  BSPLumps::Shutdown();
 }
 
 void BSPPeek::SDK_OnAllLoaded() {}
@@ -67,5 +69,9 @@ void BSPPeek::OnCoreMapStart(edict_t *pEdictList, int edictCount,
                         BSPDisp::DiskCount(), mapname);
   } else {
     smutils->LogError(myself, "Displacement load failed: %s", err);
+  }
+  char lerr[256] = {0};
+  if (!BSPLumps::LoadFromMap(mapname, bspPath, lerr, sizeof(lerr))) {
+    smutils->LogError(myself, "Lump load failed: %s", lerr);
   }
 }

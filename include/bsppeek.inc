@@ -195,6 +195,65 @@ native bool  BSP_DispDiskBounds(int idx, float mins[3], float maxs[3]);
 // Diagnostic: dump disk-parsed disp[idx] (bbox + base quad corners + face/power).
 native int   BSP_DispDiskDebugInfo(int idx, char[] buf, int maxlen);
 
+// BSP file lump readers
+// Disk-parsed (not live engine memory). Loaded at map start, cached per-map.
+
+// BSP file header
+native int   BSP_BSPVersion();
+native int   BSP_BSPRevision();    // map revision (vbsp -revision)
+// Returns lump fileofs/length/version into out vars. lumpId in [0, 64).
+native bool  BSP_LumpInfo(int lumpId, int &fileofs, int &length, int &version);
+
+// Entities (LUMP_ENTITIES, raw KeyValues text)
+// Raw text length (no null terminator counted).
+native int   BSP_EntityRawLen();
+// Copy raw entity text into buf. Returns bytes copied (excl. null).
+native int   BSP_EntityRawCopy(char[] buf, int maxlen);
+// Number of parsed entity blocks.
+native int   BSP_EntityCount();
+// "classname" key for entity[idx]. Returns string length.
+native int   BSP_EntityClassname(int idx, char[] buf, int maxlen);
+// Parsed "origin" key. false if missing.
+native bool  BSP_EntityOrigin(int idx, float origin[3]);
+// Lookup arbitrary key on entity[idx]. Returns value length, 0 if missing.
+native int   BSP_EntityKeyValue(int idx, const char[] key, char[] buf, int maxlen);
+
+// Texinfo / Texdata (LUMP_TEXINFO + LUMP_TEXDATA)
+native int   BSP_TexInfoCount();
+native int   BSP_TexInfoFlags(int idx);      // SURF_* flags
+native int   BSP_TexInfoTexData(int idx);    // texdata index, -1 if invalid
+native int   BSP_TexDataCount();
+// Material name (e.g. "concrete/concrete_01"). Returns length.
+native int   BSP_TexDataMaterialName(int texdataIdx, char[] buf, int maxlen);
+native bool  BSP_TexDataReflectivity(int texdataIdx, float refl[3]);
+
+// LeafFaces (LUMP_LEAFFACES, uint16 face index table)
+// Total leaf-face entries (sum across all leaves).
+native int   BSP_LeafFacesCount();
+// Read this leaf's face indices via cleaf_t.firstleafface/numleaffaces.
+// Returns count written. Convenience over LeafFirstFace + LeafNumFaces + table.
+native int   BSP_LeafFaces(int leafIdx, int[] buf, int max);
+
+// Worldlights (LUMP_WORLDLIGHTS_LDR; falls back to LDR if no HDR; LDR-only if both absent)
+native int   BSP_WorldlightCount();
+native bool  BSP_WorldlightOrigin(int idx, float origin[3]);
+native bool  BSP_WorldlightIntensity(int idx, float intensity[3]);
+native bool  BSP_WorldlightNormal(int idx, float normal[3]);
+native int   BSP_WorldlightType(int idx);       // emit_t: 0=surface 1=point 2=spotlight 3=skylight 4=quakelight 5=skyambient
+native int   BSP_WorldlightStyle(int idx);      // style index for animated lights
+native int   BSP_WorldlightCluster(int idx);    // PVS cluster
+native bool  BSP_WorldlightShadowCastOffset(int idx, float offset[3]);
+native float BSP_WorldlightStopDot(int idx);          // spotlight inner cone cos(angle)
+native float BSP_WorldlightStopDot2(int idx);         // spotlight outer cone cos(angle)
+native float BSP_WorldlightExponent(int idx);         // spotlight falloff exponent
+native float BSP_WorldlightRadius(int idx);           // max effective radius (0 = unlimited)
+native float BSP_WorldlightConstantAttn(int idx);     // attenuation: constant term
+native float BSP_WorldlightLinearAttn(int idx);       // attenuation: linear term
+native float BSP_WorldlightQuadraticAttn(int idx);    // attenuation: quadratic term
+native int   BSP_WorldlightFlags(int idx);            // DWL_FLAGS_* bitmask
+native int   BSP_WorldlightTexInfo(int idx);          // associated texinfo index for surface lights, -1 if none
+native int   BSP_WorldlightOwner(int idx);            // entity index owning this light, -1 if none
+
 stock bool   BSPPeek_Available()
 {
     return LibraryExists("bsppeek");

@@ -1,10 +1,27 @@
 #include "natives.h"
 #include "bsp_data.h"
 #include "bsp_disp.h"
+#include "bsp_lumps.h"
 #include <IGameHelpers.h>
 #include <cmath>
 #include <cstring>
 #include <sp_vm_api.h>
+#include <vector>
+
+static void EnsureLumpsLoaded() {
+  if (BSPLumps::Loaded())
+    return;
+  const char *mapname = gamehelpers->GetCurrentMap();
+  if (!mapname || !mapname[0])
+    return;
+  char bspPath[260];
+  smutils->BuildPath(Path_Game, bspPath, sizeof(bspPath), "maps/%s.bsp",
+                     mapname);
+  char err[256] = {0};
+  if (!BSPLumps::LoadFromMap(mapname, bspPath, err, sizeof(err))) {
+    smutils->LogError(myself, "Lump load failed for '%s': %s", mapname, err);
+  }
+}
 
 static void EnsureDispLoaded() {
   const char *mapname = gamehelpers->GetCurrentMap();
@@ -488,6 +505,254 @@ cell_t N_DispDiskDebugInfo(IPluginContext *pCtx, const cell_t *params) {
   return n;
 }
 
+// BSP file lump natives
+cell_t N_BSPVersion(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::BSPVersion();
+}
+
+cell_t N_BSPRevision(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::BSPRevision();
+}
+
+cell_t N_LumpInfo(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int ofs = 0, len = 0, ver = 0;
+  bool ok = BSPLumps::LumpInfo(params[1], ofs, len, ver);
+  cell_t *outOfs, *outLen, *outVer;
+  pCtx->LocalToPhysAddr(params[2], &outOfs);
+  pCtx->LocalToPhysAddr(params[3], &outLen);
+  pCtx->LocalToPhysAddr(params[4], &outVer);
+  *outOfs = ofs;
+  *outLen = len;
+  *outVer = ver;
+  return ok ? 1 : 0;
+}
+
+cell_t N_EntityRawLen(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::EntityRawLen();
+}
+
+cell_t N_EntityRawCopy(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int maxlen = params[2];
+  if (maxlen <= 0)
+    return 0;
+  std::vector<char> tmp(maxlen);
+  int n = BSPLumps::EntityRawCopy(tmp.data(), maxlen);
+  pCtx->StringToLocal(params[1], maxlen, tmp.data());
+  return n;
+}
+
+cell_t N_EntityCount(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::EntityCount();
+}
+
+cell_t N_EntityClassname(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int maxlen = params[3];
+  if (maxlen <= 0)
+    return 0;
+  std::vector<char> tmp(maxlen);
+  int n = BSPLumps::EntityClassname(params[1], tmp.data(), maxlen);
+  pCtx->StringToLocal(params[2], maxlen, tmp.data());
+  return n;
+}
+
+cell_t N_EntityOrigin(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float origin[3] = {0, 0, 0};
+  bool ok = BSPLumps::EntityOrigin(params[1], origin);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(origin[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_EntityKeyValue(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int maxlen = params[4];
+  if (maxlen <= 0)
+    return 0;
+  char *key = nullptr;
+  pCtx->LocalToString(params[2], &key);
+  std::vector<char> tmp(maxlen);
+  int n = BSPLumps::EntityKeyValue(params[1], key, tmp.data(), maxlen);
+  pCtx->StringToLocal(params[3], maxlen, tmp.data());
+  return n;
+}
+
+cell_t N_TexInfoCount(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::TexInfoCount();
+}
+cell_t N_TexInfoFlags(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::TexInfoFlags(params[1]);
+}
+cell_t N_TexInfoTexData(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::TexInfoTexData(params[1]);
+}
+cell_t N_TexDataCount(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::TexDataCount();
+}
+
+cell_t N_TexDataMaterialName(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int maxlen = params[3];
+  if (maxlen <= 0)
+    return 0;
+  std::vector<char> tmp(maxlen);
+  int n = BSPLumps::TexDataMaterialName(params[1], tmp.data(), maxlen);
+  pCtx->StringToLocal(params[2], maxlen, tmp.data());
+  return n;
+}
+
+cell_t N_TexDataReflectivity(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float refl[3] = {0, 0, 0};
+  bool ok = BSPLumps::TexDataReflectivity(params[1], refl);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(refl[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_LeafFacesCount(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::LeafFacesCount();
+}
+
+cell_t N_LeafFaces(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int leafIdx = params[1];
+  int firstFace = BSPData::LeafFirstFace(leafIdx);
+  int numFaces = BSPData::LeafNumFaces(leafIdx);
+  if (firstFace < 0 || numFaces <= 0)
+    return 0;
+  cell_t *buf;
+  pCtx->LocalToPhysAddr(params[2], &buf);
+  int maxOut = params[3];
+  if (maxOut <= 0)
+    return 0;
+  std::vector<int> tmp(maxOut);
+  int n = BSPLumps::LeafFacesRange(firstFace, numFaces, tmp.data(), maxOut);
+  for (int i = 0; i < n; ++i)
+    buf[i] = tmp[i];
+  return n;
+}
+
+cell_t N_WorldlightCount(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::WorldlightCount();
+}
+
+cell_t N_WorldlightOrigin(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float v[3] = {0, 0, 0};
+  bool ok = BSPLumps::WorldlightOrigin(params[1], v);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_WorldlightIntensity(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float v[3] = {0, 0, 0};
+  bool ok = BSPLumps::WorldlightIntensity(params[1], v);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_WorldlightNormal(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float v[3] = {0, 0, 0};
+  bool ok = BSPLumps::WorldlightNormal(params[1], v);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_WorldlightType(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::WorldlightType(params[1]);
+}
+cell_t N_WorldlightStyle(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::WorldlightStyle(params[1]);
+}
+cell_t N_WorldlightCluster(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::WorldlightCluster(params[1]);
+}
+
+cell_t N_WorldlightShadowCastOffset(IPluginContext *pCtx,
+                                    const cell_t *params) {
+  EnsureLumpsLoaded();
+  float v[3] = {0, 0, 0};
+  bool ok = BSPLumps::WorldlightShadowCastOffset(params[1], v);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_WorldlightStopDot(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return sp_ftoc(BSPLumps::WorldlightStopDot(params[1]));
+}
+cell_t N_WorldlightStopDot2(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return sp_ftoc(BSPLumps::WorldlightStopDot2(params[1]));
+}
+cell_t N_WorldlightExponent(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return sp_ftoc(BSPLumps::WorldlightExponent(params[1]));
+}
+cell_t N_WorldlightRadius(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return sp_ftoc(BSPLumps::WorldlightRadius(params[1]));
+}
+cell_t N_WorldlightConstantAttn(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return sp_ftoc(BSPLumps::WorldlightConstantAttn(params[1]));
+}
+cell_t N_WorldlightLinearAttn(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return sp_ftoc(BSPLumps::WorldlightLinearAttn(params[1]));
+}
+cell_t N_WorldlightQuadraticAttn(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return sp_ftoc(BSPLumps::WorldlightQuadraticAttn(params[1]));
+}
+cell_t N_WorldlightFlags(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::WorldlightFlags(params[1]);
+}
+cell_t N_WorldlightTexInfo(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::WorldlightTexInfo(params[1]);
+}
+cell_t N_WorldlightOwner(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::WorldlightOwner(params[1]);
+}
+
 extern const sp_nativeinfo_t g_BSPNatives[] = {
     // Misc
     {"BSP_MapPathName", N_MapPathName},
@@ -579,6 +844,47 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_DispDiskCount", N_DispDiskCount},
     {"BSP_DispDiskBounds", N_DispDiskBounds},
     {"BSP_DispDiskDebugInfo", N_DispDiskDebugInfo},
+
+    // BSP file lump natives
+    {"BSP_BSPVersion", N_BSPVersion},
+    {"BSP_BSPRevision", N_BSPRevision},
+    {"BSP_LumpInfo", N_LumpInfo},
+
+    {"BSP_EntityRawLen", N_EntityRawLen},
+    {"BSP_EntityRawCopy", N_EntityRawCopy},
+    {"BSP_EntityCount", N_EntityCount},
+    {"BSP_EntityClassname", N_EntityClassname},
+    {"BSP_EntityOrigin", N_EntityOrigin},
+    {"BSP_EntityKeyValue", N_EntityKeyValue},
+
+    {"BSP_TexInfoCount", N_TexInfoCount},
+    {"BSP_TexInfoFlags", N_TexInfoFlags},
+    {"BSP_TexInfoTexData", N_TexInfoTexData},
+    {"BSP_TexDataCount", N_TexDataCount},
+    {"BSP_TexDataMaterialName", N_TexDataMaterialName},
+    {"BSP_TexDataReflectivity", N_TexDataReflectivity},
+
+    {"BSP_LeafFacesCount", N_LeafFacesCount},
+    {"BSP_LeafFaces", N_LeafFaces},
+
+    {"BSP_WorldlightCount", N_WorldlightCount},
+    {"BSP_WorldlightOrigin", N_WorldlightOrigin},
+    {"BSP_WorldlightIntensity", N_WorldlightIntensity},
+    {"BSP_WorldlightNormal", N_WorldlightNormal},
+    {"BSP_WorldlightType", N_WorldlightType},
+    {"BSP_WorldlightStyle", N_WorldlightStyle},
+    {"BSP_WorldlightCluster", N_WorldlightCluster},
+    {"BSP_WorldlightShadowCastOffset", N_WorldlightShadowCastOffset},
+    {"BSP_WorldlightStopDot", N_WorldlightStopDot},
+    {"BSP_WorldlightStopDot2", N_WorldlightStopDot2},
+    {"BSP_WorldlightExponent", N_WorldlightExponent},
+    {"BSP_WorldlightRadius", N_WorldlightRadius},
+    {"BSP_WorldlightConstantAttn", N_WorldlightConstantAttn},
+    {"BSP_WorldlightLinearAttn", N_WorldlightLinearAttn},
+    {"BSP_WorldlightQuadraticAttn", N_WorldlightQuadraticAttn},
+    {"BSP_WorldlightFlags", N_WorldlightFlags},
+    {"BSP_WorldlightTexInfo", N_WorldlightTexInfo},
+    {"BSP_WorldlightOwner", N_WorldlightOwner},
 
     {nullptr, nullptr},
 };

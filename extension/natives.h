@@ -94,4 +94,45 @@ cell_t N_DispDiskCount(IPluginContext *pCtx, const cell_t *params);
 cell_t N_DispDiskBounds(IPluginContext *pCtx, const cell_t *params);
 cell_t N_DispDiskDebugInfo(IPluginContext *pCtx, const cell_t *params);
 
+// BSP file lump natives
+cell_t N_BSPVersion(IPluginContext *pCtx, const cell_t *params);
+cell_t N_BSPRevision(IPluginContext *pCtx, const cell_t *params);
+cell_t N_LumpInfo(IPluginContext *pCtx, const cell_t *params);
+
+cell_t N_EntityRawLen(IPluginContext *pCtx, const cell_t *params);
+cell_t N_EntityRawCopy(IPluginContext *pCtx, const cell_t *params);
+cell_t N_EntityCount(IPluginContext *pCtx, const cell_t *params);
+cell_t N_EntityClassname(IPluginContext *pCtx, const cell_t *params);
+cell_t N_EntityOrigin(IPluginContext *pCtx, const cell_t *params);
+cell_t N_EntityKeyValue(IPluginContext *pCtx, const cell_t *params);
+
+cell_t N_TexInfoCount(IPluginContext *pCtx, const cell_t *params);
+cell_t N_TexInfoFlags(IPluginContext *pCtx, const cell_t *params);
+cell_t N_TexInfoTexData(IPluginContext *pCtx, const cell_t *params);
+cell_t N_TexDataCount(IPluginContext *pCtx, const cell_t *params);
+cell_t N_TexDataMaterialName(IPluginContext *pCtx, const cell_t *params);
+cell_t N_TexDataReflectivity(IPluginContext *pCtx, const cell_t *params);
+
+cell_t N_LeafFacesCount(IPluginContext *pCtx, const cell_t *params);
+cell_t N_LeafFaces(IPluginContext *pCtx, const cell_t *params);
+
+cell_t N_WorldlightCount(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightOrigin(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightIntensity(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightNormal(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightType(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightStyle(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightCluster(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightShadowCastOffset(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightStopDot(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightStopDot2(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightExponent(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightRadius(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightConstantAttn(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightLinearAttn(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightQuadraticAttn(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightFlags(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightTexInfo(IPluginContext *pCtx, const cell_t *params);
+cell_t N_WorldlightOwner(IPluginContext *pCtx, const cell_t *params);
+
 #endif
