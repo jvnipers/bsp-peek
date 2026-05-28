@@ -136,6 +136,7 @@ Parses BSP file lumps directly on map load (cached per-map). Independent of engi
 native int   BSP_BSPVersion();      // typ. 21 on CSGO
 native int   BSP_BSPRevision();     // vbsp -revision build number
 native bool  BSP_LumpInfo(int lumpId, int &fileofs, int &length, int &version);
+native bool  BSP_HasLighting();     // True if map has baked lighting
 
 // Entities (LUMP_ENTITIES = 0, raw KeyValues text)
 native int   BSP_EntityRawLen();

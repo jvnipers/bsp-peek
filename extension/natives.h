@@ -98,6 +98,7 @@ cell_t N_DispDiskDebugInfo(IPluginContext *pCtx, const cell_t *params);
 cell_t N_BSPVersion(IPluginContext *pCtx, const cell_t *params);
 cell_t N_BSPRevision(IPluginContext *pCtx, const cell_t *params);
 cell_t N_LumpInfo(IPluginContext *pCtx, const cell_t *params);
+cell_t N_HasLighting(IPluginContext *pCtx, const cell_t *params);
 
 cell_t N_EntityRawLen(IPluginContext *pCtx, const cell_t *params);
 cell_t N_EntityRawCopy(IPluginContext *pCtx, const cell_t *params);

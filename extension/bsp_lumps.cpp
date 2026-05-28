@@ -23,11 +23,13 @@ constexpr int kHeaderSize = 1036; // 4+4 + 16*64 + 4
 
 constexpr int LUMP_ENTITIES = 0;
 constexpr int LUMP_TEXDATA = 2;
+constexpr int LUMP_LIGHTING = 8;
 constexpr int LUMP_WORLDLIGHTS_LDR = 15;
 constexpr int LUMP_LEAFFACES = 16;
 constexpr int LUMP_TEXINFO = 18;
 constexpr int LUMP_TEXDATA_STRING_DATA = 43;
 constexpr int LUMP_TEXDATA_STRING_TABLE = 44;
+constexpr int LUMP_LIGHTING_HDR = 53;
 constexpr int LUMP_WORLDLIGHTS_HDR = 54;
 
 // dtexinfo_t: textureVecs[2][4]=64B + texdata=4B + flags=4B = 72B
@@ -289,6 +291,13 @@ bool LumpInfo(int lumpId, int &outOffset, int &outLength, int &outVersion) {
   outLength = g.lumps[lumpId].filelen;
   outVersion = g.lumps[lumpId].version;
   return true;
+}
+
+bool HasLighting() {
+  if (!g.loaded)
+    return false;
+  return g.lumps[LUMP_LIGHTING].filelen > 0 ||
+         g.lumps[LUMP_LIGHTING_HDR].filelen > 0;
 }
 
 // Entities

@@ -22,6 +22,11 @@ int BSPRevision(); // map revision (vbsp -version)
 // Returns lump file-offset/length/version into out vars. lumpId in [0, 64).
 bool LumpInfo(int lumpId, int &outOffset, int &outLength, int &outVersion);
 
+// True if the map has baked lighting
+// (LUMP_LIGHTING or LUMP_LIGHTING_HDR filelen > 0).
+// Engine forces mat_fullbright=1 when both are empty.
+bool HasLighting();
+
 // Entities (LUMP_ENTITIES = 0, raw text)
 int EntityRawLen();
 int EntityRawCopy(char *buf, int maxlen); // returns bytes copied (incl. null)
@@ -51,21 +56,22 @@ int WorldlightCount(); // total across both LDR + HDR if present (LDR first)
 bool WorldlightOrigin(int idx, float out[3]);
 bool WorldlightIntensity(int idx, float out[3]);
 bool WorldlightNormal(int idx, float out[3]);
-int WorldlightType(int idx);  // emit_t: 0=surface 1=point 2=spot 3=skylight 4=quake 5=skyambient
+int WorldlightType(int idx);  // emit_t: 0=surface 1=point 2=spot 3=skylight
+                              // 4=quake 5=skyambient
 int WorldlightStyle(int idx); // light style index
 int WorldlightCluster(int idx);
 // Extended fields (per dworldlight_t in CSGO; offsets beyond cluster+style)
 bool WorldlightShadowCastOffset(int idx, float out[3]); // +36
-float WorldlightStopDot(int idx);                       // +60 (spotlight cone inner)
-float WorldlightStopDot2(int idx);                      // +64 (spotlight cone outer)
-float WorldlightExponent(int idx);                      // +68
-float WorldlightRadius(int idx);                        // +72
-float WorldlightConstantAttn(int idx);                  // +76
-float WorldlightLinearAttn(int idx);                    // +80
-float WorldlightQuadraticAttn(int idx);                 // +84
-int WorldlightFlags(int idx);                           // +88
-int WorldlightTexInfo(int idx);                         // +92
-int WorldlightOwner(int idx);                           // +96
+float WorldlightStopDot(int idx);       // +60 (spotlight cone inner)
+float WorldlightStopDot2(int idx);      // +64 (spotlight cone outer)
+float WorldlightExponent(int idx);      // +68
+float WorldlightRadius(int idx);        // +72
+float WorldlightConstantAttn(int idx);  // +76
+float WorldlightLinearAttn(int idx);    // +80
+float WorldlightQuadraticAttn(int idx); // +84
+int WorldlightFlags(int idx);           // +88
+int WorldlightTexInfo(int idx);         // +92
+int WorldlightOwner(int idx);           // +96
 
 } // namespace BSPLumps
 

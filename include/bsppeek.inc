@@ -204,6 +204,11 @@ native int   BSP_BSPRevision();    // map revision (vbsp -revision)
 // Returns lump fileofs/length/version into out vars. lumpId in [0, 64).
 native bool  BSP_LumpInfo(int lumpId, int &fileofs, int &length, int &version);
 
+// True if the map has baked lighting
+// (LUMP_LIGHTING or LUMP_LIGHTING_HDR filelen > 0).
+// Engine forces mat_fullbright=1 when both are empty.
+native bool  BSP_HasLighting();
+
 // Entities (LUMP_ENTITIES, raw KeyValues text)
 // Raw text length (no null terminator counted).
 native int   BSP_EntityRawLen();

@@ -530,6 +530,11 @@ cell_t N_LumpInfo(IPluginContext *pCtx, const cell_t *params) {
   return ok ? 1 : 0;
 }
 
+cell_t N_HasLighting(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::HasLighting() ? 1 : 0;
+}
+
 cell_t N_EntityRawLen(IPluginContext *, const cell_t *) {
   EnsureLumpsLoaded();
   return BSPLumps::EntityRawLen();
@@ -849,6 +854,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_BSPVersion", N_BSPVersion},
     {"BSP_BSPRevision", N_BSPRevision},
     {"BSP_LumpInfo", N_LumpInfo},
+    {"BSP_HasLighting", N_HasLighting},
 
     {"BSP_EntityRawLen", N_EntityRawLen},
     {"BSP_EntityRawCopy", N_EntityRawCopy},
