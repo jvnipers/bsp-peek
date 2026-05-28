@@ -77,7 +77,6 @@ jobs:
         run: |
           mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include staging/addons/metamod/scripting
           find project/build -name '*${{ matrix.ext }}' -exec cp {} staging/addons/sourcemod/extensions/ \;
-          touch staging/addons/sourcemod/extensions/bsppeek.autoload
           cp project/gamedata/*.txt staging/addons/sourcemod/gamedata/
           cp project/include/*.inc staging/addons/sourcemod/scripting/include/
 
@@ -99,7 +98,7 @@ jobs:
           #  image: registry.gitlab.steamos.cloud/steamrt/scout/sdk:latest
       fail-fast: false
     runs-on: ubuntu-latest
-    name: linux-x86-docker-${{ matrix.runtime.name }}
+    name: linux-x86-${{ matrix.runtime.name }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -152,12 +151,11 @@ jobs:
         run: |
           mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include staging/addons/metamod/scripting
           find project/build -name '*.so' -exec cp {} staging/addons/sourcemod/extensions/ \;
-          touch staging/addons/sourcemod/extensions/bsppeek.autoload
           cp project/gamedata/*.txt staging/addons/sourcemod/gamedata/
           cp project/include/*.inc staging/addons/sourcemod/scripting/include/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: bsp-peek-linux-docker-${{ matrix.runtime.name }}
+          name: bsp-peek-linux-${{ matrix.runtime.name }}
           path: staging/*
