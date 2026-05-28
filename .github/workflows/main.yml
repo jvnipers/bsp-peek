@@ -98,8 +98,6 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     name: linux-x86-docker-${{ matrix.runtime.name }}
-    # NOTE: no `container:` block - checkout actions need modern glibc which the scout image lacks.
-    # Checkout runs on the host, then we invoke the runtime image via `docker run` only for the actual build.
     steps:
       - uses: actions/checkout@v6
         with:
@@ -121,25 +119,7 @@ jobs:
           ref: 1.12-dev
           path: metamod-source
 
-      # Scout glibc is 2.15. uv's managed glibc python needs >=2.17, so scout must use uv's musl python build.
-      # That binary's ELF interpreter is hardcoded to /lib/ld-musl-x86_64.so.1
-      # which scout doesn't have, so we extract it from Alpine and bind-mount it in.
-      - name: Stage musl loader (scout only)
-        if: matrix.runtime.name == 'scout'
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/musl-loader"
-          docker run --rm -v "$GITHUB_WORKSPACE/musl-loader:/out" alpine:3.20 \
-            sh -c 'cp /lib/ld-musl-x86_64.so.1 /out/'
-
-      - name: Pre-clone AMBuild on host (scout only)
-        if: matrix.runtime.name == 'scout'
-        run: |
-          # Scout's git is too old to fetch arbitrary commits by SHA (no protocol v2 / allowReachableSHA1InWant),
-          # so clone on the host where git is modern, then bind-mount into the container.
-          git clone --depth 1 https://github.com/alliedmodders/ambuild.git "$GITHUB_WORKSPACE/ambuild-src"
-
-      - name: Build inside sniper container
-        if: matrix.runtime.name == 'sniper'
+      - name: Build inside container
         run: |
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/work" \
@@ -166,47 +146,6 @@ jobs:
                 --targets=x86
               ambuild
             '
-
-      - name: Build inside scout container
-        if: matrix.runtime.name == 'scout'
-        run: |
-          docker run --rm \
-            -v "$GITHUB_WORKSPACE:/work" \
-            -v "$GITHUB_WORKSPACE/musl-loader/ld-musl-x86_64.so.1:/lib/ld-musl-x86_64.so.1:ro" \
-            -v "$GITHUB_WORKSPACE/ambuild-src:/opt/ambuild-src" \
-            -w /work/project \
-            -e HL2SDKCSGO=/work/project/hl2sdk-csgo \
-            -e MMSOURCE112=/work/metamod-source \
-            -e SOURCEMOD112=/work/sourcemod \
-            ${{ matrix.runtime.image }} \
-            bash -ec '
-              set -eux
-              dpkg --add-architecture i386 || true
-              apt-get update || true
-              apt-get install -y --no-install-recommends \
-                  gcc-multilib g++-multilib libstdc++6:i386 \
-                  git ca-certificates curl || true
-
-              # uv: static musl binary, runs on any libc
-              curl -LsSf https://astral.sh/uv/install.sh \
-                | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh
-              export PATH=/usr/local/bin:$PATH
-
-              # musl cpython (glibc build needs >=2.17, scout has 2.15)
-              uv python install cpython-3.11-linux-x86_64-musl
-              uv venv --python cpython-3.11-linux-x86_64-musl /opt/venv
-              export PATH=/opt/venv/bin:$PATH
-              uv pip install --python /opt/venv/bin/python /opt/ambuild-src
-
-              mkdir -p build && cd build
-              python ../configure.py \
-                --sm-path=/work/sourcemod \
-                --mms-path=/work/metamod-source \
-                --enable-optimize \
-                --targets=x86
-              ambuild
-            '
-
       - name: Stage release files
         run: |
           mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include staging/addons/metamod/scripting
