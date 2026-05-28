@@ -3,9 +3,9 @@
 
 #define SMEXT_CONF_NAME "BSP-Peek"
 #define SMEXT_CONF_DESCRIPTION                                                 \
-  "\"Peek\" into engine CCollisionBSPData (brushes, leaves, planes, nodes, "   \
+  "\"Peek\" into BSP engine and file data (brushes, leaves, planes, nodes, "   \
   "displacements)"
-#define SMEXT_CONF_VERSION "1.2.1"
+#define SMEXT_CONF_VERSION "1.3.0"
 #define SMEXT_CONF_AUTHOR "jvnipers"
 #define SMEXT_CONF_URL "https://github.com/jvnipers/bsp-peek"
 #define SMEXT_CONF_LOGTAG "BSPP"
