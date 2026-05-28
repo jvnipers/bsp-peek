@@ -4,7 +4,7 @@ Exposes engine-internal `CCollisionBSPData` (brushes, leaves, planes, nodes, sub
 
 Currently only supports CS:GO (x86)
 
-MM:S 1.12+ SM 1.12+ (No SM 1.13 (yet))
+MM:S 1.12+ SM 1.12+
 
 For **Natives** see: [bsppeek.inc](/include/bsppeek.inc)
 
