@@ -43,6 +43,66 @@ int TexDataCount();
 int TexDataMaterialName(int texdataIdx, char *buf, int maxlen);
 bool TexDataReflectivity(int texdataIdx, float out[3]);
 
+// Visibility (LUMP_VISIBILITY = 4)
+// Number of PVS clusters in this map (= numclusters in the vis header).
+int VisClusterCount();
+// PVS test: is cluster 'other' visible from cluster 'cluster'?
+// Decompresses RLE on-the-fly. false on invalid input or no vis data.
+bool ClusterVisible(int cluster, int other);
+
+// Cubemaps (LUMP_CUBEMAPS = 42, dcubemapsample_t = 16B)
+int CubemapCount();
+// World-space origin (stored as int[3] in BSP, returned as float[3]).
+// false if OOB.
+bool CubemapOrigin(int idx, float out[3]);
+// Resolution power: actual size = 2^size. 0 = default. -1 if OOB.
+int CubemapSize(int idx);
+
+// Edges (LUMP_EDGES = 12, dedge_t = 4B: uint16 v[2])
+int EdgeCount();
+// Fills v0 and v1 with the two vertex indices. Returns false if OOB.
+bool EdgeVertices(int idx, int &v0, int &v1);
+
+// Surfedges (LUMP_SURFEDGES = 13, int32 array)
+// Signed: positive = edge forward (v[0]→v[1]), negative = edge backward.
+int SurfedgeCount();
+int Surfedge(int idx); // raw signed value; 0 if OOB
+// Resolves surfedge sign to the "start" vertex of that directed edge.
+// Use this to enumerate face vertices: loop FaceFirstEdge..+FaceNumEdges.
+int SurfedgeVertex(int idx); // vertex index; -1 if OOB
+
+// Vertexes (LUMP_VERTEXES = 3, Vector[3] per entry)
+int VertexCount();
+bool VertexPos(int idx, float out[3]);
+
+// compound queries
+
+// Face vertex at polygon slot [0, FaceNumEdges(faceIdx)).
+// Resolves FirstEdge -> SurfedgeVertex→VertexPos in one call. false if OOB.
+bool FaceVertex(int faceIdx, int slot, float out[3]);
+// Average position of all face vertices. false if face invalid or has no edges.
+bool FaceCentroid(int faceIdx, float out[3]);
+// Material name via FaceTexInfo→TexInfoTexData→TexDataMaterialName chain.
+// Returns string length. 0 if face has no texinfo (skip/nodraw/toolface).
+int FaceMaterialName(int faceIdx, char *buf, int maxlen);
+// Index of cubemap with closest origin to pos. -1 if no cubemaps.
+int NearestCubemap(const float pos[3]);
+// Find first entity at or after startIdx where kv[key]==value. -1 if none.
+int FindEntityByKeyValue(const char *key, const char *value, int startIdx);
+
+// Faces (LUMP_FACES = 7, dface_t = 56 bytes)
+int FaceCount();
+int FacePlaneNum(int idx);  // uint16 plane index; -1 if OOB
+int FaceFirstEdge(int idx); // first surfedge table index
+int FaceNumEdges(int idx);  // surfedge count for this face
+int FaceTexInfo(int idx);   // texinfo index (-1 = skip face)
+int FaceDispInfo(int idx);  // dispinfo index; -1 if not a displacement
+float FaceArea(int idx);    // precomputed face area
+// 4 lightstyle indices; 255 = unused
+bool FaceLightStyles(int idx, uint8_t out[4]);
+int FaceOrigFace(int idx); // original (pre-split) face; -1 if top-level
+int FaceLightOfs(int idx); // byte offset into lighting lump; -1 = no samples
+
 // LeafFaces (LUMP_LEAFFACES = 16, uint16 array)
 int LeafFacesCount();
 // Read leaf-face indices for leaf at firstFace..firstFace+numFaces from

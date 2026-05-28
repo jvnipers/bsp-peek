@@ -9,8 +9,10 @@
 #include <vector>
 
 using BSPUtil::ReadF32;
+using BSPUtil::ReadI16;
 using BSPUtil::ReadI32;
 using BSPUtil::ReadU16;
+using BSPUtil::ReadU8;
 
 namespace BSPLumps {
 
@@ -22,15 +24,46 @@ constexpr int kNumLumps = 64;
 constexpr int kHeaderSize = 1036; // 4+4 + 16*64 + 4
 
 constexpr int LUMP_ENTITIES = 0;
+constexpr int LUMP_VERTEXES = 3;
+constexpr int LUMP_VISIBILITY = 4;
+constexpr int LUMP_FACES = 7;
 constexpr int LUMP_TEXDATA = 2;
+constexpr int LUMP_EDGES = 12;
+constexpr int LUMP_SURFEDGES = 13;
 constexpr int LUMP_LIGHTING = 8;
 constexpr int LUMP_WORLDLIGHTS_LDR = 15;
 constexpr int LUMP_LEAFFACES = 16;
 constexpr int LUMP_TEXINFO = 18;
+constexpr int LUMP_CUBEMAPS = 42;
 constexpr int LUMP_TEXDATA_STRING_DATA = 43;
 constexpr int LUMP_TEXDATA_STRING_TABLE = 44;
 constexpr int LUMP_LIGHTING_HDR = 53;
 constexpr int LUMP_WORLDLIGHTS_HDR = 54;
+
+// Vertex: Vector (3 floats) = 12B
+constexpr int kSizeofVertex = 12;
+
+// dface_t = 56B
+constexpr int kSizeofFace = 56;
+constexpr int kFace_PlaneNum = 0;  // uint16
+constexpr int kFace_FirstEdge = 4; // int32
+constexpr int kFace_NumEdges = 8;  // int16
+constexpr int kFace_TexInfo = 10;  // int16
+constexpr int kFace_DispInfo = 12; // int16
+constexpr int kFace_Styles = 16;   // uint8[4]
+constexpr int kFace_LightOfs = 20; // int32
+constexpr int kFace_Area = 24;     // float
+constexpr int kFace_OrigFace = 44; // int32
+
+// dcubemapsample_t = 16B: int origin[3] + int size
+constexpr int kSizeofCubemap = 16;
+constexpr int kCubemap_Origin = 0; // int32[3]
+constexpr int kCubemap_Size = 12;  // int32
+
+// dedge_t = 4B: uint16 v[2]
+constexpr int kSizeofEdge = 4;
+// surfedges: int32 array, 4B each
+constexpr int kSizeofSurfedge = 4;
 
 // dtexinfo_t: textureVecs[2][4]=64B + texdata=4B + flags=4B = 72B
 constexpr int kSizeofTexInfo = 72;
@@ -91,6 +124,13 @@ struct State {
 
   std::string entityRaw;
   std::vector<Entity> entities;
+
+  std::vector<uint8_t> visLump;       // LUMP_VISIBILITY raw bytes
+  std::vector<uint8_t> cubemapsLump;  // array of dcubemapsample_t (16B each)
+  std::vector<uint8_t> vertexesLump;  // array of Vector (12B each)
+  std::vector<uint8_t> edgesLump;     // array of dedge_t (4B each)
+  std::vector<uint8_t> surfedgesLump; // array of int32 (4B each)
+  std::vector<uint8_t> facesLump;     // array of dface_t (56B each)
 
   std::vector<uint8_t> texinfoLump;
   std::vector<uint8_t> texdataLump;
@@ -188,6 +228,12 @@ void Clear() {
   std::memset(g.lumps, 0, sizeof(g.lumps));
   g.entityRaw.clear();
   g.entities.clear();
+  g.visLump.clear();
+  g.cubemapsLump.clear();
+  g.vertexesLump.clear();
+  g.edgesLump.clear();
+  g.surfedgesLump.clear();
+  g.facesLump.clear();
   g.texinfoLump.clear();
   g.texdataLump.clear();
   g.texdataStringTable.clear();
@@ -247,6 +293,24 @@ bool LoadFromMap(const char *mapname, const char *bspPath, char *err,
       g.entityRaw.pop_back();
     ParseEntities(g.entityRaw, g.entities);
   }
+
+  // Visibility
+  ReadFile(f, g.lumps[LUMP_VISIBILITY].fileofs,
+           g.lumps[LUMP_VISIBILITY].filelen, g.visLump);
+  // Cubemaps
+  ReadFile(f, g.lumps[LUMP_CUBEMAPS].fileofs, g.lumps[LUMP_CUBEMAPS].filelen,
+           g.cubemapsLump);
+  // Vertexes
+  ReadFile(f, g.lumps[LUMP_VERTEXES].fileofs, g.lumps[LUMP_VERTEXES].filelen,
+           g.vertexesLump);
+  // Edges + Surfedges
+  ReadFile(f, g.lumps[LUMP_EDGES].fileofs, g.lumps[LUMP_EDGES].filelen,
+           g.edgesLump);
+  ReadFile(f, g.lumps[LUMP_SURFEDGES].fileofs, g.lumps[LUMP_SURFEDGES].filelen,
+           g.surfedgesLump);
+  // Faces
+  ReadFile(f, g.lumps[LUMP_FACES].fileofs, g.lumps[LUMP_FACES].filelen,
+           g.facesLump);
 
   // Texinfo
   ReadFile(f, g.lumps[LUMP_TEXINFO].fileofs, g.lumps[LUMP_TEXINFO].filelen,
@@ -424,6 +488,272 @@ bool TexDataReflectivity(int texdataIdx, float out[3]) {
   out[1] = ReadF32(p, kTexData_Reflectivity + 4);
   out[2] = ReadF32(p, kTexData_Reflectivity + 8);
   return true;
+}
+
+// Visibility
+int VisClusterCount() {
+  if (!g.loaded || g.visLump.size() < 4)
+    return 0;
+  return ReadI32(g.visLump.data(), 0);
+}
+
+bool ClusterVisible(int cluster, int other) {
+  if (!g.loaded || g.visLump.size() < 4)
+    return false;
+  int numclusters = ReadI32(g.visLump.data(), 0);
+  if (cluster < 0 || other < 0 || cluster >= numclusters ||
+      other >= numclusters)
+    return false;
+  // pvs offset for this cluster: 4 + cluster*8 + 0 (pas is at +4)
+  size_t ofs_table = 4 + (size_t)cluster * 8;
+  if (ofs_table + 4 > g.visLump.size())
+    return false;
+  int pvs_ofs = ReadI32(g.visLump.data(), (int)ofs_table);
+  if (pvs_ofs < 0 || (size_t)pvs_ofs >= g.visLump.size())
+    return false;
+  // Decompress RLE up to the byte covering 'other'.
+  // byte==0: next byte = count of zero bytes to skip (each = 8 invisible
+  // clusters) otherwise: literal byte covering 8 clusters
+  const uint8_t *p = g.visLump.data() + pvs_ofs;
+  const uint8_t *end = g.visLump.data() + g.visLump.size();
+  int target_byte = other >> 3;
+  int target_bit = other & 7;
+  int cur = 0; // current byte index in uncompressed bitset
+  while (p < end && cur <= target_byte) {
+    if (*p == 0) {
+      ++p;
+      if (p >= end)
+        break;
+      cur += (int)(*p++); // skip this many zero bytes
+    } else {
+      if (cur == target_byte)
+        return ((*p) >> target_bit) & 1;
+      ++p;
+      ++cur;
+    }
+  }
+  return false;
+}
+
+// Cubemaps
+int CubemapCount() {
+  return g.loaded ? (int)(g.cubemapsLump.size() / kSizeofCubemap) : 0;
+}
+
+bool CubemapOrigin(int idx, float out[3]) {
+  if (idx < 0 || idx >= CubemapCount())
+    return false;
+  const uint8_t *p = g.cubemapsLump.data() + (size_t)idx * kSizeofCubemap;
+  // origin stored as int[3]; cast to float for caller
+  out[0] = (float)ReadI32(p, kCubemap_Origin + 0);
+  out[1] = (float)ReadI32(p, kCubemap_Origin + 4);
+  out[2] = (float)ReadI32(p, kCubemap_Origin + 8);
+  return true;
+}
+
+int CubemapSize(int idx) {
+  if (idx < 0 || idx >= CubemapCount())
+    return -1;
+  return ReadI32(g.cubemapsLump.data() + (size_t)idx * kSizeofCubemap,
+                 kCubemap_Size);
+}
+
+// Edges
+int EdgeCount() {
+  return g.loaded ? (int)(g.edgesLump.size() / kSizeofEdge) : 0;
+}
+
+bool EdgeVertices(int idx, int &v0, int &v1) {
+  if (idx < 0 || idx >= EdgeCount())
+    return false;
+  const uint8_t *p = g.edgesLump.data() + (size_t)idx * kSizeofEdge;
+  v0 = (int)ReadU16(p, 0);
+  v1 = (int)ReadU16(p, 2);
+  return true;
+}
+
+// Surfedges
+int SurfedgeCount() {
+  return g.loaded ? (int)(g.surfedgesLump.size() / kSizeofSurfedge) : 0;
+}
+
+int Surfedge(int idx) {
+  if (idx < 0 || idx >= SurfedgeCount())
+    return 0;
+  return ReadI32(g.surfedgesLump.data(), idx * kSizeofSurfedge);
+}
+
+int SurfedgeVertex(int idx) {
+  if (idx < 0 || idx >= SurfedgeCount())
+    return -1;
+  int se = ReadI32(g.surfedgesLump.data(), idx * kSizeofSurfedge);
+  int edgeIdx = se >= 0 ? se : -se;
+  if (edgeIdx >= EdgeCount())
+    return -1;
+  const uint8_t *p = g.edgesLump.data() + (size_t)edgeIdx * kSizeofEdge;
+  // Positive surfedge = forward (v[0] is the start vertex).
+  // Negative surfedge = backward (v[1] is the start vertex).
+  return (int)ReadU16(p, se >= 0 ? 0 : 2);
+}
+
+// Vertexes
+int VertexCount() {
+  return g.loaded ? (int)(g.vertexesLump.size() / kSizeofVertex) : 0;
+}
+
+bool VertexPos(int idx, float out[3]) {
+  if (idx < 0 || idx >= VertexCount())
+    return false;
+  const uint8_t *p = g.vertexesLump.data() + (size_t)idx * kSizeofVertex;
+  out[0] = ReadF32(p, 0);
+  out[1] = ReadF32(p, 4);
+  out[2] = ReadF32(p, 8);
+  return true;
+}
+
+// Faces
+int FaceCount() {
+  return g.loaded ? (int)(g.facesLump.size() / kSizeofFace) : 0;
+}
+
+static const uint8_t *FacePtr(int idx) {
+  if (idx < 0 || idx >= FaceCount())
+    return nullptr;
+  return g.facesLump.data() + (size_t)idx * kSizeofFace;
+}
+
+int FacePlaneNum(int idx) {
+  const uint8_t *p = FacePtr(idx);
+  return p ? (int)ReadU16(p, kFace_PlaneNum) : -1;
+}
+
+int FaceFirstEdge(int idx) {
+  const uint8_t *p = FacePtr(idx);
+  return p ? ReadI32(p, kFace_FirstEdge) : -1;
+}
+
+int FaceNumEdges(int idx) {
+  const uint8_t *p = FacePtr(idx);
+  return p ? (int)ReadI16(p, kFace_NumEdges) : -1;
+}
+
+int FaceTexInfo(int idx) {
+  const uint8_t *p = FacePtr(idx);
+  return p ? (int)ReadI16(p, kFace_TexInfo) : -1;
+}
+
+int FaceDispInfo(int idx) {
+  const uint8_t *p = FacePtr(idx);
+  return p ? (int)ReadI16(p, kFace_DispInfo) : -1;
+}
+
+float FaceArea(int idx) {
+  const uint8_t *p = FacePtr(idx);
+  return p ? ReadF32(p, kFace_Area) : 0.0f;
+}
+
+bool FaceLightStyles(int idx, uint8_t out[4]) {
+  const uint8_t *p = FacePtr(idx);
+  if (!p)
+    return false;
+  out[0] = ReadU8(p, kFace_Styles + 0);
+  out[1] = ReadU8(p, kFace_Styles + 1);
+  out[2] = ReadU8(p, kFace_Styles + 2);
+  out[3] = ReadU8(p, kFace_Styles + 3);
+  return true;
+}
+
+int FaceOrigFace(int idx) {
+  const uint8_t *p = FacePtr(idx);
+  return p ? ReadI32(p, kFace_OrigFace) : -1;
+}
+
+int FaceLightOfs(int idx) {
+  const uint8_t *p = FacePtr(idx);
+  return p ? ReadI32(p, kFace_LightOfs) : -1;
+}
+
+// Convenience compound queries
+bool FaceVertex(int faceIdx, int slot, float out[3]) {
+  int first = FaceFirstEdge(faceIdx);
+  int num = FaceNumEdges(faceIdx);
+  if (first < 0 || num <= 0 || slot < 0 || slot >= num)
+    return false;
+  int vertIdx = SurfedgeVertex(first + slot);
+  return VertexPos(vertIdx, out);
+}
+
+bool FaceCentroid(int faceIdx, float out[3]) {
+  int first = FaceFirstEdge(faceIdx);
+  int num = FaceNumEdges(faceIdx);
+  if (first < 0 || num <= 0)
+    return false;
+  float sum[3] = {0, 0, 0};
+  int count = 0;
+  for (int i = 0; i < num; ++i) {
+    float v[3];
+    int vertIdx = SurfedgeVertex(first + i);
+    if (vertIdx >= 0 && VertexPos(vertIdx, v)) {
+      sum[0] += v[0];
+      sum[1] += v[1];
+      sum[2] += v[2];
+      ++count;
+    }
+  }
+  if (count == 0)
+    return false;
+  float inv = 1.0f / (float)count;
+  out[0] = sum[0] * inv;
+  out[1] = sum[1] * inv;
+  out[2] = sum[2] * inv;
+  return true;
+}
+
+int FaceMaterialName(int faceIdx, char *buf, int maxlen) {
+  if (!buf || maxlen <= 0)
+    return 0;
+  buf[0] = '\0';
+  int texInfoIdx = FaceTexInfo(faceIdx);
+  if (texInfoIdx < 0)
+    return 0;
+  int texDataIdx = TexInfoTexData(texInfoIdx);
+  if (texDataIdx < 0)
+    return 0;
+  return TexDataMaterialName(texDataIdx, buf, maxlen);
+}
+
+int NearestCubemap(const float pos[3]) {
+  int count = CubemapCount();
+  if (count == 0)
+    return -1;
+  int best = -1;
+  float bestDist2 = 0.0f;
+  for (int i = 0; i < count; ++i) {
+    float origin[3];
+    if (!CubemapOrigin(i, origin))
+      continue;
+    float dx = origin[0] - pos[0];
+    float dy = origin[1] - pos[1];
+    float dz = origin[2] - pos[2];
+    float d2 = dx * dx + dy * dy + dz * dz;
+    if (best < 0 || d2 < bestDist2) {
+      best = i;
+      bestDist2 = d2;
+    }
+  }
+  return best;
+}
+
+int FindEntityByKeyValue(const char *key, const char *value, int startIdx) {
+  if (!g.loaded || !key || !value)
+    return -1;
+  int count = (int)g.entities.size();
+  for (int i = (startIdx < 0 ? 0 : startIdx); i < count; ++i) {
+    auto it = g.entities[i].kv.find(key);
+    if (it != g.entities[i].kv.end() && it->second == value)
+      return i;
+  }
+  return -1;
 }
 
 // LeafFaces

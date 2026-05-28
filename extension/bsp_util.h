@@ -39,6 +39,14 @@ inline uint16_t ReadU16(const uint8_t *p, int off) {
   return v;
 }
 
+inline int16_t ReadI16(const uint8_t *p, int off) {
+  int16_t v;
+  std::memcpy(&v, p + off, 2);
+  return v;
+}
+
+inline uint8_t ReadU8(const uint8_t *p, int off) { return p[off]; }
+
 inline int GetKeyInt(IGameConfig *gc, const char *key, int defaultVal) {
   const char *s = gc->GetKeyValue(key);
   return (s && *s) ? std::atoi(s) : defaultVal;

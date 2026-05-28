@@ -114,6 +114,40 @@ cell_t N_TexDataCount(IPluginContext *pCtx, const cell_t *params);
 cell_t N_TexDataMaterialName(IPluginContext *pCtx, const cell_t *params);
 cell_t N_TexDataReflectivity(IPluginContext *pCtx, const cell_t *params);
 
+cell_t N_FaceVertex(IPluginContext *pCtx, const cell_t *params);
+cell_t N_FaceCentroid(IPluginContext *pCtx, const cell_t *params);
+cell_t N_FaceMaterialName(IPluginContext *pCtx, const cell_t *params);
+cell_t N_LeafVisible(IPluginContext *pCtx, const cell_t *params);
+cell_t N_NearestCubemap(IPluginContext *pCtx, const cell_t *params);
+cell_t N_FindEntityByKeyValue(IPluginContext *pCtx, const cell_t *params);
+
+cell_t N_VisClusterCount(IPluginContext *pCtx, const cell_t *params);
+cell_t N_ClusterVisible(IPluginContext *pCtx, const cell_t *params);
+
+cell_t N_CubemapCount(IPluginContext *pCtx, const cell_t *params);
+cell_t N_CubemapOrigin(IPluginContext *pCtx, const cell_t *params);
+cell_t N_CubemapSize(IPluginContext *pCtx, const cell_t *params);
+
+cell_t N_EdgeCount(IPluginContext *pCtx, const cell_t *params);
+cell_t N_EdgeVertices(IPluginContext *pCtx, const cell_t *params);
+cell_t N_SurfedgeCount(IPluginContext *pCtx, const cell_t *params);
+cell_t N_Surfedge(IPluginContext *pCtx, const cell_t *params);
+cell_t N_SurfedgeVertex(IPluginContext *pCtx, const cell_t *params);
+
+cell_t N_VertexCount(IPluginContext *pCtx, const cell_t *params);
+cell_t N_VertexPos(IPluginContext *pCtx, const cell_t *params);
+
+cell_t N_FaceCount(IPluginContext *pCtx, const cell_t *params);
+cell_t N_FacePlaneNum(IPluginContext *pCtx, const cell_t *params);
+cell_t N_FaceFirstEdge(IPluginContext *pCtx, const cell_t *params);
+cell_t N_FaceNumEdges(IPluginContext *pCtx, const cell_t *params);
+cell_t N_FaceTexInfo(IPluginContext *pCtx, const cell_t *params);
+cell_t N_FaceDispInfo(IPluginContext *pCtx, const cell_t *params);
+cell_t N_FaceArea(IPluginContext *pCtx, const cell_t *params);
+cell_t N_FaceLightStyles(IPluginContext *pCtx, const cell_t *params);
+cell_t N_FaceOrigFace(IPluginContext *pCtx, const cell_t *params);
+cell_t N_FaceLightOfs(IPluginContext *pCtx, const cell_t *params);
+
 cell_t N_LeafFacesCount(IPluginContext *pCtx, const cell_t *params);
 cell_t N_LeafFaces(IPluginContext *pCtx, const cell_t *params);
 

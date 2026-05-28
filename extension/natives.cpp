@@ -630,6 +630,198 @@ cell_t N_TexDataReflectivity(IPluginContext *pCtx, const cell_t *params) {
   return ok ? 1 : 0;
 }
 
+cell_t N_FaceVertex(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float v[3] = {0, 0, 0};
+  bool ok = BSPLumps::FaceVertex(params[1], params[2], v);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[3], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_FaceCentroid(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float v[3] = {0, 0, 0};
+  bool ok = BSPLumps::FaceCentroid(params[1], v);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_FaceMaterialName(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int maxlen = params[3];
+  if (maxlen <= 0)
+    return 0;
+  std::vector<char> tmp(maxlen);
+  int n = BSPLumps::FaceMaterialName(params[1], tmp.data(), maxlen);
+  pCtx->StringToLocal(params[2], maxlen, tmp.data());
+  return n;
+}
+
+cell_t N_LeafVisible(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int ca = BSPData::LeafCluster(params[1]);
+  int cb = BSPData::LeafCluster(params[2]);
+  if (ca < 0 || cb < 0)
+    return 0;
+  return BSPLumps::ClusterVisible(ca, cb) ? 1 : 0;
+}
+
+cell_t N_NearestCubemap(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float pos[3];
+  cell_to_float3(pCtx, params[1], pos);
+  return BSPLumps::NearestCubemap(pos);
+}
+
+cell_t N_FindEntityByKeyValue(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  char *key = nullptr, *value = nullptr;
+  pCtx->LocalToString(params[1], &key);
+  pCtx->LocalToString(params[2], &value);
+  return BSPLumps::FindEntityByKeyValue(key, value, params[3]);
+}
+
+cell_t N_VisClusterCount(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::VisClusterCount();
+}
+
+cell_t N_ClusterVisible(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::ClusterVisible(params[1], params[2]) ? 1 : 0;
+}
+
+cell_t N_CubemapCount(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::CubemapCount();
+}
+
+cell_t N_CubemapOrigin(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float v[3] = {0, 0, 0};
+  bool ok = BSPLumps::CubemapOrigin(params[1], v);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_CubemapSize(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::CubemapSize(params[1]);
+}
+
+cell_t N_EdgeCount(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::EdgeCount();
+}
+
+cell_t N_EdgeVertices(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int v0 = -1, v1 = -1;
+  bool ok = BSPLumps::EdgeVertices(params[1], v0, v1);
+  cell_t *outV0, *outV1;
+  pCtx->LocalToPhysAddr(params[2], &outV0);
+  pCtx->LocalToPhysAddr(params[3], &outV1);
+  *outV0 = v0;
+  *outV1 = v1;
+  return ok ? 1 : 0;
+}
+
+cell_t N_SurfedgeCount(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::SurfedgeCount();
+}
+
+cell_t N_Surfedge(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::Surfedge(params[1]);
+}
+
+cell_t N_SurfedgeVertex(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::SurfedgeVertex(params[1]);
+}
+
+cell_t N_VertexCount(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::VertexCount();
+}
+
+cell_t N_VertexPos(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float v[3] = {0, 0, 0};
+  bool ok = BSPLumps::VertexPos(params[1], v);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_FaceCount(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::FaceCount();
+}
+
+cell_t N_FacePlaneNum(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::FacePlaneNum(params[1]);
+}
+
+cell_t N_FaceFirstEdge(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::FaceFirstEdge(params[1]);
+}
+
+cell_t N_FaceNumEdges(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::FaceNumEdges(params[1]);
+}
+
+cell_t N_FaceTexInfo(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::FaceTexInfo(params[1]);
+}
+
+cell_t N_FaceDispInfo(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::FaceDispInfo(params[1]);
+}
+
+cell_t N_FaceArea(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return sp_ftoc(BSPLumps::FaceArea(params[1]));
+}
+
+cell_t N_FaceLightStyles(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  uint8_t styles[4] = {255, 255, 255, 255};
+  bool ok = BSPLumps::FaceLightStyles(params[1], styles);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 4; ++i)
+    out[i] = styles[i];
+  return ok ? 1 : 0;
+}
+
+cell_t N_FaceOrigFace(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::FaceOrigFace(params[1]);
+}
+
+cell_t N_FaceLightOfs(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::FaceLightOfs(params[1]);
+}
+
 cell_t N_LeafFacesCount(IPluginContext *, const cell_t *) {
   EnsureLumpsLoaded();
   return BSPLumps::LeafFacesCount();
@@ -862,6 +1054,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_EntityClassname", N_EntityClassname},
     {"BSP_EntityOrigin", N_EntityOrigin},
     {"BSP_EntityKeyValue", N_EntityKeyValue},
+    {"BSP_FindEntityByKeyValue", N_FindEntityByKeyValue},
 
     {"BSP_TexInfoCount", N_TexInfoCount},
     {"BSP_TexInfoFlags", N_TexInfoFlags},
@@ -869,6 +1062,39 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_TexDataCount", N_TexDataCount},
     {"BSP_TexDataMaterialName", N_TexDataMaterialName},
     {"BSP_TexDataReflectivity", N_TexDataReflectivity},
+
+    {"BSP_VisClusterCount", N_VisClusterCount},
+    {"BSP_ClusterVisible", N_ClusterVisible},
+    {"BSP_LeafVisible", N_LeafVisible},
+
+    {"BSP_CubemapCount", N_CubemapCount},
+    {"BSP_CubemapOrigin", N_CubemapOrigin},
+    {"BSP_CubemapSize", N_CubemapSize},
+    {"BSP_NearestCubemap", N_NearestCubemap},
+
+    {"BSP_EdgeCount", N_EdgeCount},
+    {"BSP_EdgeVertices", N_EdgeVertices},
+    {"BSP_SurfedgeCount", N_SurfedgeCount},
+    {"BSP_Surfedge", N_Surfedge},
+    {"BSP_SurfedgeVertex", N_SurfedgeVertex},
+
+    {"BSP_VertexCount", N_VertexCount},
+    {"BSP_VertexPos", N_VertexPos},
+
+    {"BSP_FaceVertex", N_FaceVertex},
+    {"BSP_FaceCentroid", N_FaceCentroid},
+    {"BSP_FaceMaterialName", N_FaceMaterialName},
+
+    {"BSP_FaceCount", N_FaceCount},
+    {"BSP_FacePlaneNum", N_FacePlaneNum},
+    {"BSP_FaceFirstEdge", N_FaceFirstEdge},
+    {"BSP_FaceNumEdges", N_FaceNumEdges},
+    {"BSP_FaceTexInfo", N_FaceTexInfo},
+    {"BSP_FaceDispInfo", N_FaceDispInfo},
+    {"BSP_FaceArea", N_FaceArea},
+    {"BSP_FaceLightStyles", N_FaceLightStyles},
+    {"BSP_FaceOrigFace", N_FaceOrigFace},
+    {"BSP_FaceLightOfs", N_FaceLightOfs},
 
     {"BSP_LeafFacesCount", N_LeafFacesCount},
     {"BSP_LeafFaces", N_LeafFaces},

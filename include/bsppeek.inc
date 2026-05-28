@@ -232,6 +232,86 @@ native int   BSP_TexDataCount();
 native int   BSP_TexDataMaterialName(int texdataIdx, char[] buf, int maxlen);
 native bool  BSP_TexDataReflectivity(int texdataIdx, float refl[3]);
 
+// Convenience / compound queries
+
+// Entity search: returns first entity index >= startIdx where kv[key]==value.
+// Returns -1 if not found. Enumerate by calling again with lastResult+1.
+native int   BSP_FindEntityByKeyValue(const char[] key, const char[] value, int startIdx = 0);
+
+// Face vertex at polygon slot [0, BSP_FaceNumEdges(faceIdx)).
+// Shorthand for FirstEdge→SurfedgeVertex→VertexPos. false if OOB.
+native bool  BSP_FaceVertex(int faceIdx, int slot, float pos[3]);
+// Average world-space position of all face vertices. false if face invalid.
+native bool  BSP_FaceCentroid(int faceIdx, float centroid[3]);
+// Material name for this face (chains TexInfo→TexData→string). Returns length.
+// Returns 0 for skip/nodraw/tool faces with no texdata.
+native int   BSP_FaceMaterialName(int faceIdx, char[] buf, int maxlen);
+
+// Visibility
+// Number of PVS clusters. 0 if map has no vis data.
+native int   BSP_VisClusterCount();
+// PVS check: is cluster 'other' potentially visible from cluster 'cluster'?
+// Uses BSP_LeafCluster to convert leaf -> cluster. false if either OOB or no vis.
+native bool  BSP_ClusterVisible(int cluster, int other);
+// PVS check by leaf: wraps BSP_LeafCluster(a/b) + BSP_ClusterVisible.
+// false if either leaf has no cluster (cluster == -1) or no vis data.
+native bool  BSP_LeafVisible(int leafA, int leafB);
+
+// Cubemaps (env_cubemap placements)
+native int   BSP_CubemapCount();
+// World-space origin (stored as int[3] in BSP; returned as float[3]). false if OOB.
+native bool  BSP_CubemapOrigin(int idx, float origin[3]);
+// Raw size value. Resolution = 2^(size-1) px per face. 0 = default (engine uses 6 -> 32px). -1 if OOB.
+native int   BSP_CubemapSize(int idx);
+// Index of the cubemap whose origin is closest to pos. -1 if no cubemaps.
+native int   BSP_NearestCubemap(const float pos[3]);
+
+// Edges (LUMP_EDGES = 12, dedge_t = 4B: uint16 v[2])
+native int   BSP_EdgeCount();
+// Fills v0/v1 with the two vertex indices of edge[idx]. false if OOB.
+native bool  BSP_EdgeVertices(int idx, int &v0, int &v1);
+
+// Surfedges (LUMP_SURFEDGES = 13, signed int32 array)
+// Positive = edge forward (v[0] -> v[1]); negative = edge backward.
+native int   BSP_SurfedgeCount();
+// Raw signed surfedge value at index idx. 0 if OOB.
+native int   BSP_Surfedge(int idx);
+// Resolves surfedge[idx] to the "start" vertex of that directed edge.
+// Accounts for sign - use this to enumerate face vertices in winding order:
+//   for (int i = 0; i < BSP_FaceNumEdges(f); i++)
+//       vertIdx = BSP_SurfedgeVertex(BSP_FaceFirstEdge(f) + i);
+// Returns -1 if OOB or bad edge reference.
+native int   BSP_SurfedgeVertex(int idx);
+
+// Vertexes (LUMP_VERTEXES = 3)
+// Total vertex count in the BSP.
+native int   BSP_VertexCount();
+// World-space position of vertex[idx]. false if out of range.
+native bool  BSP_VertexPos(int idx, float pos[3]);
+
+// Faces (LUMP_FACES = 7, dface_t)
+// Note: BSP faces are the renderer's split faces. Use BSP_FaceOrigFace to map
+// back to the original editor face. Displacement faces have FaceDispInfo >= 0.
+native int   BSP_FaceCount();
+// Plane index into BSP plane table (see BSP_PlaneAt). -1 if out of range.
+native int   BSP_FacePlaneNum(int idx);
+// First index into the surfedge table (for edge/vertex reconstruction). -1 if OOB.
+native int   BSP_FaceFirstEdge(int idx);
+// Number of surfedges (= polygon vertex count) for this face. -1 if OOB.
+native int   BSP_FaceNumEdges(int idx);
+// Texinfo index. -1 if skip/nodraw or out of range.
+native int   BSP_FaceTexInfo(int idx);
+// Dispinfo index if this face is a displacement, -1 otherwise.
+native int   BSP_FaceDispInfo(int idx);
+// Precomputed face area in world units^2. 0.0 if out of range.
+native float BSP_FaceArea(int idx);
+// Fills styles[4] with lightstyle indices (255 = unused slot). false if OOB.
+native bool  BSP_FaceLightStyles(int idx, int styles[4]);
+// Original (pre-split) face index; -1 if this face was never split.
+native int   BSP_FaceOrigFace(int idx);
+// Byte offset into the lighting lump for this face's lightmap samples; -1 if none.
+native int   BSP_FaceLightOfs(int idx);
+
 // LeafFaces (LUMP_LEAFFACES, uint16 face index table)
 // Total leaf-face entries (sum across all leaves).
 native int   BSP_LeafFacesCount();
