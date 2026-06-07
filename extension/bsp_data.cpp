@@ -1139,6 +1139,30 @@ static void BuildBrushCache() {
     e.valid = GetBrushBounds(i, e.mins, e.maxs);
     e.contents = e.valid ? GetBrushContents(i) : 0;
   }
+
+  // CSGO moves axis-aligned box brushes into a parallel cboxbrush_t SIMD table.
+  // Those brushes can have their planar cbrush_t sides stripped or padded with
+  // bevels, so GetBrushBounds above yields an invalid AABB for them and they
+  // drop out of the cache. That is exactly the bottom brush of a pixelsurf, so
+  // FindBrushPairAtSeam would never find the pair. Fill any such gaps from the
+  // authoritative box-table bounds so box-brush seams become findable.
+  int nb = GetNumBoxBrushes();
+  for (int i = 0; i < nb; ++i) {
+    int orig = BoxBrushOriginalBrush(i);
+    if (orig < 0 || orig >= n)
+      continue;
+    BrushCacheEntry &e = g_brushCache[orig];
+    if (e.valid)
+      continue; // keep plane-derived bounds when we already have them
+    float bmins[3], bmaxs[3];
+    if (BoxBrushBounds(i, bmins, bmaxs)) {
+      memcpy(e.mins, bmins, sizeof(bmins));
+      memcpy(e.maxs, bmaxs, sizeof(bmaxs));
+      e.contents = BoxBrushContents(i);
+      e.valid = true;
+    }
+  }
+
   g_brushCacheBuilt = true;
 }
 
