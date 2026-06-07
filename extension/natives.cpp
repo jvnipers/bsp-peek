@@ -462,6 +462,26 @@ cell_t N_DispDistToSurface(IPluginContext *pCtx, const cell_t *params) {
   return sp_ftoc(BSPDisp::DistToSurface(pos, sp_ctof(params[2])));
 }
 
+cell_t N_DispNearestTri(IPluginContext *pCtx, const cell_t *params) {
+  EnsureDispLoaded();
+  float pos[3], normal[3], v0[3], v1[3], v2[3];
+  cell_to_float3(pCtx, params[1], pos);
+  float d =
+      BSPDisp::DistNearestTri(pos, sp_ctof(params[2]), normal, v0, v1, v2);
+  cell_t *pN = nullptr, *pV0 = nullptr, *pV1 = nullptr, *pV2 = nullptr;
+  pCtx->LocalToPhysAddr(params[3], &pN);
+  pCtx->LocalToPhysAddr(params[4], &pV0);
+  pCtx->LocalToPhysAddr(params[5], &pV1);
+  pCtx->LocalToPhysAddr(params[6], &pV2);
+  for (int i = 0; i < 3; ++i) {
+    pN[i] = sp_ftoc(normal[i]);
+    pV0[i] = sp_ftoc(v0[i]);
+    pV1[i] = sp_ftoc(v1[i]);
+    pV2[i] = sp_ftoc(v2[i]);
+  }
+  return sp_ftoc(d);
+}
+
 cell_t N_DispHeightAtMulti(IPluginContext *pCtx, const cell_t *params) {
   EnsureDispLoaded();
   int maxResults = params[4];
@@ -1123,6 +1143,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_DispIsPointOnDisp", N_DispIsPointOnDisp},
     {"BSP_DispHeightAtMulti", N_DispHeightAtMulti},
     {"BSP_DispDistToSurface", N_DispDistToSurface},
+    {"BSP_DispNearestTri", N_DispNearestTri},
 
     // Displacement - engine accessors
     {"BSP_DispReady", N_DispReady},

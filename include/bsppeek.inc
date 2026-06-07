@@ -188,6 +188,12 @@ native int   BSP_DispHeightAtMulti(float x, float y, float[] results, int maxRes
 // Works on near-vertical disp WALLS.
 native float BSP_DispDistToSurface(const float pos[3], float maxDist = 64.0);
 
+// Nearest disp triangle to pos within maxDist. Returns the distance (BSP_DISP_NO_HIT
+// if none) and fills the tri's plane normal + 3 world-space verts.
+// Reveals the true collision-mesh orientation at a seam (the hull-contact normal is coarse).
+native float BSP_DispNearestTri(const float pos[3], float maxDist,
+                                float normal[3], float v0[3], float v1[3], float v2[3]);
+
 // - Engine accessors (no fallback; check BSP_DispReady first) -
 
 // True once engine globals have been resolved AND tree count > 0.

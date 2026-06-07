@@ -648,6 +648,84 @@ float EngineDistToSurface(const float pos[3], float maxDist) {
   return found ? std::sqrt(bestSq) : kNoHit;
 }
 
+// Like EngineDistToSurface, but also returns the nearest triangle's stored
+// plane normal (CDispCollTri::m_vecNormal) and its 3 world-space verts.
+// Lets the caller inspect the actual collision-mesh orientation at a seam.
+// kNoHit if none in range.
+float EngineNearestTri(const float pos[3], float maxDist, float outNormal[3],
+                       float outV0[3], float outV1[3], float outV2[3]) {
+  outNormal[0] = outNormal[1] = outNormal[2] = 0.0f;
+  outV0[0] = outV0[1] = outV0[2] = 0.0f;
+  outV1[0] = outV1[1] = outV1[2] = 0.0f;
+  outV2[0] = outV2[1] = outV2[2] = 0.0f;
+  if (!EngineReady())
+    return kNoHit;
+  float bestSq = maxDist * maxDist;
+  bool found = false;
+  Vec3 bN = {0, 0, 0}, bV0 = {0, 0, 0}, bV1 = {0, 0, 0}, bV2 = {0, 0, 0};
+  int count = EngineCount();
+  for (int i = 0; i < count; i++) {
+    const uint8_t *tree = engine::TreePtr(i);
+    if (!engine::IsTreeSane(tree))
+      continue;
+    float mnx = ReadF32(tree, engine::OFF_TREE_MINS + 0);
+    float mny = ReadF32(tree, engine::OFF_TREE_MINS + 4);
+    float mnz = ReadF32(tree, engine::OFF_TREE_MINS + 8);
+    float mxx = ReadF32(tree, engine::OFF_TREE_MAXS + 0);
+    float mxy = ReadF32(tree, engine::OFF_TREE_MAXS + 4);
+    float mxz = ReadF32(tree, engine::OFF_TREE_MAXS + 8);
+    if (pos[0] < mnx - maxDist || pos[0] > mxx + maxDist ||
+        pos[1] < mny - maxDist || pos[1] > mxy + maxDist ||
+        pos[2] < mnz - maxDist || pos[2] > mxz + maxDist)
+      continue;
+    const uint8_t *vertsPtr =
+        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_VERTS_PTR);
+    int vertsCnt = ReadI32(tree, engine::OFF_TREE_VERTS_CNT);
+    const uint8_t *trisPtr =
+        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
+    int trisCnt = ReadI32(tree, engine::OFF_TREE_TRIS_CNT);
+    for (int t = 0; t < trisCnt; t++) {
+      const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;
+      uint16_t i0 = triRec[engine::OFF_TRI_INDICES + 0];
+      uint16_t i1 = triRec[engine::OFF_TRI_INDICES + 2];
+      uint16_t i2 = triRec[engine::OFF_TRI_INDICES + 4];
+      if (i0 >= vertsCnt || i1 >= vertsCnt || i2 >= vertsCnt)
+        continue;
+      Vec3 v0, v1, v2;
+      std::memcpy(&v0, vertsPtr + (size_t)i0 * engine::SZ_VERT, sizeof(Vec3));
+      std::memcpy(&v1, vertsPtr + (size_t)i1 * engine::SZ_VERT, sizeof(Vec3));
+      std::memcpy(&v2, vertsPtr + (size_t)i2 * engine::SZ_VERT, sizeof(Vec3));
+      float q[3];
+      ClosestPtPointTriangle(pos, v0, v1, v2, q);
+      float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
+      float dsq = dx * dx + dy * dy + dz * dz;
+      if (dsq < bestSq) {
+        bestSq = dsq;
+        found = true;
+        std::memcpy(&bN, triRec + engine::OFF_TRI_NORMAL, sizeof(Vec3));
+        bV0 = v0;
+        bV1 = v1;
+        bV2 = v2;
+      }
+    }
+  }
+  if (!found)
+    return kNoHit;
+  outNormal[0] = bN.x;
+  outNormal[1] = bN.y;
+  outNormal[2] = bN.z;
+  outV0[0] = bV0.x;
+  outV0[1] = bV0.y;
+  outV0[2] = bV0.z;
+  outV1[0] = bV1.x;
+  outV1[1] = bV1.y;
+  outV1[2] = bV1.z;
+  outV2[0] = bV2.x;
+  outV2[1] = bV2.y;
+  outV2[2] = bV2.z;
+  return std::sqrt(bestSq);
+}
+
 int EngineDebugTreeInfo(int idx, char *buf, size_t bufLen) {
   if (!EngineReady() || idx < 0 || idx >= EngineCount()) {
     return std::snprintf(
@@ -1153,6 +1231,68 @@ float DistToSurface(const float pos[3], float maxDist) {
     }
   }
   return found ? std::sqrt(bestSq) : kNoHit;
+}
+
+// Unified nearest-disp-triangle. Fills the tri's normal + 3 verts.
+// Disk fallback computes the normal from the verts.
+// kNoHit if nothing within maxDist.
+float DistNearestTri(const float pos[3], float maxDist, float normal[3],
+                     float v0[3], float v1[3], float v2[3]) {
+  if (EngineReady())
+    return EngineNearestTri(pos, maxDist, normal, v0, v1, v2);
+
+  normal[0] = normal[1] = normal[2] = 0.0f;
+  v0[0] = v0[1] = v0[2] = 0.0f;
+  v1[0] = v1[1] = v1[2] = 0.0f;
+  v2[0] = v2[1] = v2[2] = 0.0f;
+  float bestSq = maxDist * maxDist;
+  bool found = false;
+  Vec3 bV0 = {0, 0, 0}, bV1 = {0, 0, 0}, bV2 = {0, 0, 0};
+  for (size_t i = 0; i < disk::g_disps.size(); i++) {
+    const auto &d = disk::g_disps[i];
+    if (pos[0] < d.bboxMins[0] - maxDist || pos[0] > d.bboxMaxs[0] + maxDist ||
+        pos[1] < d.bboxMins[1] - maxDist || pos[1] > d.bboxMaxs[1] + maxDist ||
+        pos[2] < d.bboxMins[2] - maxDist || pos[2] > d.bboxMaxs[2] + maxDist)
+      continue;
+    for (const auto &t : d.tris) {
+      float q[3];
+      ClosestPtPointTriangle(pos, t.v0, t.v1, t.v2, q);
+      float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
+      float dsq = dx * dx + dy * dy + dz * dz;
+      if (dsq < bestSq) {
+        bestSq = dsq;
+        found = true;
+        bV0 = t.v0;
+        bV1 = t.v1;
+        bV2 = t.v2;
+      }
+    }
+  }
+  if (!found)
+    return kNoHit;
+  // normal = (v1-v0) x (v2-v0), normalized.
+  float ax = bV1.x - bV0.x, ay = bV1.y - bV0.y, az = bV1.z - bV0.z;
+  float bx = bV2.x - bV0.x, by = bV2.y - bV0.y, bz = bV2.z - bV0.z;
+  float nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+  float len = std::sqrt(nx * nx + ny * ny + nz * nz);
+  if (len > 1e-6f) {
+    nx /= len;
+    ny /= len;
+    nz /= len;
+  }
+  normal[0] = nx;
+  normal[1] = ny;
+  normal[2] = nz;
+  v0[0] = bV0.x;
+  v0[1] = bV0.y;
+  v0[2] = bV0.z;
+  v1[0] = bV1.x;
+  v1[1] = bV1.y;
+  v1[2] = bV1.z;
+  v2[0] = bV2.x;
+  v2[1] = bV2.y;
+  v2[2] = bV2.z;
+  return std::sqrt(bestSq);
 }
 
 } // namespace BSPDisp
