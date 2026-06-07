@@ -455,6 +455,13 @@ cell_t N_DispIsPointOnDisp(IPluginContext *pCtx, const cell_t *params) {
   return BSPDisp::IsPointOnDisp(sp_ctof(params[1]), sp_ctof(params[2])) ? 1 : 0;
 }
 
+cell_t N_DispDistToSurface(IPluginContext *pCtx, const cell_t *params) {
+  EnsureDispLoaded();
+  float pos[3];
+  cell_to_float3(pCtx, params[1], pos);
+  return sp_ftoc(BSPDisp::DistToSurface(pos, sp_ctof(params[2])));
+}
+
 cell_t N_DispHeightAtMulti(IPluginContext *pCtx, const cell_t *params) {
   EnsureDispLoaded();
   int maxResults = params[4];
@@ -1115,6 +1122,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_DispSurfaceNormalAt", N_DispSurfaceNormalAt},
     {"BSP_DispIsPointOnDisp", N_DispIsPointOnDisp},
     {"BSP_DispHeightAtMulti", N_DispHeightAtMulti},
+    {"BSP_DispDistToSurface", N_DispDistToSurface},
 
     // Displacement - engine accessors
     {"BSP_DispReady", N_DispReady},

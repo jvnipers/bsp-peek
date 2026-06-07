@@ -183,6 +183,11 @@ native bool  BSP_DispIsPointOnDisp(float x, float y);
 // (e.g., underground shell + ground surface). Returns count written.
 native int   BSP_DispHeightAtMulti(float x, float y, float[] results, int maxResults);
 
+// Min 3D distance from pos to any displacement collision surface, searching up
+// to maxDist units. Returns BSP_DISP_NO_HIT if no disp data / nothing in range.
+// Works on near-vertical disp WALLS.
+native float BSP_DispDistToSurface(const float pos[3], float maxDist = 64.0);
+
 // - Engine accessors (no fallback; check BSP_DispReady first) -
 
 // True once engine globals have been resolved AND tree count > 0.

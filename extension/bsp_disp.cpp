@@ -529,6 +529,125 @@ float EngineHeightAtDebug(float x, float y, int &outIdx) {
   return best;
 }
 
+// Closest point on triangle (a,b,c) to p, written into q.
+// Ericson, Real-Time Collision Detection, ClosestPtPointTriangle.
+static void ClosestPtPointTriangle(const float p[3], const Vec3 &a,
+                                   const Vec3 &b, const Vec3 &c, float q[3]) {
+  float ab[3] = {b.x - a.x, b.y - a.y, b.z - a.z};
+  float ac[3] = {c.x - a.x, c.y - a.y, c.z - a.z};
+  float ap[3] = {p[0] - a.x, p[1] - a.y, p[2] - a.z};
+  float d1 = ab[0] * ap[0] + ab[1] * ap[1] + ab[2] * ap[2];
+  float d2 = ac[0] * ap[0] + ac[1] * ap[1] + ac[2] * ap[2];
+  if (d1 <= 0.0f && d2 <= 0.0f) {
+    q[0] = a.x;
+    q[1] = a.y;
+    q[2] = a.z;
+    return;
+  }
+  float bp[3] = {p[0] - b.x, p[1] - b.y, p[2] - b.z};
+  float d3 = ab[0] * bp[0] + ab[1] * bp[1] + ab[2] * bp[2];
+  float d4 = ac[0] * bp[0] + ac[1] * bp[1] + ac[2] * bp[2];
+  if (d3 >= 0.0f && d4 <= d3) {
+    q[0] = b.x;
+    q[1] = b.y;
+    q[2] = b.z;
+    return;
+  }
+  float vc = d1 * d4 - d3 * d2;
+  if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) {
+    float v = d1 / (d1 - d3);
+    q[0] = a.x + v * ab[0];
+    q[1] = a.y + v * ab[1];
+    q[2] = a.z + v * ab[2];
+    return;
+  }
+  float cp[3] = {p[0] - c.x, p[1] - c.y, p[2] - c.z};
+  float d5 = ab[0] * cp[0] + ab[1] * cp[1] + ab[2] * cp[2];
+  float d6 = ac[0] * cp[0] + ac[1] * cp[1] + ac[2] * cp[2];
+  if (d6 >= 0.0f && d5 <= d6) {
+    q[0] = c.x;
+    q[1] = c.y;
+    q[2] = c.z;
+    return;
+  }
+  float vb = d5 * d2 - d1 * d6;
+  if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) {
+    float w = d2 / (d2 - d6);
+    q[0] = a.x + w * ac[0];
+    q[1] = a.y + w * ac[1];
+    q[2] = a.z + w * ac[2];
+    return;
+  }
+  float va = d3 * d6 - d5 * d4;
+  if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f) {
+    float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+    q[0] = b.x + w * (c.x - b.x);
+    q[1] = b.y + w * (c.y - b.y);
+    q[2] = b.z + w * (c.z - b.z);
+    return;
+  }
+  float denom = 1.0f / (va + vb + vc);
+  float v = vb * denom;
+  float w = vc * denom;
+  q[0] = a.x + ab[0] * v + ac[0] * w;
+  q[1] = a.y + ab[1] * v + ac[1] * w;
+  q[2] = a.z + ab[2] * v + ac[2] * w;
+}
+
+// Min 3D distance from pos to any engine displacement collision triangle within
+// maxDist. Returns kNoHit if no engine disp data or nothing within maxDist.
+float EngineDistToSurface(const float pos[3], float maxDist) {
+  if (!EngineReady())
+    return kNoHit;
+  float bestSq = maxDist * maxDist;
+  bool found = false;
+  int count = EngineCount();
+  for (int i = 0; i < count; i++) {
+    const uint8_t *tree = engine::TreePtr(i);
+    if (!engine::IsTreeSane(tree))
+      continue;
+    float mnx = ReadF32(tree, engine::OFF_TREE_MINS + 0);
+    float mny = ReadF32(tree, engine::OFF_TREE_MINS + 4);
+    float mnz = ReadF32(tree, engine::OFF_TREE_MINS + 8);
+    float mxx = ReadF32(tree, engine::OFF_TREE_MAXS + 0);
+    float mxy = ReadF32(tree, engine::OFF_TREE_MAXS + 4);
+    float mxz = ReadF32(tree, engine::OFF_TREE_MAXS + 8);
+    if (pos[0] < mnx - maxDist || pos[0] > mxx + maxDist ||
+        pos[1] < mny - maxDist || pos[1] > mxy + maxDist ||
+        pos[2] < mnz - maxDist || pos[2] > mxz + maxDist)
+      continue;
+    const uint8_t *vertsPtr =
+        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_VERTS_PTR);
+    int vertsCnt = ReadI32(tree, engine::OFF_TREE_VERTS_CNT);
+    const uint8_t *trisPtr =
+        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
+    int trisCnt = ReadI32(tree, engine::OFF_TREE_TRIS_CNT);
+    for (int t = 0; t < trisCnt; t++) {
+      const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;
+      uint16_t i0 = triRec[engine::OFF_TRI_INDICES + 0];
+      uint16_t i1 = triRec[engine::OFF_TRI_INDICES + 2];
+      uint16_t i2 = triRec[engine::OFF_TRI_INDICES + 4];
+      if (i0 >= vertsCnt || i1 >= vertsCnt || i2 >= vertsCnt)
+        continue;
+      Vec3 v0, v1, v2;
+      std::memcpy(&v0, vertsPtr + (size_t)i0 * engine::SZ_VERT, sizeof(Vec3));
+      std::memcpy(&v1, vertsPtr + (size_t)i1 * engine::SZ_VERT, sizeof(Vec3));
+      std::memcpy(&v2, vertsPtr + (size_t)i2 * engine::SZ_VERT, sizeof(Vec3));
+      float q[3];
+      ClosestPtPointTriangle(pos, v0, v1, v2, q);
+      float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
+      float dsq = dx * dx + dy * dy + dz * dz;
+      if (dsq < bestSq) {
+        bestSq = dsq;
+        found = true;
+        if (bestSq <= 0.0f)
+          return 0.0f;
+      }
+    }
+  }
+  return found ? std::sqrt(bestSq) : kNoHit;
+}
+
 int EngineDebugTreeInfo(int idx, char *buf, size_t bufLen) {
   if (!EngineReady() || idx < 0 || idx >= EngineCount()) {
     return std::snprintf(
@@ -1005,6 +1124,35 @@ int HeightAtMulti(float x, float y, float *results, int maxResults) {
     }
   }
   return count;
+}
+
+// Unified 3D nearest-displacement-surface distance,
+// Returns kNoHit if no disp data or nothing within maxDist.
+float DistToSurface(const float pos[3], float maxDist) {
+  if (EngineReady())
+    return EngineDistToSurface(pos, maxDist);
+
+  // Disk fallback: 3D nearest-triangle over parsed disp meshes.
+  float bestSq = maxDist * maxDist;
+  bool found = false;
+  for (size_t i = 0; i < disk::g_disps.size(); i++) {
+    const auto &d = disk::g_disps[i];
+    if (pos[0] < d.bboxMins[0] - maxDist || pos[0] > d.bboxMaxs[0] + maxDist ||
+        pos[1] < d.bboxMins[1] - maxDist || pos[1] > d.bboxMaxs[1] + maxDist ||
+        pos[2] < d.bboxMins[2] - maxDist || pos[2] > d.bboxMaxs[2] + maxDist)
+      continue;
+    for (const auto &t : d.tris) {
+      float q[3];
+      ClosestPtPointTriangle(pos, t.v0, t.v1, t.v2, q);
+      float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
+      float dsq = dx * dx + dy * dy + dz * dz;
+      if (dsq < bestSq) {
+        bestSq = dsq;
+        found = true;
+      }
+    }
+  }
+  return found ? std::sqrt(bestSq) : kNoHit;
 }
 
 } // namespace BSPDisp

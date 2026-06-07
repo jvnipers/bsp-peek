@@ -26,11 +26,14 @@ float HeightAtDebug(float x, float y, int &outIdx);
 float SurfaceNormalAt(float x, float y, float normal[3]);
 bool IsPointOnDisp(float x, float y);
 int HeightAtMulti(float x, float y, float *results, int maxResults);
+// 3D nearest-disp-surface distance (works on near-vertical disp walls).
+float DistToSurface(const float pos[3], float maxDist);
 
 bool EngineReady();
 int EngineCount();
 float EngineHeightAt(float x, float y);
 float EngineHeightAtDebug(float x, float y, int &outIdx);
+float EngineDistToSurface(const float pos[3], float maxDist);
 int EngineDebugTreeInfo(int idx, char *buf, size_t bufLen);
 int EngineDiagnoseQuery(float x, float y, char *buf, size_t bufLen);
 bool EngineGetBounds(int idx, float mins[3], float maxs[3]);
