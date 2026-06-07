@@ -462,6 +462,13 @@ cell_t N_DispDistToSurface(IPluginContext *pCtx, const cell_t *params) {
   return sp_ftoc(BSPDisp::DistToSurface(pos, sp_ctof(params[2])));
 }
 
+cell_t N_DispTreeIndexAt(IPluginContext *pCtx, const cell_t *params) {
+  EnsureDispLoaded();
+  float pos[3];
+  cell_to_float3(pCtx, params[1], pos);
+  return BSPDisp::TreeIndexAt(pos, sp_ctof(params[2]));
+}
+
 cell_t N_DispNearestTri(IPluginContext *pCtx, const cell_t *params) {
   EnsureDispLoaded();
   float pos[3], normal[3], v0[3], v1[3], v2[3];
@@ -1144,6 +1151,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_DispHeightAtMulti", N_DispHeightAtMulti},
     {"BSP_DispDistToSurface", N_DispDistToSurface},
     {"BSP_DispNearestTri", N_DispNearestTri},
+    {"BSP_DispTreeIndexAt", N_DispTreeIndexAt},
 
     // Displacement - engine accessors
     {"BSP_DispReady", N_DispReady},

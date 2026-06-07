@@ -31,6 +31,8 @@ float DistToSurface(const float pos[3], float maxDist);
 // Nearest disp triangle: distance + the tri's normal and 3 world-space verts.
 float DistNearestTri(const float pos[3], float maxDist, float normal[3],
                      float v0[3], float v1[3], float v2[3]);
+// Nearest disp tree/face index (distinct per displacement). -1 if none in range.
+int TreeIndexAt(const float pos[3], float maxDist);
 
 bool EngineReady();
 int EngineCount();
@@ -39,6 +41,7 @@ float EngineHeightAtDebug(float x, float y, int &outIdx);
 float EngineDistToSurface(const float pos[3], float maxDist);
 float EngineNearestTri(const float pos[3], float maxDist, float outNormal[3],
                        float outV0[3], float outV1[3], float outV2[3]);
+int EngineTreeIndexAt(const float pos[3], float maxDist);
 int EngineDebugTreeInfo(int idx, char *buf, size_t bufLen);
 int EngineDiagnoseQuery(float x, float y, char *buf, size_t bufLen);
 bool EngineGetBounds(int idx, float mins[3], float maxs[3]);

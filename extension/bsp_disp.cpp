@@ -726,6 +726,58 @@ float EngineNearestTri(const float pos[3], float maxDist, float outNormal[3],
   return std::sqrt(bestSq);
 }
 
+// Engine disp tree (= displacement face) index nearest to pos within maxDist.
+// -1 if none. Adjacent displacements are distinct trees.
+int EngineTreeIndexAt(const float pos[3], float maxDist) {
+  if (!EngineReady())
+    return -1;
+  float bestSq = maxDist * maxDist;
+  int bestTree = -1;
+  int count = EngineCount();
+  for (int i = 0; i < count; i++) {
+    const uint8_t *tree = engine::TreePtr(i);
+    if (!engine::IsTreeSane(tree))
+      continue;
+    float mnx = ReadF32(tree, engine::OFF_TREE_MINS + 0);
+    float mny = ReadF32(tree, engine::OFF_TREE_MINS + 4);
+    float mnz = ReadF32(tree, engine::OFF_TREE_MINS + 8);
+    float mxx = ReadF32(tree, engine::OFF_TREE_MAXS + 0);
+    float mxy = ReadF32(tree, engine::OFF_TREE_MAXS + 4);
+    float mxz = ReadF32(tree, engine::OFF_TREE_MAXS + 8);
+    if (pos[0] < mnx - maxDist || pos[0] > mxx + maxDist ||
+        pos[1] < mny - maxDist || pos[1] > mxy + maxDist ||
+        pos[2] < mnz - maxDist || pos[2] > mxz + maxDist)
+      continue;
+    const uint8_t *vertsPtr =
+        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_VERTS_PTR);
+    int vertsCnt = ReadI32(tree, engine::OFF_TREE_VERTS_CNT);
+    const uint8_t *trisPtr =
+        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
+    int trisCnt = ReadI32(tree, engine::OFF_TREE_TRIS_CNT);
+    for (int t = 0; t < trisCnt; t++) {
+      const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;
+      uint16_t i0 = triRec[engine::OFF_TRI_INDICES + 0];
+      uint16_t i1 = triRec[engine::OFF_TRI_INDICES + 2];
+      uint16_t i2 = triRec[engine::OFF_TRI_INDICES + 4];
+      if (i0 >= vertsCnt || i1 >= vertsCnt || i2 >= vertsCnt)
+        continue;
+      Vec3 v0, v1, v2;
+      std::memcpy(&v0, vertsPtr + (size_t)i0 * engine::SZ_VERT, sizeof(Vec3));
+      std::memcpy(&v1, vertsPtr + (size_t)i1 * engine::SZ_VERT, sizeof(Vec3));
+      std::memcpy(&v2, vertsPtr + (size_t)i2 * engine::SZ_VERT, sizeof(Vec3));
+      float q[3];
+      ClosestPtPointTriangle(pos, v0, v1, v2, q);
+      float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
+      float dsq = dx * dx + dy * dy + dz * dz;
+      if (dsq < bestSq) {
+        bestSq = dsq;
+        bestTree = i;
+      }
+    }
+  }
+  return bestTree;
+}
+
 int EngineDebugTreeInfo(int idx, char *buf, size_t bufLen) {
   if (!EngineReady() || idx < 0 || idx >= EngineCount()) {
     return std::snprintf(
@@ -1293,6 +1345,34 @@ float DistNearestTri(const float pos[3], float maxDist, float normal[3],
   v2[1] = bV2.y;
   v2[2] = bV2.z;
   return std::sqrt(bestSq);
+}
+
+// Unified nearest disp tree/face index. -1 if none.
+// Used to detect the flush boundary between two displacements.
+int TreeIndexAt(const float pos[3], float maxDist) {
+  if (EngineReady())
+    return EngineTreeIndexAt(pos, maxDist);
+
+  float bestSq = maxDist * maxDist;
+  int best = -1;
+  for (size_t i = 0; i < disk::g_disps.size(); i++) {
+    const auto &d = disk::g_disps[i];
+    if (pos[0] < d.bboxMins[0] - maxDist || pos[0] > d.bboxMaxs[0] + maxDist ||
+        pos[1] < d.bboxMins[1] - maxDist || pos[1] > d.bboxMaxs[1] + maxDist ||
+        pos[2] < d.bboxMins[2] - maxDist || pos[2] > d.bboxMaxs[2] + maxDist)
+      continue;
+    for (const auto &t : d.tris) {
+      float q[3];
+      ClosestPtPointTriangle(pos, t.v0, t.v1, t.v2, q);
+      float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
+      float dsq = dx * dx + dy * dy + dz * dz;
+      if (dsq < bestSq) {
+        bestSq = dsq;
+        best = (int)i;
+      }
+    }
+  }
+  return best;
 }
 
 } // namespace BSPDisp

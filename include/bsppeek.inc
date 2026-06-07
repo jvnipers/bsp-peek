@@ -194,6 +194,9 @@ native float BSP_DispDistToSurface(const float pos[3], float maxDist = 64.0);
 native float BSP_DispNearestTri(const float pos[3], float maxDist,
                                 float normal[3], float v0[3], float v1[3], float v2[3]);
 
+// Nearest disp tree/face index (per displacement) within maxDist; -1 if none.
+native int   BSP_DispTreeIndexAt(const float pos[3], float maxDist);
+
 // - Engine accessors (no fallback; check BSP_DispReady first) -
 
 // True once engine globals have been resolved AND tree count > 0.
