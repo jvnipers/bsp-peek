@@ -133,6 +133,20 @@ int WorldlightFlags(int idx);           // +88
 int WorldlightTexInfo(int idx);         // +92
 int WorldlightOwner(int idx);           // +96
 
+// Static props (sprp game lump in LUMP_GAME_LUMP = 35)
+// Parsed at load from the version-stable StaticPropLump_t prefix.
+int StaticPropCount();
+int StaticPropVersion(); // sprp game-lump version (10/11/... ), 0 if none
+bool StaticPropOrigin(int idx, float out[3]);
+bool StaticPropAngles(int idx, float out[3]); // pitch/yaw/roll
+int StaticPropSolid(int idx);                 // SOLID_* (6=VPHYSICS), -1 if OOB
+int StaticPropFlags(int idx);                 // STATIC_PROP_FLAG_*, -1 if OOB
+int StaticPropModelName(int idx, char *buf, int maxlen); // returns length
+// BSP leaf indices the prop touches. Returns count written (clamped to maxOut).
+int StaticPropLeaves(int idx, int *outBuf, int maxOut);
+// Nearest prop by origin within maxDist (<=0 = unlimited). -1 if none.
+int NearestStaticProp(const float pos[3], float maxDist);
+
 } // namespace BSPLumps
 
 #endif

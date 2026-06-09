@@ -1060,6 +1060,81 @@ cell_t N_WorldlightOwner(IPluginContext *, const cell_t *params) {
   return BSPLumps::WorldlightOwner(params[1]);
 }
 
+// Static props (sprp game lump)
+cell_t N_StaticPropCount(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::StaticPropCount();
+}
+
+cell_t N_StaticPropVersion(IPluginContext *, const cell_t *) {
+  EnsureLumpsLoaded();
+  return BSPLumps::StaticPropVersion();
+}
+
+cell_t N_StaticPropOrigin(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float v[3] = {0, 0, 0};
+  bool ok = BSPLumps::StaticPropOrigin(params[1], v);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_StaticPropAngles(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float v[3] = {0, 0, 0};
+  bool ok = BSPLumps::StaticPropAngles(params[1], v);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_StaticPropSolid(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::StaticPropSolid(params[1]);
+}
+
+cell_t N_StaticPropFlags(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::StaticPropFlags(params[1]);
+}
+
+cell_t N_StaticPropModelName(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int maxlen = params[3];
+  if (maxlen <= 0)
+    return 0;
+  std::vector<char> tmp(maxlen);
+  int n = BSPLumps::StaticPropModelName(params[1], tmp.data(), maxlen);
+  pCtx->StringToLocal(params[2], maxlen, tmp.data());
+  return n;
+}
+
+cell_t N_StaticPropLeaves(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int maxOut = params[3];
+  if (maxOut <= 0)
+    return 0;
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  std::vector<int> tmp(maxOut);
+  int n = BSPLumps::StaticPropLeaves(params[1], tmp.data(), maxOut);
+  for (int i = 0; i < n; ++i)
+    out[i] = tmp[i];
+  return n;
+}
+
+cell_t N_NearestStaticProp(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float pos[3];
+  cell_to_float3(pCtx, params[1], pos);
+  return BSPLumps::NearestStaticProp(pos, sp_ctof(params[2]));
+}
+
 extern const sp_nativeinfo_t g_BSPNatives[] = {
     // Misc
     {"BSP_MapPathName", N_MapPathName},
@@ -1246,6 +1321,16 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_WorldlightFlags", N_WorldlightFlags},
     {"BSP_WorldlightTexInfo", N_WorldlightTexInfo},
     {"BSP_WorldlightOwner", N_WorldlightOwner},
+
+    {"BSP_NumStaticProps", N_StaticPropCount},
+    {"BSP_StaticPropVersion", N_StaticPropVersion},
+    {"BSP_StaticPropOrigin", N_StaticPropOrigin},
+    {"BSP_StaticPropAngles", N_StaticPropAngles},
+    {"BSP_StaticPropSolid", N_StaticPropSolid},
+    {"BSP_StaticPropFlags", N_StaticPropFlags},
+    {"BSP_StaticPropModelName", N_StaticPropModelName},
+    {"BSP_StaticPropLeaves", N_StaticPropLeaves},
+    {"BSP_NearestStaticProp", N_NearestStaticProp},
 
     {nullptr, nullptr},
 };

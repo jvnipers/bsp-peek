@@ -39,6 +39,34 @@ constexpr int LUMP_TEXDATA_STRING_DATA = 43;
 constexpr int LUMP_TEXDATA_STRING_TABLE = 44;
 constexpr int LUMP_LIGHTING_HDR = 53;
 constexpr int LUMP_WORLDLIGHTS_HDR = 54;
+constexpr int LUMP_GAME_LUMP = 35;
+
+// Game lump directory: int count, then dgamelump_t[count] (16B each).
+//   int id; uint16 flags; uint16 version; int fileofs; int filelen
+// fileofs is an ABSOLUTE offset into the .bsp file.
+constexpr int kSizeofGameLumpEntry = 16;
+// GAMELUMP_STATIC_PROPS = 'sprp' multichar int (engine: id == this constant).
+constexpr int kGameLumpSprp = ('s' << 24) | ('p' << 16) | ('r' << 8) | ('p');
+constexpr int kGameLump_Id = 0;
+constexpr int kGameLump_Version = 6;
+constexpr int kGameLump_FileOfs = 8;
+constexpr int kGameLump_FileLen = 12;
+
+// Static prop dict entry = char m_Name[128].
+constexpr int kStaticPropNameLen = 128;
+// Stable StaticPropLump_t prefix (identical across versions >= 4):
+//   Vector m_Origin (0), QAngle m_Angles (12), uint16 m_PropType (24),
+//   uint16 m_FirstLeaf (26), uint16 m_LeafCount (28), uint8 m_Solid (30),
+//   uint8 m_Flags (31). Per-prop stride is derived from the lump size so the
+//   version-specific tail (skin/fades/lighting origin/etc.) is ignored.
+constexpr int kSP_Origin = 0;
+constexpr int kSP_Angles = 12;
+constexpr int kSP_PropType = 24;
+constexpr int kSP_FirstLeaf = 26;
+constexpr int kSP_LeafCount = 28;
+constexpr int kSP_Solid = 30;
+constexpr int kSP_Flags = 31;
+constexpr int kSP_PrefixBytes = 32;
 
 // Vertex: Vector (3 floats) = 12B
 constexpr int kSizeofVertex = 12;
@@ -114,6 +142,17 @@ struct Entity {
   float origin[3];
 };
 
+// Parsed static prop (sprp game lump). Only the version-stable prefix is kept.
+struct StaticProp {
+  float origin[3];
+  float angles[3];
+  uint16_t propType;  // index into staticPropNames
+  uint16_t firstLeaf; // index into staticPropLeafs
+  uint16_t leafCount;
+  uint8_t solid; // SOLID_* (6 = VPHYSICS, 2 = BBOX, 0 = none)
+  uint8_t flags;
+};
+
 struct State {
   bool loaded = false;
   char loadedMap[128] = {0};
@@ -140,6 +179,12 @@ struct State {
   std::vector<uint8_t> leafFacesLump; // array of uint16
 
   std::vector<uint8_t> worldlightsLump; // LDR or HDR (LDR preferred)
+
+  // Static props (sprp game lump), parsed into structs at load.
+  int staticPropVersion = 0;
+  std::vector<std::string> staticPropNames; // dict (model paths)
+  std::vector<uint16_t> staticPropLeafs;    // flat leaf-index pool
+  std::vector<StaticProp> staticProps;
 };
 
 static State g;
@@ -216,6 +261,132 @@ void ParseEntities(const std::string &src, std::vector<Entity> &out) {
   }
 }
 
+// Parse the sprp game lump (static props) from the open BSP file.
+// Layout at the sprp blob: int dictCount, char[128] names[dictCount],
+//   int leafCount, uint16 leafs[leafCount], int propCount,
+//   StaticPropLump_t[propCount].
+// The prop struct size varies by version, we derive the stride from the blob
+// size and read only the version-stable prefix.
+// Best-effort: silently leaves the prop list empty on any structural mismatch.
+void ParseStaticProps(FILE *f) {
+  const LumpEntry &gl = g.lumps[LUMP_GAME_LUMP];
+  if (gl.filelen < 4)
+    return;
+  std::vector<uint8_t> dir;
+  if (!ReadFile(f, gl.fileofs, gl.filelen, dir) || dir.size() < 4)
+    return;
+
+  int count = ReadI32(dir.data(), 0);
+  if (count <= 0 ||
+      (size_t)4 + (size_t)count * kSizeofGameLumpEntry > dir.size())
+    return;
+
+  int sprpOfs = -1, sprpLen = 0, sprpVer = 0;
+  for (int i = 0; i < count; ++i) {
+    int base = 4 + i * kSizeofGameLumpEntry;
+    // GameLumpId_t is a multichar int: 'sprp'==('s'<<24)|('p'<<16)|('r'<<8)|'p'
+    // On a little-endian PC BSP it is stored as the raw int,
+    // so the on-disk bytes are 'p','r','p','s'.
+    // Compare the int the way the engine does (id == GAMELUMP_STATIC_PROPS),
+    // not the bytes in name order.
+    int id = ReadI32(dir.data(), base + kGameLump_Id);
+    if (id == kGameLumpSprp) {
+      sprpVer = ReadU16(dir.data(), base + kGameLump_Version);
+      sprpOfs = ReadI32(dir.data(), base + kGameLump_FileOfs);
+      sprpLen = ReadI32(dir.data(), base + kGameLump_FileLen);
+      break;
+    }
+  }
+  if (sprpOfs < 0 || sprpLen < 12)
+    return;
+
+  std::vector<uint8_t> b;
+  if (!ReadFile(f, sprpOfs, sprpLen, b) || b.size() < 12)
+    return;
+
+  size_t p = 0;
+  int dictCount = ReadI32(b.data(), p);
+  p += 4;
+  if (dictCount < 0 ||
+      p + (size_t)dictCount * kStaticPropNameLen + 8 > b.size())
+    return;
+  g.staticPropNames.reserve(dictCount);
+  for (int i = 0; i < dictCount; ++i) {
+    const char *name = (const char *)b.data() + p;
+    size_t n = 0;
+    while (n < (size_t)kStaticPropNameLen && name[n] != '\0')
+      ++n;
+    g.staticPropNames.emplace_back(name, n);
+    p += kStaticPropNameLen;
+  }
+
+  int leafCount = ReadI32(b.data(), p);
+  p += 4;
+  if (leafCount < 0 || p + (size_t)leafCount * 2 + 4 > b.size()) {
+    g.staticPropNames.clear();
+    return;
+  }
+  g.staticPropLeafs.reserve(leafCount);
+  for (int i = 0; i < leafCount; ++i) {
+    g.staticPropLeafs.push_back(ReadU16(b.data(), p));
+    p += 2;
+  }
+
+  int propCount = ReadI32(b.data(), p);
+  p += 4;
+  // Upper bound guards a corrupt count from a huge reserve(). A real map's prop
+  // array also can't exceed the remaining blob at the minimum struct size.
+  if (propCount <= 0 || (size_t)propCount * kSP_PrefixBytes > b.size() - p) {
+    g.staticPropNames.clear();
+    g.staticPropLeafs.clear();
+    return;
+  }
+
+  // Derive per-prop stride from the remaining bytes.
+  // If the exact division fails, retry skipping a leading 4-byte field
+  // (some CSGO versions prepend an unknown int before the prop array).
+  size_t poolStart = p;
+  size_t poolBytes = b.size() - poolStart;
+  int stride = (int)(poolBytes / (size_t)propCount);
+  if (poolBytes % (size_t)propCount != 0 || stride < kSP_PrefixBytes) {
+    if (poolBytes >= 4) {
+      size_t pb2 = poolBytes - 4;
+      int s2 = (int)(pb2 / (size_t)propCount);
+      if (pb2 % (size_t)propCount == 0 && s2 >= kSP_PrefixBytes) {
+        poolStart += 4;
+        stride = s2;
+      }
+    }
+  }
+  if (stride < kSP_PrefixBytes) {
+    g.staticPropNames.clear();
+    g.staticPropLeafs.clear();
+    return;
+  }
+
+  g.staticPropVersion = sprpVer;
+  g.staticProps.reserve(propCount);
+  for (int i = 0; i < propCount; ++i) {
+    size_t off = poolStart + (size_t)i * stride;
+    if (off + kSP_PrefixBytes > b.size())
+      break;
+    const uint8_t *q = b.data() + off;
+    StaticProp sp;
+    sp.origin[0] = ReadF32(q, kSP_Origin + 0);
+    sp.origin[1] = ReadF32(q, kSP_Origin + 4);
+    sp.origin[2] = ReadF32(q, kSP_Origin + 8);
+    sp.angles[0] = ReadF32(q, kSP_Angles + 0);
+    sp.angles[1] = ReadF32(q, kSP_Angles + 4);
+    sp.angles[2] = ReadF32(q, kSP_Angles + 8);
+    sp.propType = ReadU16(q, kSP_PropType);
+    sp.firstLeaf = ReadU16(q, kSP_FirstLeaf);
+    sp.leafCount = ReadU16(q, kSP_LeafCount);
+    sp.solid = ReadU8(q, kSP_Solid);
+    sp.flags = ReadU8(q, kSP_Flags);
+    g.staticProps.push_back(sp);
+  }
+}
+
 } // namespace
 
 void Shutdown() { Clear(); }
@@ -240,6 +411,10 @@ void Clear() {
   g.texdataStringData.clear();
   g.leafFacesLump.clear();
   g.worldlightsLump.clear();
+  g.staticPropVersion = 0;
+  g.staticPropNames.clear();
+  g.staticPropLeafs.clear();
+  g.staticProps.clear();
 }
 
 bool Loaded() { return g.loaded; }
@@ -336,6 +511,10 @@ bool LoadFromMap(const char *mapname, const char *bspPath, char *err,
     ReadFile(f, g.lumps[LUMP_WORLDLIGHTS_HDR].fileofs,
              g.lumps[LUMP_WORLDLIGHTS_HDR].filelen, g.worldlightsLump);
   }
+
+  // Static props (sprp game lump).
+  // Reads sub-blobs at their own absolute offsets.
+  ParseStaticProps(f);
 
   std::fclose(f);
 
@@ -881,6 +1060,98 @@ int WorldlightTexInfo(int idx) {
 int WorldlightOwner(int idx) {
   const uint8_t *p = WLPtr(idx);
   return p ? ReadI32(p, kWL_Owner) : -1;
+}
+
+// Static props (sprp game lump)
+int StaticPropCount() { return g.loaded ? (int)g.staticProps.size() : 0; }
+
+int StaticPropVersion() { return g.loaded ? g.staticPropVersion : 0; }
+
+bool StaticPropOrigin(int idx, float out[3]) {
+  if (idx < 0 || idx >= StaticPropCount())
+    return false;
+  const StaticProp &sp = g.staticProps[idx];
+  out[0] = sp.origin[0];
+  out[1] = sp.origin[1];
+  out[2] = sp.origin[2];
+  return true;
+}
+
+bool StaticPropAngles(int idx, float out[3]) {
+  if (idx < 0 || idx >= StaticPropCount())
+    return false;
+  const StaticProp &sp = g.staticProps[idx];
+  out[0] = sp.angles[0];
+  out[1] = sp.angles[1];
+  out[2] = sp.angles[2];
+  return true;
+}
+
+int StaticPropSolid(int idx) {
+  if (idx < 0 || idx >= StaticPropCount())
+    return -1;
+  return g.staticProps[idx].solid;
+}
+
+int StaticPropFlags(int idx) {
+  if (idx < 0 || idx >= StaticPropCount())
+    return -1;
+  return g.staticProps[idx].flags;
+}
+
+int StaticPropModelName(int idx, char *buf, int maxlen) {
+  if (!buf || maxlen <= 0)
+    return 0;
+  buf[0] = '\0';
+  if (idx < 0 || idx >= StaticPropCount())
+    return 0;
+  int dictIdx = g.staticProps[idx].propType;
+  if (dictIdx < 0 || dictIdx >= (int)g.staticPropNames.size())
+    return 0;
+  const std::string &name = g.staticPropNames[dictIdx];
+  int n = 0;
+  while (n < maxlen - 1 && (size_t)n < name.size()) {
+    buf[n] = name[n];
+    ++n;
+  }
+  buf[n] = '\0';
+  return n;
+}
+
+// Fills outBuf with the BSP leaf indices this prop touches.
+// Returns count written.
+int StaticPropLeaves(int idx, int *outBuf, int maxOut) {
+  if (idx < 0 || idx >= StaticPropCount() || !outBuf || maxOut <= 0)
+    return 0;
+  const StaticProp &sp = g.staticProps[idx];
+  int n = 0;
+  for (int i = 0; i < sp.leafCount && n < maxOut; ++i) {
+    size_t li = (size_t)sp.firstLeaf + i;
+    if (li >= g.staticPropLeafs.size())
+      break;
+    outBuf[n++] = g.staticPropLeafs[li];
+  }
+  return n;
+}
+
+// Index of the static prop whose origin is nearest to pos within maxDist
+// (<= 0 = unlimited). -1 if none.
+int NearestStaticProp(const float pos[3], float maxDist) {
+  int best = -1;
+  float bestSq = (maxDist > 0.0f) ? maxDist * maxDist : 3.4e38f;
+  int count = StaticPropCount();
+  for (int i = 0; i < count; ++i) {
+    const StaticProp &sp = g.staticProps[i];
+    float dx = sp.origin[0] - pos[0];
+    float dy = sp.origin[1] - pos[1];
+    float dz = sp.origin[2] - pos[2];
+    float d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 < bestSq) {
+      bestSq = d2;
+      best = i;
+    }
+  }
+  return best;
 }
 
 } // namespace BSPLumps

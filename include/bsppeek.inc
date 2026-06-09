@@ -384,6 +384,31 @@ native int   BSP_WorldlightFlags(int idx);            // DWL_FLAGS_* bitmask
 native int   BSP_WorldlightTexInfo(int idx);          // associated texinfo index for surface lights, -1 if none
 native int   BSP_WorldlightOwner(int idx);            // entity index owning this light, -1 if none
 
+// Static props (sprp game lump in LUMP_GAME_LUMP)
+// Parsed at map load from the BSP file's version-stable StaticPropLump_t prefix.
+// NOTE: this is the prop PLACEMENT (origin/angles/model), NOT its collision mesh -
+// static props collide via VPhysics (the model's .phy), which is not in the BSP.
+// Use these to identify which prop a ref sits on and key/cache per-prop.
+
+// Number of static props. 0 if none / ext absent.
+native int  BSP_NumStaticProps();
+// sprp game-lump version (commonly 10 or 11). 0 if no static props.
+native int  BSP_StaticPropVersion();
+// World-space placement origin. false if OOB.
+native bool BSP_StaticPropOrigin(int idx, float origin[3]);
+// Placement angles (pitch, yaw, roll). false if OOB.
+native bool BSP_StaticPropAngles(int idx, float angles[3]);
+// SOLID_* collision type (6 = VPHYSICS, 2 = BBOX, 0 = not solid). -1 if OOB.
+native int  BSP_StaticPropSolid(int idx);
+// STATIC_PROP_FLAG_* bitmask. -1 if OOB.
+native int  BSP_StaticPropFlags(int idx);
+// Model path (e.g. "models/props/foo.mdl"). Returns string length.
+native int  BSP_StaticPropModelName(int idx, char[] buf, int maxlen);
+// BSP leaf indices this prop touches. Returns count written (clamped to max).
+native int  BSP_StaticPropLeaves(int idx, int[] buf, int max);
+// Index of the prop whose origin is nearest pos within maxDist (<=0 = unlimited). -1 if none.
+native int  BSP_NearestStaticProp(const float pos[3], float maxDist = 0.0);
+
 stock bool   BSPPeek_Available()
 {
     return LibraryExists("bsppeek");
