@@ -1,8 +1,6 @@
 #include "bsp_props.h"
 #include "bsp_lumps.h"
 
-#include "tier0/platform.h"
-
 #include "bspflags.h"        // MASK_SOLID, MASK_PLAYERSOLID
 #include "const.h"           // SolidType_t
 #include "mathlib/mathlib.h" // Vector, QAngle, matrix3x4_t
