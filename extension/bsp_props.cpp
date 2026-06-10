@@ -1,13 +1,17 @@
 #include "bsp_props.h"
 #include "bsp_lumps.h"
 
-#include "const.h" // MASK_PLAYERSOLID, MASK_SOLID
+#include "tier0/platform.h"
+
+#include "bspflags.h"        // MASK_SOLID, MASK_PLAYERSOLID
+#include "const.h"           // SolidType_t
+#include "mathlib/mathlib.h" // Vector, QAngle, matrix3x4_t
+
 #include "engine/ICollideable.h"
 #include "engine/IEngineTrace.h"
 #include "engine/IStaticPropMgr.h"
 #include "engine/ivmodelinfo.h"
 #include "gametrace.h" // CGameTrace (trace_t) -> pulls cmodel.h/CBaseTrace (Ray_t)
-#include "mathlib/vector.h" // Vector, QAngle
 #include "tier1/utlvector.h"
 #include "vcollide.h"
 #include "vphysics_interface.h"
