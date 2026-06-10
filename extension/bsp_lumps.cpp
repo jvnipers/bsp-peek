@@ -54,11 +54,12 @@ constexpr int kGameLump_FileLen = 12;
 
 // Static prop dict entry = char m_Name[128].
 constexpr int kStaticPropNameLen = 128;
-// Stable StaticPropLump_t prefix (identical across versions >= 4):
-//   Vector m_Origin (0), QAngle m_Angles (12), uint16 m_PropType (24),
-//   uint16 m_FirstLeaf (26), uint16 m_LeafCount (28), uint8 m_Solid (30),
-//   uint8 m_Flags (31). Per-prop stride is derived from the lump size so the
-//   version-specific tail (skin/fades/lighting origin/etc.) is ignored.
+// StaticPropLump_t field offsets.
+// The prefix is identical across versions >= 4,
+// the fields past it appeared incrementally
+// (skin/fades v4, lighting origin v4-6, forced fade scale v5, flagsEx v10).
+// Each is read only when the per-prop stride covers it,
+// so older versions just skip them.
 constexpr int kSP_Origin = 0;
 constexpr int kSP_Angles = 12;
 constexpr int kSP_PropType = 24;
@@ -67,6 +68,12 @@ constexpr int kSP_LeafCount = 28;
 constexpr int kSP_Solid = 30;
 constexpr int kSP_Flags = 31;
 constexpr int kSP_PrefixBytes = 32;
+constexpr int kSP_Skin = 32;            // int
+constexpr int kSP_FadeMinDist = 36;     // float
+constexpr int kSP_FadeMaxDist = 40;     // float
+constexpr int kSP_LightingOrigin = 44;  // Vector (12B)
+constexpr int kSP_ForcedFadeScale = 56; // float (v5+)
+constexpr int kSP_FlagsEx = 72;         // int (v10+)
 
 // Vertex: Vector (3 floats) = 12B
 constexpr int kSizeofVertex = 12;
@@ -142,7 +149,9 @@ struct Entity {
   float origin[3];
 };
 
-// Parsed static prop (sprp game lump). Only the version-stable prefix is kept.
+// Parsed static prop (sprp game lump). Fields past the stable prefix are
+// populated only when the per-prop stride covers them
+// (older lump versions leave them 0).
 struct StaticProp {
   float origin[3];
   float angles[3];
@@ -151,6 +160,12 @@ struct StaticProp {
   uint16_t leafCount;
   uint8_t solid; // SOLID_* (6 = VPHYSICS, 2 = BBOX, 0 = none)
   uint8_t flags;
+  int32_t skin;
+  float fadeMinDist;
+  float fadeMaxDist;
+  float lightingOrigin[3];
+  float forcedFadeScale;
+  int32_t flagsEx;
 };
 
 struct State {
@@ -383,6 +398,23 @@ void ParseStaticProps(FILE *f) {
     sp.leafCount = ReadU16(q, kSP_LeafCount);
     sp.solid = ReadU8(q, kSP_Solid);
     sp.flags = ReadU8(q, kSP_Flags);
+    // Fields past the prefix: read only when the per-prop stride covers them.
+    sp.skin = (stride >= kSP_Skin + 4) ? ReadI32(q, kSP_Skin) : 0;
+    sp.fadeMinDist =
+        (stride >= kSP_FadeMinDist + 4) ? ReadF32(q, kSP_FadeMinDist) : 0.0f;
+    sp.fadeMaxDist =
+        (stride >= kSP_FadeMaxDist + 4) ? ReadF32(q, kSP_FadeMaxDist) : 0.0f;
+    if (stride >= kSP_LightingOrigin + 12) {
+      sp.lightingOrigin[0] = ReadF32(q, kSP_LightingOrigin + 0);
+      sp.lightingOrigin[1] = ReadF32(q, kSP_LightingOrigin + 4);
+      sp.lightingOrigin[2] = ReadF32(q, kSP_LightingOrigin + 8);
+    } else {
+      sp.lightingOrigin[0] = sp.lightingOrigin[1] = sp.lightingOrigin[2] = 0.0f;
+    }
+    sp.forcedFadeScale = (stride >= kSP_ForcedFadeScale + 4)
+                             ? ReadF32(q, kSP_ForcedFadeScale)
+                             : 0.0f;
+    sp.flagsEx = (stride >= kSP_FlagsEx + 4) ? ReadI32(q, kSP_FlagsEx) : 0;
     g.staticProps.push_back(sp);
   }
 }
@@ -1097,6 +1129,42 @@ int StaticPropFlags(int idx) {
   if (idx < 0 || idx >= StaticPropCount())
     return -1;
   return g.staticProps[idx].flags;
+}
+
+int StaticPropSkin(int idx) {
+  if (idx < 0 || idx >= StaticPropCount())
+    return 0;
+  return g.staticProps[idx].skin;
+}
+
+bool StaticPropFadeDist(int idx, float &outMin, float &outMax) {
+  if (idx < 0 || idx >= StaticPropCount())
+    return false;
+  outMin = g.staticProps[idx].fadeMinDist;
+  outMax = g.staticProps[idx].fadeMaxDist;
+  return true;
+}
+
+float StaticPropForcedFadeScale(int idx) {
+  if (idx < 0 || idx >= StaticPropCount())
+    return 0.0f;
+  return g.staticProps[idx].forcedFadeScale;
+}
+
+bool StaticPropLightingOrigin(int idx, float out[3]) {
+  if (idx < 0 || idx >= StaticPropCount())
+    return false;
+  const StaticProp &sp = g.staticProps[idx];
+  out[0] = sp.lightingOrigin[0];
+  out[1] = sp.lightingOrigin[1];
+  out[2] = sp.lightingOrigin[2];
+  return true;
+}
+
+int StaticPropFlagsEx(int idx) {
+  if (idx < 0 || idx >= StaticPropCount())
+    return 0;
+  return g.staticProps[idx].flagsEx;
 }
 
 int StaticPropModelName(int idx, char *buf, int maxlen) {

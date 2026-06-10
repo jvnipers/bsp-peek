@@ -403,10 +403,33 @@ native int   BSP_StaticPropSolid(int idx);
 native int   BSP_StaticPropFlags(int idx);
 // Model path (e.g. "models/props/foo.mdl"). Returns string length.
 native int   BSP_StaticPropModelName(int idx, char[] buf, int maxlen);
+// Fields past the version-stable prefix. 0 / false when the sprp version predates
+// the field (skin/fades v4, lighting origin v4-6, forced fade scale v5, flagsEx v10).
+native int   BSP_StaticPropSkin(int idx);
+native bool  BSP_StaticPropFadeDist(int idx, float &fadeMin, float &fadeMax);
+native float BSP_StaticPropForcedFadeScale(int idx);
+native bool  BSP_StaticPropLightingOrigin(int idx, float origin[3]);
+native int   BSP_StaticPropFlagsEx(int idx);    // STATIC_PROP_FLAGS_EX_* bitmask
 // BSP leaf indices this prop touches. Returns count written (clamped to max).
 native int   BSP_StaticPropLeaves(int idx, int[] buf, int max);
 // Index of the prop whose origin is nearest pos within maxDist (<=0 = unlimited). -1 if none.
 native int   BSP_NearestStaticProp(const float pos[3], float maxDist = 0.0);
+
+// Runtime (post-combine) static props, via the engine's IStaticPropMgr, the actual
+// props the engine collides, unlike the sprp-lump accessors above (pre-combine data).
+// Indexed by static-prop-manager index (the same index BSP_StaticPropAtRay returns).
+// All return 0 / false / -1 when the engine interface is unavailable
+// or idx is out of range.
+native int   BSP_RtStaticPropCount();
+native bool  BSP_RtStaticPropBounds(int idx, float mins[3], float maxs[3]);    // world AABB
+native bool  BSP_RtStaticPropOrigin(int idx, float origin[3]);
+native bool  BSP_RtStaticPropAngles(int idx, float angles[3]);
+native int   BSP_RtStaticPropSolid(int idx);         // SOLID_*
+native int   BSP_RtStaticPropSolidFlags(int idx);    // FSOLID_* bitmask
+native int   BSP_RtStaticPropModelName(int idx, char[] buf, int maxlen);
+// Static-prop index hit by a ray from start to end (identifies the prop under an aim).
+// -1 if the ray hits a brush / nothing.
+native int   BSP_StaticPropAtRay(const float start[3], const float end[3]);
 
 // Sweep an AABB [mins,maxs] from start to end against static prop `idx`
 // (at the prop's origin/angles) via VPhysics.

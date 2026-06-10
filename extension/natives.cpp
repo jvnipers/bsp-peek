@@ -1115,6 +1115,107 @@ cell_t N_StaticPropModelName(IPluginContext *pCtx, const cell_t *params) {
   return n;
 }
 
+cell_t N_StaticPropSkin(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::StaticPropSkin(params[1]);
+}
+
+cell_t N_StaticPropFadeDist(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float mn = 0.0f, mx = 0.0f;
+  bool ok = BSPLumps::StaticPropFadeDist(params[1], mn, mx);
+  cell_t *pMin, *pMax;
+  pCtx->LocalToPhysAddr(params[2], &pMin);
+  pCtx->LocalToPhysAddr(params[3], &pMax);
+  *pMin = sp_ftoc(mn);
+  *pMax = sp_ftoc(mx);
+  return ok ? 1 : 0;
+}
+
+cell_t N_StaticPropForcedFadeScale(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return sp_ftoc(BSPLumps::StaticPropForcedFadeScale(params[1]));
+}
+
+cell_t N_StaticPropLightingOrigin(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float v[3] = {0, 0, 0};
+  bool ok = BSPLumps::StaticPropLightingOrigin(params[1], v);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_StaticPropFlagsEx(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::StaticPropFlagsEx(params[1]);
+}
+
+// Runtime (post-combine) static props (BSPProps via IStaticPropMgr).
+cell_t N_RtStaticPropCount(IPluginContext *, const cell_t *) {
+  return BSPProps::RtCount();
+}
+
+cell_t N_RtStaticPropBounds(IPluginContext *pCtx, const cell_t *params) {
+  float mins[3] = {0, 0, 0}, maxs[3] = {0, 0, 0};
+  bool ok = BSPProps::RtBounds(params[1], mins, maxs);
+  cell_t *pMins, *pMaxs;
+  pCtx->LocalToPhysAddr(params[2], &pMins);
+  pCtx->LocalToPhysAddr(params[3], &pMaxs);
+  for (int i = 0; i < 3; ++i) {
+    pMins[i] = sp_ftoc(mins[i]);
+    pMaxs[i] = sp_ftoc(maxs[i]);
+  }
+  return ok ? 1 : 0;
+}
+
+cell_t N_RtStaticPropOrigin(IPluginContext *pCtx, const cell_t *params) {
+  float v[3] = {0, 0, 0};
+  bool ok = BSPProps::RtOrigin(params[1], v);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_RtStaticPropAngles(IPluginContext *pCtx, const cell_t *params) {
+  float v[3] = {0, 0, 0};
+  bool ok = BSPProps::RtAngles(params[1], v);
+  cell_t *out;
+  pCtx->LocalToPhysAddr(params[2], &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+  return ok ? 1 : 0;
+}
+
+cell_t N_RtStaticPropSolid(IPluginContext *, const cell_t *params) {
+  return BSPProps::RtSolid(params[1]);
+}
+
+cell_t N_RtStaticPropSolidFlags(IPluginContext *, const cell_t *params) {
+  return BSPProps::RtSolidFlags(params[1]);
+}
+
+cell_t N_RtStaticPropModelName(IPluginContext *pCtx, const cell_t *params) {
+  int maxlen = params[3];
+  if (maxlen <= 0)
+    return 0;
+  std::vector<char> tmp(maxlen);
+  int n = BSPProps::RtModelName(params[1], tmp.data(), maxlen);
+  pCtx->StringToLocal(params[2], maxlen, tmp.data());
+  return n;
+}
+
+cell_t N_StaticPropAtRay(IPluginContext *pCtx, const cell_t *params) {
+  float start[3], end[3];
+  cell_to_float3(pCtx, params[1], start);
+  cell_to_float3(pCtx, params[2], end);
+  return BSPProps::PropAtRay(start, end);
+}
+
 cell_t N_StaticPropLeaves(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   int maxOut = params[3];
@@ -1392,8 +1493,23 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_StaticPropSolid", N_StaticPropSolid},
     {"BSP_StaticPropFlags", N_StaticPropFlags},
     {"BSP_StaticPropModelName", N_StaticPropModelName},
+    {"BSP_StaticPropSkin", N_StaticPropSkin},
+    {"BSP_StaticPropFadeDist", N_StaticPropFadeDist},
+    {"BSP_StaticPropForcedFadeScale", N_StaticPropForcedFadeScale},
+    {"BSP_StaticPropLightingOrigin", N_StaticPropLightingOrigin},
+    {"BSP_StaticPropFlagsEx", N_StaticPropFlagsEx},
     {"BSP_StaticPropLeaves", N_StaticPropLeaves},
     {"BSP_NearestStaticProp", N_NearestStaticProp},
+
+    // Runtime (post-combine) static props (engine)
+    {"BSP_RtStaticPropCount", N_RtStaticPropCount},
+    {"BSP_RtStaticPropBounds", N_RtStaticPropBounds},
+    {"BSP_RtStaticPropOrigin", N_RtStaticPropOrigin},
+    {"BSP_RtStaticPropAngles", N_RtStaticPropAngles},
+    {"BSP_RtStaticPropSolid", N_RtStaticPropSolid},
+    {"BSP_RtStaticPropSolidFlags", N_RtStaticPropSolidFlags},
+    {"BSP_RtStaticPropModelName", N_RtStaticPropModelName},
+    {"BSP_StaticPropAtRay", N_StaticPropAtRay},
 
     // Prop collision queries (engine)
     {"BSP_StaticPropTraceHull", N_StaticPropTraceHull},

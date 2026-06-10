@@ -1,7 +1,8 @@
 #include "bsp_props.h"
 #include "bsp_lumps.h"
 
-#include "const.h" // MASK_PLAYERSOLID
+#include "const.h" // MASK_PLAYERSOLID, MASK_SOLID
+#include "engine/ICollideable.h"
 #include "engine/IEngineTrace.h"
 #include "engine/IStaticPropMgr.h"
 #include "engine/ivmodelinfo.h"
@@ -30,6 +31,18 @@ IStaticPropMgrServer *g_staticpropmgr = nullptr;
 // Props commonly share a model, so cache per name.
 // A cached nullptr means "resolved, no collide".
 std::unordered_map<std::string, vcollide_t *> g_vcollideCache;
+
+// Runtime (post-combine) static-prop count, cached per map. -1 = uncomputed.
+int g_rtPropCount = -1;
+
+// Trace filter for "what static prop is along this ray": world + static props
+// only. Under TRACE_EVERYTHING static props always hit and are not passed to
+// ShouldHitEntity, so returning false there just drops dynamic entities.
+class WorldPropsFilter : public ITraceFilter {
+public:
+  bool ShouldHitEntity(IHandleEntity *, int) override { return false; }
+  TraceType_t GetTraceType() const override { return TRACE_EVERYTHING; }
+};
 
 vcollide_t *GetPropVCollide(int propIdx) {
   char name[256];
@@ -121,7 +134,10 @@ int Debug(char *buf, size_t buflen) {
       (size_t)spVt, BSPLumps::StaticPropCount());
 }
 
-void OnMapClear() { g_vcollideCache.clear(); }
+void OnMapClear() {
+  g_vcollideCache.clear();
+  g_rtPropCount = -1;
+}
 
 void Shutdown() {
   g_vcollideCache.clear();
@@ -258,6 +274,113 @@ int TraceHull(int propIdx, const float start[3], const float end[3],
   }
   outFraction = bestFrac;
   return haveHit ? 1 : 0;
+}
+
+// Runtime (post-combine) static props, via IStaticPropMgr + ICollideable
+int RtCount() {
+  if (!g_staticpropmgr)
+    return 0;
+  if (g_rtPropCount < 0) {
+    CUtlVector<ICollideable *> props;
+    g_staticpropmgr->GetAllStaticProps(&props);
+    g_rtPropCount = props.Count();
+  }
+  return g_rtPropCount;
+}
+
+namespace {
+ICollideable *RtProp(int idx) {
+  if (!g_staticpropmgr || idx < 0 || idx >= RtCount())
+    return nullptr;
+  return g_staticpropmgr->GetStaticPropByIndex(idx);
+}
+} // namespace
+
+bool RtBounds(int idx, float outMins[3], float outMaxs[3]) {
+  ICollideable *c = RtProp(idx);
+  if (!c)
+    return false;
+  Vector vmins, vmaxs;
+  c->WorldSpaceSurroundingBounds(&vmins, &vmaxs);
+  outMins[0] = vmins.x;
+  outMins[1] = vmins.y;
+  outMins[2] = vmins.z;
+  outMaxs[0] = vmaxs.x;
+  outMaxs[1] = vmaxs.y;
+  outMaxs[2] = vmaxs.z;
+  return true;
+}
+
+bool RtOrigin(int idx, float out[3]) {
+  ICollideable *c = RtProp(idx);
+  if (!c)
+    return false;
+  const Vector &o = c->GetCollisionOrigin();
+  out[0] = o.x;
+  out[1] = o.y;
+  out[2] = o.z;
+  return true;
+}
+
+bool RtAngles(int idx, float out[3]) {
+  ICollideable *c = RtProp(idx);
+  if (!c)
+    return false;
+  const QAngle &a = c->GetCollisionAngles();
+  out[0] = a.x;
+  out[1] = a.y;
+  out[2] = a.z;
+  return true;
+}
+
+int RtSolid(int idx) {
+  ICollideable *c = RtProp(idx);
+  return c ? (int)c->GetSolid() : -1;
+}
+
+int RtSolidFlags(int idx) {
+  ICollideable *c = RtProp(idx);
+  return c ? c->GetSolidFlags() : -1;
+}
+
+int RtModelName(int idx, char *buf, int maxlen) {
+  if (!buf || maxlen <= 0)
+    return 0;
+  buf[0] = '\0';
+  ICollideable *c = RtProp(idx);
+  if (!c || !g_modelinfo)
+    return 0;
+  const model_t *m = c->GetCollisionModel();
+  if (!m)
+    return 0;
+  const char *name = g_modelinfo->GetModelName(m);
+  if (!name)
+    return 0;
+  int n = 0;
+  while (n < maxlen - 1 && name[n]) {
+    buf[n] = name[n];
+    ++n;
+  }
+  buf[n] = '\0';
+  return n;
+}
+
+int PropAtRay(const float start[3], const float end[3]) {
+  if (!g_enginetrace)
+    return -1;
+  Vector vstart(start[0], start[1], start[2]);
+  Vector vend(end[0], end[1], end[2]);
+  Ray_t ray;
+  ray.Init(vstart, vend);
+  WorldPropsFilter filter;
+  CGameTrace tr;
+  g_enginetrace->TraceRay(ray, MASK_SOLID, &filter, &tr);
+  // A static-prop hit sets the world entity + the prop index in trace.hitbox;
+  // its surface name is "**studio**" (vs a material name for a world brush).
+  if (tr.fraction < 1.0f && tr.surface.name &&
+      std::strcmp(tr.surface.name, "**studio**") == 0)
+    return tr.hitbox;
+  return -1;
 }
 
 } // namespace BSPProps

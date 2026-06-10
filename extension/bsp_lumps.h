@@ -142,6 +142,13 @@ bool StaticPropAngles(int idx, float out[3]); // pitch/yaw/roll
 int StaticPropSolid(int idx);                 // SOLID_* (6=VPHYSICS), -1 if OOB
 int StaticPropFlags(int idx);                 // STATIC_PROP_FLAG_*, -1 if OOB
 int StaticPropModelName(int idx, char *buf, int maxlen); // returns length
+// Fields past the version-stable prefix.
+// 0 / false when the lump version is too old to contain them.
+int StaticPropSkin(int idx);
+bool StaticPropFadeDist(int idx, float &outMin, float &outMax);
+float StaticPropForcedFadeScale(int idx);
+bool StaticPropLightingOrigin(int idx, float out[3]);
+int StaticPropFlagsEx(int idx);
 // BSP leaf indices the prop touches. Returns count written (clamped to maxOut).
 int StaticPropLeaves(int idx, int *outBuf, int maxOut);
 // Nearest prop by origin within maxDist (<=0 = unlimited). -1 if none.
