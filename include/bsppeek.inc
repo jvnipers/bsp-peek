@@ -391,23 +391,36 @@ native int   BSP_WorldlightOwner(int idx);            // entity index owning thi
 // Use these to identify which prop a ref sits on and key/cache per-prop.
 
 // Number of static props. 0 if none / ext absent.
-native int  BSP_NumStaticProps();
+native int   BSP_NumStaticProps();
 // sprp game-lump version (commonly 10 or 11). 0 if no static props.
-native int  BSP_StaticPropVersion();
+native int   BSP_StaticPropVersion();
 // World-space placement origin. false if OOB.
-native bool BSP_StaticPropOrigin(int idx, float origin[3]);
+native bool  BSP_StaticPropOrigin(int idx, float origin[3]);
 // Placement angles (pitch, yaw, roll). false if OOB.
-native bool BSP_StaticPropAngles(int idx, float angles[3]);
+native bool  BSP_StaticPropAngles(int idx, float angles[3]);
 // SOLID_* collision type (6 = VPHYSICS, 2 = BBOX, 0 = not solid). -1 if OOB.
-native int  BSP_StaticPropSolid(int idx);
+native int   BSP_StaticPropSolid(int idx);
 // STATIC_PROP_FLAG_* bitmask. -1 if OOB.
-native int  BSP_StaticPropFlags(int idx);
+native int   BSP_StaticPropFlags(int idx);
 // Model path (e.g. "models/props/foo.mdl"). Returns string length.
-native int  BSP_StaticPropModelName(int idx, char[] buf, int maxlen);
+native int   BSP_StaticPropModelName(int idx, char[] buf, int maxlen);
 // BSP leaf indices this prop touches. Returns count written (clamped to max).
-native int  BSP_StaticPropLeaves(int idx, int[] buf, int max);
+native int   BSP_StaticPropLeaves(int idx, int[] buf, int max);
 // Index of the prop whose origin is nearest pos within maxDist (<=0 = unlimited). -1 if none.
-native int  BSP_NearestStaticProp(const float pos[3], float maxDist = 0.0);
+native int   BSP_NearestStaticProp(const float pos[3], float maxDist = 0.0);
+
+// Sweep the player AABB [mins,maxs] from start to end against static prop `idx`
+// (at the prop's origin/angles) using VPhysics - the exact engine collision,
+// isolated to this one prop so unrelated world geometry never start-solids it.
+// Fills fraction (1.0 = no hit), endpos, surface normal, and startSolid.
+// Returns: -1 = unavailable (ext built without metamod / no IPhysicsCollision /
+//               prop has no collision model), 0 = resolved no hit, 1 = hit.
+// Requires the engine/vphysics interfaces, check BSPPeek_Available()
+// for the ext and treat -1 as "fall back to a normal trace".
+native int   BSP_StaticPropTraceHull(int idx, const float start[3], const float end[3],
+                                     const float mins[3], const float maxs[3],
+                                     float &fraction, float endpos[3], float normal[3],
+                                     bool &startSolid);
 
 stock bool   BSPPeek_Available()
 {

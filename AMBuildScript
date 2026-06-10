@@ -92,6 +92,17 @@ class ExtensionConfig(object):
       raise Exception('Could not find a source copy of SourceMod')
     self.sm_root = Normalize(self.sm_root)
 
+    # HL2SDK (CSGO) for the static-prop VPhysics collision module (bsp_props).
+    # Vendored in-repo; override with HL2SDKCSGO.
+    # Headers only (interface vtable calls + inline math), no SDK import libs are linked.
+    if builder.options.hl2sdk_path:
+      self.hl2sdk_root = builder.options.hl2sdk_path
+    else:
+      self.hl2sdk_root = ResolveEnvPath('HL2SDKCSGO', 'hl2sdk-csgo')
+    if not self.hl2sdk_root or not os.path.isdir(self.hl2sdk_root):
+      raise Exception('Could not find a source copy of HL2SDK (CSGO)')
+    self.hl2sdk_root = Normalize(self.hl2sdk_root)
+
   def configure(self):
     allowed_archs = ['x86','x86_64']
     if not set(self.target_archs).issubset(allowed_archs):
@@ -141,6 +152,7 @@ class ExtensionConfig(object):
       '-Wno-overloaded-virtual',
       '-fvisibility-inlines-hidden',
       '-std=gnu++17',
+      '-Wno-register',
     ]
     if cxx.family == 'gcc':
       cxx.cflags += ['-mfpmath=sse']
@@ -220,6 +232,19 @@ class ExtensionConfig(object):
       os.path.join(self.mms_root, 'core', 'sourcehook'),
     ]
     compiler.defines += ['META_NO_HL2SDK']
+    # HL2SDK headers for bsp_props (IVModelInfo / IPhysicsCollision / CGameTrace).
+    # Header-only use (interface vtable calls + inline math) - no SDK import libs.
+    compiler.cxxincludes += [
+      os.path.join(self.hl2sdk_root, 'public'),
+      os.path.join(self.hl2sdk_root, 'public', 'engine'),
+      os.path.join(self.hl2sdk_root, 'public', 'mathlib'),
+      os.path.join(self.hl2sdk_root, 'public', 'tier0'),
+      os.path.join(self.hl2sdk_root, 'public', 'tier1'),
+    ]
+    if compiler.like('msvc'):
+      compiler.defines += ['COMPILER_MSVC', 'COMPILER_MSVC32']
+    else:
+      compiler.defines += ['COMPILER_GCC']
     return binary
 
   def HL2Library(self, context, name):

@@ -23,6 +23,22 @@
                 "linux"     "\x55\x89\xE5\x57\x56\x53\x81\xEC\x2A\x2A\x2A\x2A\x8B\x45\x2A\x6A\x01\x6A\x1A\x89\x85\x2A\x2A\x2A\x2A\x8B\x45\x2A\x89\x85"
                 "windows"   "\x55\x8B\xEC\xB8\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x53\x56\x57\x51\x89\x4D\x2A\x8D\x8D\x2A\x2A\x2A\x2A\x6A\x1A\x89\x55\x2A\xE8"
             }
+
+            // Server-module global interface pointers, for static-prop VPhysics collision (bsp_props).
+            // The address resolves to the global variable itself;
+            // the ext derefs it for the interface pointer.
+            //   IVModelInfo      *modelinfo;
+            //   IPhysicsCollision *physcollision;
+            "modelinfo_global"
+            {
+                "library"   "server"
+                "linux"     "TODO"
+            }
+            "physcollision_global"
+            {
+                "library"   "server"
+                "linux"     "TODO"
+            }
         }
 
         "Addresses"
@@ -89,6 +105,17 @@
                 {
                     "read"  "389"
                 }
+            }
+
+            // Static-prop collision globals (server module).
+            // No "read": the symbol address IS the global variable's address, ext derefs it.
+            "modelinfo"
+            {
+                "signature" "TODO"
+            }
+            "physcollision"
+            {
+                "signature" "TODO"
             }
         }
         "Keys"

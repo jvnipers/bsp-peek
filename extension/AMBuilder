@@ -9,6 +9,7 @@ sourceFiles = [
   'bsp_data.cpp',
   'bsp_disp.cpp',
   'bsp_lumps.cpp',
+  'bsp_props.cpp',
 ]
 
 project = Extension.HL2Project(builder, projectName + '.ext')

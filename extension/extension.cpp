@@ -2,6 +2,7 @@
 #include "bsp_data.h"
 #include "bsp_disp.h"
 #include "bsp_lumps.h"
+#include "bsp_props.h"
 #include <IGameHelpers.h>
 
 BSPPeek g_BSPPeek;
@@ -23,6 +24,15 @@ bool BSPPeek::SDK_OnLoad(char *error, size_t maxlen, bool late) {
                         dispEngErr);
   } else {
     smutils->LogMessage(myself, "Engine displacement reader initialized");
+  }
+
+  // Static-prop collision (IVModelInfo + IPhysicsCollision via gamedata addresses).
+  // Non-fatal: stays disabled (TraceHull -> -1) if the addresses aren't resolvable.
+  char propErr[256] = {0};
+  if (!BSPProps::Init(gameconf, propErr, sizeof(propErr))) {
+    smutils->LogMessage(myself, "Static-prop collision disabled: %s", propErr);
+  } else {
+    smutils->LogMessage(myself, "Static-prop collision initialized");
   }
 
   gameconfs->CloseGameConfigFile(gameconf);
@@ -47,6 +57,7 @@ void BSPPeek::SDK_OnUnload() {
   BSPDisp::Clear();
   BSPDisp::ShutdownEngine();
   BSPLumps::Shutdown();
+  BSPProps::Shutdown();
 }
 
 void BSPPeek::SDK_OnAllLoaded() {}
@@ -56,6 +67,7 @@ bool BSPPeek::QueryRunning(char *error, size_t maxlen) { return true; }
 void BSPPeek::OnCoreMapStart(edict_t *pEdictList, int edictCount,
                              int clientMax) {
   BSPData::OnMapStart();
+  BSPProps::OnMapClear();
 
   const char *mapname = gamehelpers->GetCurrentMap();
   if (!mapname || !mapname[0])

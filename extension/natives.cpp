@@ -2,6 +2,7 @@
 #include "bsp_data.h"
 #include "bsp_disp.h"
 #include "bsp_lumps.h"
+#include "bsp_props.h"
 #include <IGameHelpers.h>
 #include <cmath>
 #include <cstring>
@@ -1135,6 +1136,31 @@ cell_t N_NearestStaticProp(IPluginContext *pCtx, const cell_t *params) {
   return BSPLumps::NearestStaticProp(pos, sp_ctof(params[2]));
 }
 
+cell_t N_StaticPropTraceHull(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float start[3], end[3], mins[3], maxs[3];
+  cell_to_float3(pCtx, params[2], start);
+  cell_to_float3(pCtx, params[3], end);
+  cell_to_float3(pCtx, params[4], mins);
+  cell_to_float3(pCtx, params[5], maxs);
+  float frac = 1.0f, endpos[3] = {0, 0, 0}, normal[3] = {0, 0, 0};
+  bool startSolid = false;
+  int rc = BSPProps::TraceHull(params[1], start, end, mins, maxs, frac, endpos,
+                               normal, startSolid);
+  cell_t *pFrac, *pEnd, *pNorm, *pSS;
+  pCtx->LocalToPhysAddr(params[6], &pFrac);
+  pCtx->LocalToPhysAddr(params[7], &pEnd);
+  pCtx->LocalToPhysAddr(params[8], &pNorm);
+  pCtx->LocalToPhysAddr(params[9], &pSS);
+  *pFrac = sp_ftoc(frac);
+  for (int i = 0; i < 3; ++i) {
+    pEnd[i] = sp_ftoc(endpos[i]);
+    pNorm[i] = sp_ftoc(normal[i]);
+  }
+  *pSS = startSolid ? 1 : 0;
+  return rc;
+}
+
 extern const sp_nativeinfo_t g_BSPNatives[] = {
     // Misc
     {"BSP_MapPathName", N_MapPathName},
@@ -1210,7 +1236,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_CModelOrigin", N_CModelOrigin},
     {"BSP_CModelHeadnode", N_CModelHeadnode},
 
-    // High-level pixelsurf
+    // "pixelsurf"
     {"BSP_FindBrushPairAtSeam", N_FindBrushPairAtSeam},
 
     // Brush cache
@@ -1331,6 +1357,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_StaticPropModelName", N_StaticPropModelName},
     {"BSP_StaticPropLeaves", N_StaticPropLeaves},
     {"BSP_NearestStaticProp", N_NearestStaticProp},
+    {"BSP_StaticPropTraceHull", N_StaticPropTraceHull},
 
     {nullptr, nullptr},
 };
