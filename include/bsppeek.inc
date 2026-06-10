@@ -386,9 +386,8 @@ native int   BSP_WorldlightOwner(int idx);            // entity index owning thi
 
 // Static props (sprp game lump in LUMP_GAME_LUMP)
 // Parsed at map load from the BSP file's version-stable StaticPropLump_t prefix.
-// NOTE: this is the prop PLACEMENT (origin/angles/model), NOT its collision mesh -
-// static props collide via VPhysics (the model's .phy), which is not in the BSP.
-// Use these to identify which prop a ref sits on and key/cache per-prop.
+// NOTE: this is the prop PLACEMENT (origin/angles/model), NOT its collision mesh.
+// Static props collide via VPhysics (the model's .phy), which is not in the BSP.
 
 // Number of static props. 0 if none / ext absent.
 native int   BSP_NumStaticProps();
@@ -409,18 +408,34 @@ native int   BSP_StaticPropLeaves(int idx, int[] buf, int max);
 // Index of the prop whose origin is nearest pos within maxDist (<=0 = unlimited). -1 if none.
 native int   BSP_NearestStaticProp(const float pos[3], float maxDist = 0.0);
 
-// Sweep the player AABB [mins,maxs] from start to end against static prop `idx`
-// (at the prop's origin/angles) using VPhysics - the exact engine collision,
-// isolated to this one prop so unrelated world geometry never start-solids it.
-// Fills fraction (1.0 = no hit), endpos, surface normal, and startSolid.
-// Returns: -1 = unavailable (ext built without metamod / no IPhysicsCollision /
-//               prop has no collision model), 0 = resolved no hit, 1 = hit.
-// Requires the engine/vphysics interfaces, check BSPPeek_Available()
-// for the ext and treat -1 as "fall back to a normal trace".
+// Sweep an AABB [mins,maxs] from start to end against static prop `idx`
+// (at the prop's origin/angles) via VPhysics.
+// The exact engine collision, isolated to this one prop by its model's vcollide.
+// Fills fraction (1.0 = no hit), endpos, surface, normal, startSolid.
+// Returns: -1 = unavailable (IVModelInfo/IPhysicsCollision not resolved,
+//               or the prop has no collision model), 0 = no hit, 1 = hit.
+// NOTE: resolves the prop's collision by model name, does NOT work for prop-combine
+// (autocombine) models. Prefer BSP_StaticPropHullSweep, which uses the runtime props.
 native int   BSP_StaticPropTraceHull(int idx, const float start[3], const float end[3],
                                      const float mins[3], const float maxs[3],
                                      float &fraction, float endpos[3], float normal[3],
                                      bool &startSolid);
+
+// Sweep an AABB [mins,maxs] from start to end against the static props in the swept
+// volume, via the engine's runtime collideables (IEngineTrace::ClipRayToCollideable).
+// Works for prop-combine (autocombine) maps. No prop index or model loading needed.
+// Each prop is clipped independently, so the swept box can contact several stacked or
+// adjacent props, the contact whose surface (endpos.z + maxs.z) is nearest refZ wins.
+// Fills fraction (1.0 = no hit), endpos, surface normal, startSolid.
+// Returns: -1 = unavailable (IEngineTrace/IStaticPropMgr not resolved), 0 = no hit, 1 = hit.
+native int   BSP_StaticPropHullSweep(const float start[3], const float end[3],
+                                     const float mins[3], const float maxs[3], float refZ,
+                                     float &fraction, float endpos[3], float normal[3],
+                                     bool &startSolid);
+
+// Writes the resolved interface pointers + vtable pointers + static-prop count into buf.
+// Confirms the gamedata-resolved globals are real. Returns length.
+native int   BSP_StaticPropDebug(char[] buf, int maxlen);
 
 stock bool   BSPPeek_Available()
 {

@@ -24,20 +24,27 @@
                 "windows"   "\x55\x8B\xEC\xB8\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x53\x56\x57\x51\x89\x4D\x2A\x8D\x8D\x2A\x2A\x2A\x2A\x6A\x1A\x89\x55\x2A\xE8"
             }
 
-            // Server-module global interface pointers, for static-prop VPhysics collision (bsp_props).
-            // The address resolves to the global variable itself;
-            // the ext derefs it for the interface pointer.
-            //   IVModelInfo      *modelinfo;
-            //   IPhysicsCollision *physcollision;
+            // Server-module global interface pointers, for static-prop collision (bsp_props).
+            // Anchor: CServerGameDLL::DLLInit grabs each interface and stores it (`mov [global], eax`).
+            // sig = prologue of the storing fn, Addresses "read" = offset to that store's imm32 -> &global,
+            // which the ext derefs once.
+            // modelinfo/enginetrace/staticpropmgr all live in DLLInit (one fn),
+            // so they share modelinfo_global. physcollision is grabbed in a separate fn.
+            //   Linux  DLLInit fn 0x700700: modelinfo read 0x497, enginetrace 0x4B4, staticpropmgr 0x42B
+            //   Linux  physcollision fn 0x776750: read 0x4E
+            //   Win    DLLInit fn 0x102A2C60: modelinfo 0x129, enginetrace 0x13E, staticpropmgr 0xD5
+            //   Win    physcollision fn 0x102F5ED0: read 0x42
             "modelinfo_global"
             {
                 "library"   "server"
-                "linux"     "TODO"
+                "linux"     "\x55\x89\xE5\x57\x56\x53\x8D\x5D\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x58\x5A\x6A\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x59\x5E\x6A\x2A\x2A\x2A\x2A\x2A"
+                "windows"   "\x55\x8B\xEC\x83\xEC\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A\x2A\x89\x4D\x2A\x2A\x2A\x2A\x4D\x2A\x2A\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A"
             }
             "physcollision_global"
             {
                 "library"   "server"
-                "linux"     "TODO"
+                "linux"     "\x55\x89\xE5\x53\x8D\x45\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x8B\x45\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x84\x2A\x2A\x2A\x2A\x83\xEC\x2A\x2A\x2A\x2A\x2A"
+                "windows"   "\x55\x8B\xEC\x83\xEC\x2A\x2A\x2A\x2A\x05\x2A\x2A\x2A\x2A\xA1\x2A\x2A\x2A\x2A\x66\x0F\xD6\x45\x2A\x2A\x2A\x2A\x85\xC0\x74\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x2A\xFF\xD0"
             }
         }
 
@@ -107,15 +114,57 @@
                 }
             }
 
-            // Static-prop collision globals (server module).
-            // No "read": the symbol address IS the global variable's address, ext derefs it.
+            // Static-prop collision globals (server module). read = byte offset of the
+            // imm32 operand of `mov [global], eax` from the sig (= storing-fn prologue).
+            // GetAddress returns &global, the ext derefs it for the interface pointer.
             "modelinfo"
             {
-                "signature" "TODO"
+                "signature" "modelinfo_global"
+                "linux"
+                {
+                    "read"  "1175"
+                }
+                "windows"
+                {
+                    "read"  "297"
+                }
             }
             "physcollision"
             {
-                "signature" "TODO"
+                "signature" "physcollision_global"
+                "linux"
+                {
+                    "read"  "78"
+                }
+                "windows"
+                {
+                    "read"  "66"
+                }
+            }
+            // enginetrace + staticpropmgr: same DLLInit fn -> reuse modelinfo_global sig.
+            "enginetrace"
+            {
+                "signature" "modelinfo_global"
+                "linux"
+                {
+                    "read"  "1204"
+                }
+                "windows"
+                {
+                    "read"  "318"
+                }
+            }
+            "staticpropmgr"
+            {
+                "signature" "modelinfo_global"
+                "linux"
+                {
+                    "read"  "1067"
+                }
+                "windows"
+                {
+                    "read"  "213"
+                }
             }
         }
         "Keys"

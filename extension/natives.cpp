@@ -1136,6 +1136,43 @@ cell_t N_NearestStaticProp(IPluginContext *pCtx, const cell_t *params) {
   return BSPLumps::NearestStaticProp(pos, sp_ctof(params[2]));
 }
 
+cell_t N_StaticPropHullSweep(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float start[3], end[3], mins[3], maxs[3];
+  cell_to_float3(pCtx, params[1], start);
+  cell_to_float3(pCtx, params[2], end);
+  cell_to_float3(pCtx, params[3], mins);
+  cell_to_float3(pCtx, params[4], maxs);
+  float refZ = sp_ctof(params[5]);
+  float frac = 1.0f, endpos[3] = {0, 0, 0}, normal[3] = {0, 0, 0};
+  bool startSolid = false;
+  int rc = BSPProps::HullSweep(start, end, mins, maxs, refZ, frac, endpos,
+                               normal, startSolid);
+  cell_t *pFrac, *pEnd, *pNorm, *pSS;
+  pCtx->LocalToPhysAddr(params[6], &pFrac);
+  pCtx->LocalToPhysAddr(params[7], &pEnd);
+  pCtx->LocalToPhysAddr(params[8], &pNorm);
+  pCtx->LocalToPhysAddr(params[9], &pSS);
+  *pFrac = sp_ftoc(frac);
+  for (int i = 0; i < 3; ++i) {
+    pEnd[i] = sp_ftoc(endpos[i]);
+    pNorm[i] = sp_ftoc(normal[i]);
+  }
+  *pSS = startSolid ? 1 : 0;
+  return rc;
+}
+
+cell_t N_StaticPropDebug(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int maxlen = params[2];
+  if (maxlen <= 0)
+    return 0;
+  std::vector<char> tmp(maxlen);
+  int n = BSPProps::Debug(tmp.data(), maxlen);
+  pCtx->StringToLocal(params[1], maxlen, tmp.data());
+  return n;
+}
+
 cell_t N_StaticPropTraceHull(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   float start[3], end[3], mins[3], maxs[3];
@@ -1357,7 +1394,11 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_StaticPropModelName", N_StaticPropModelName},
     {"BSP_StaticPropLeaves", N_StaticPropLeaves},
     {"BSP_NearestStaticProp", N_NearestStaticProp},
+
+    // Prop collision queries (engine)
     {"BSP_StaticPropTraceHull", N_StaticPropTraceHull},
+    {"BSP_StaticPropHullSweep", N_StaticPropHullSweep},
+    {"BSP_StaticPropDebug", N_StaticPropDebug},
 
     {nullptr, nullptr},
 };

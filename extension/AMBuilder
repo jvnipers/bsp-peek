@@ -15,10 +15,8 @@ sourceFiles = [
 project = Extension.HL2Project(builder, projectName + '.ext')
 
 if os.path.isfile(os.path.join(builder.currentSourcePath, 'sdk', 'smsdk_ext.cpp')):
-  # Use the copy included in the project
   project.sources += [os.path.join('sdk', 'smsdk_ext.cpp')]
 else:
-  # Use the copy included with SM 1.6 and newer
   project.sources += [os.path.join(Extension.sm_root, 'public', 'smsdk_ext.cpp')]
 
 project.sources += sourceFiles
@@ -26,5 +24,22 @@ project.sources += sourceFiles
 for cxx in builder.targets:
   binary = Extension.HL2Config(builder, project, projectName + '.ext', cxx)
   binary.compiler.linkflags += ['psapi.lib'] if cxx.target.platform == 'windows' else ['-ldl']
+
+  sdklib = os.path.join(Extension.hl2sdk_root, 'lib')
+  if cxx.target.platform == 'windows':
+    binary.compiler.linkflags += [
+      os.path.join(sdklib, 'public', 'tier0.lib'),
+      os.path.join(sdklib, 'public', 'tier1.lib'),
+      os.path.join(sdklib, 'public', 'vstdlib.lib'),
+      os.path.join(sdklib, 'public', 'mathlib.lib'),
+    ]
+  else:
+    binary.compiler.linkflags += [
+      os.path.join(sdklib, 'linux', 'tier1_i486.a'),
+      os.path.join(sdklib, 'linux', 'mathlib_i486.a'),
+      '-L' + os.path.join(sdklib, 'linux'),
+      '-ltier0',
+      '-lvstdlib',
+    ]
 
 Extension.extensions = builder.Add(project)
