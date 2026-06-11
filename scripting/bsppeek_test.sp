@@ -409,6 +409,11 @@ void Section_Point()
     int lo, hi, sleaf, lpos, upos, blo, bhi;
     P("FindBrushPairAtSeam   : %d", BSP_FindBrushPairAtSeam(pos, pos[2], lo, hi));
     P("FindBoxBrushPairAtSeam: %d", BSP_FindBoxBrushPairAtSeam(pos, pos[2], blo, bhi));
+    int   obox, oface;
+    float ocoord, obz, oh;
+    P("FindBoxBrushOverhang  : %d (box=%d face=%d wall=%.2f bottomZ=%.2f H=%.2f)",
+      BSP_FindBoxBrushOverhang(pos, obox, oface, ocoord, obz, oh),
+      obox, oface, ocoord, obz, oh);
     P("LeafBrushPairAtSeam   : %d (leaf=%d lpos=%d upos=%d)",
       BSP_LeafBrushPairAtSeam(pos, pos[2], lo, hi, sleaf, lpos, upos), sleaf, lpos, upos);
 

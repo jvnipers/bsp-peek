@@ -572,6 +572,27 @@ cell_t N_FindBoxBrushPairAtSeam(IPluginContext *pCtx, const cell_t *params) {
   return ok ? 1 : 0;
 }
 
+cell_t N_FindBoxBrushOverhang(IPluginContext *pCtx, const cell_t *params) {
+  float p[3];
+  cell_to_float3(pCtx, params[1], p);
+  int boxIdx = -1, face = -1;
+  float wallCoord = 0.f, bottomZ = 0.f, height = 0.f;
+  bool ok = BSPData::FindBoxBrushOverhang(p, boxIdx, face, wallCoord, bottomZ,
+                                          height);
+  cell_t *o = nullptr;
+  pCtx->LocalToPhysAddr(params[2], &o);
+  *o = boxIdx;
+  pCtx->LocalToPhysAddr(params[3], &o);
+  *o = face;
+  pCtx->LocalToPhysAddr(params[4], &o);
+  *o = sp_ftoc(wallCoord);
+  pCtx->LocalToPhysAddr(params[5], &o);
+  *o = sp_ftoc(bottomZ);
+  pCtx->LocalToPhysAddr(params[6], &o);
+  *o = sp_ftoc(height);
+  return ok ? 1 : 0;
+}
+
 cell_t N_LeafBrushPairAtSeam(IPluginContext *pCtx, const cell_t *params) {
   float p[3];
   cell_to_float3(pCtx, params[1], p);
@@ -1759,6 +1780,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     // "pixelsurf"
     {"BSP_FindBrushPairAtSeam", N_FindBrushPairAtSeam},
     {"BSP_FindBoxBrushPairAtSeam", N_FindBoxBrushPairAtSeam},
+    {"BSP_FindBoxBrushOverhang", N_FindBoxBrushOverhang},
     {"BSP_LeafBrushPairAtSeam", N_LeafBrushPairAtSeam},
 
     // Brush cache

@@ -227,6 +227,18 @@ bool FindBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower,
 bool FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
                             int &outLower, int &outUpper);
 
+// Texturebug overhang.
+// Scans the cboxbrush_t table for a SOLID box brush whose XY AABB contains
+// samplePos, whose underside (mins.z) is open to air,
+// and which has >=1 exposed vertical wall face.
+// Returns the BOX-TABLE index plus the hugged wall
+// (face axis+sign, world coord), the underside z, and the brush height.
+// Among exposed lateral faces, picks the one whose outward normal points toward
+// samplePos. false if none.
+bool FindBoxBrushOverhang(const float samplePos[3], int &outBoxIdx,
+                          int &outFace, float &outWallCoord, float &outBottomZ,
+                          float &outHeight);
+
 // FindBrushPairAtSeam + leaf-visit-order check in one call.
 // Resolves the lower/upper brushes at the seam, then walks to the leaf just
 // below seamZ (samplePos.xy, seamZ - 0.5) and finds each brush's position in

@@ -234,6 +234,28 @@ native bool BSP_FindBrushPairAtSeam(const float samplePos[3], float seamZ,
 native bool BSP_FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
                                        int &outLowerBox, int &outUpperBox);
 
+// Texturebug overhang geometry.
+// Finds a solid box brush at samplePos' XY column whose underside (-Z) is open
+// AND which has an exposed vertical wall the player can hug.
+// Box-table index space (use BSP_BoxBrush*).
+//
+//   samplePos : probe location (player pos / aim point).
+//   boxIdx    : cboxbrush_t index of the overhang brush.
+//   face      : hugged wall, axis+sign of its OUTWARD normal:
+//                 0 = -X, 1 = +X, 2 = -Y, 3 = +Y
+//               (player presses in the -normal direction).
+//               If multiple lateral faces are exposed, the one facing samplePos is returned.
+//   wallCoord : world coord of that wall plane (brush mins/maxs on the face axis).
+//   bottomZ   : underside z (= brush mins.z);
+//               the plane the player crosses to trigger the bug.
+//   height    : brush vertical extent (maxs.z - mins.z); Ineq(10) numerator term.
+//
+// Returns true if an overhang was found at samplePos' XY column.
+// Full AABB via BSP_BoxBrushBounds(boxIdx, ...); contents via BSP_BoxBrushContents.
+native bool BSP_FindBoxBrushOverhang(const float samplePos[3], int &boxIdx,
+                                     int &face, float &wallCoord, float &bottomZ,
+                                     float &height);
+
 // BSP_FindBrushPairAtSeam + the leaf-visit-order gate in one call.
 // Resolves the lower/upper brushes at the seam, then samples the leaf just
 // below seamZ and reports each brush's position in that leaf's brush list.

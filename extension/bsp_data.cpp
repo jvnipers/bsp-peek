@@ -1607,6 +1607,100 @@ bool FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
   return (outLower >= 0 && outUpper >= 0);
 }
 
+// Texturebug overhang.
+// Scans the cboxbrush_t table for a SOLID box brush whose XY AABB contains
+// samplePos, whose underside (mins.z) is open to air,
+// and which has >=1 exposed vertical wall face.
+// Returns the BOX-TABLE index plus the hugged wall
+// (face axis+sign, world coord), the underside z, and the brush height.
+// Among exposed lateral faces, picks the one whose outward normal points toward
+// samplePos. false if none.
+bool FindBoxBrushOverhang(const float samplePos[3], int &outBoxIdx,
+                          int &outFace, float &outWallCoord, float &outBottomZ,
+                          float &outHeight) {
+  outBoxIdx = -1;
+  outFace = -1;
+  outWallCoord = 0.f;
+  outBottomZ = 0.f;
+  outHeight = 0.f;
+  if (!g_pBSPData)
+    return false;
+  const int CONTENTS_SOLID = 0x1;
+  const float PROBE = 1.0f; // clear the eps-bevel padding box brushes carry
+  int nb = GetNumBoxBrushes();
+  if (nb <= 0)
+    return false;
+
+  for (int i = 0; i < nb; ++i) {
+    float mn[3], mx[3];
+    if (!BoxBrushBounds(i, mn, mx))
+      continue;
+    // XY AABB containment (0.1u slack mirrors FindBoxBrushPairAtSeam).
+    if (samplePos[0] < mn[0] - 0.1f || samplePos[0] > mx[0] + 0.1f)
+      continue;
+    if (samplePos[1] < mn[1] - 0.1f || samplePos[1] > mx[1] + 0.1f)
+      continue;
+    if ((BoxBrushContents(i) & CONTENTS_SOLID) == 0)
+      continue; // only solid box brushes carry the texturebug collision
+
+    // Underside must be open: the player has to fall past the bottom face.
+    float cx = samplePos[0] < mn[0]
+                   ? mn[0]
+                   : (samplePos[0] > mx[0] ? mx[0] : samplePos[0]);
+    float cy = samplePos[1] < mn[1]
+                   ? mn[1]
+                   : (samplePos[1] > mx[1] ? mx[1] : samplePos[1]);
+    float probeBelow[3] = {cx, cy, mn[2] - PROBE};
+    if (PointContentsBrushes(probeBelow) & CONTENTS_SOLID)
+      continue; // underside buried -> nothing to drop past
+
+    float midZ = (mn[2] + mx[2]) * 0.5f;
+
+    // Pick an exposed lateral wall. Two passes: first prefer the face whose
+    // outward normal points toward samplePos (the side the player approaches);
+    // if none of those are exposed, take the first exposed lateral face.
+    int bestFace = -1;
+    float bestCoord = 0.f;
+    for (int pass = 0; pass < 2 && bestFace < 0; ++pass) {
+      for (int face = 0; face < 4; ++face) {
+        int axis = face >> 1; // 0 = X, 1 = Y
+        int otherAxis = axis ^ 1;
+        bool positive = (face & 1); // odd = +axis face
+        float wallCoord = positive ? mx[axis] : mn[axis];
+
+        if (pass == 0) {
+          // require the outward normal to point toward samplePos on this axis
+          bool sampleOutward = positive ? (samplePos[axis] > mx[axis])
+                                        : (samplePos[axis] < mn[axis]);
+          if (!sampleOutward)
+            continue;
+        }
+
+        // probe one unit outside the face center at mid height
+        float probeOut[3];
+        probeOut[axis] = wallCoord + (positive ? PROBE : -PROBE);
+        probeOut[otherAxis] = (mn[otherAxis] + mx[otherAxis]) * 0.5f;
+        probeOut[2] = midZ;
+        if (PointContentsBrushes(probeOut) & CONTENTS_SOLID)
+          continue; // wall buried behind neighbor geometry
+        bestFace = face;
+        bestCoord = wallCoord;
+        break;
+      }
+    }
+    if (bestFace < 0)
+      continue; // no exposed lateral wall on this box
+
+    outBoxIdx = i;
+    outFace = bestFace;
+    outWallCoord = bestCoord;
+    outBottomZ = mn[2];
+    outHeight = mx[2] - mn[2];
+    return true;
+  }
+  return false;
+}
+
 bool LeafBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower,
                          int &outUpper, int &outLeaf, int &outLowerPos,
                          int &outUpperPos) {
