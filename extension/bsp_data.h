@@ -109,6 +109,55 @@ int BrushSidePlaneIndex(int brushIdx, int sideIdx);
 // instead of the plugin scanning the whole cboxbrush table per query.
 bool BrushIsBoxAuth(int brushIdx);
 
+// Exact brush geometry / collision (plane-accurate).
+// A cbrush_t is a convex polytope: the intersection of its sides' half-spaces
+// (a point p is inside when normal.p <= dist for every side).
+// These accessors solve that polytope directly, so they don't share
+// FindBrushPairAtSeam's derived-AABB blind spot for box-optimized /
+// bevel-padded brushes.
+
+// True if pos lies inside (or on) brush brushIdx (all sides: normal.p <= dist).
+bool PointInBrush(int brushIdx, const float pos[3]);
+
+// Brush-accurate contents at pos: walk to the leaf, then OR the contents of
+// every leaf-brush that actually contains pos. More precise than leaf-aggregate
+// PointContents for thin clip/trigger brushes that share a mostly-empty leaf.
+// 0 if outside the map or no brush contains pos.
+int PointContentsBrushes(const float pos[3]);
+
+// Vertical extent of brush brushIdx at column (x, y):
+// clip the infinite line (x, y, t) against every brush plane.
+// Fills [zMin, zMax]. Returns false if the column misses the brush footprint or
+// the brush is degenerate.
+// Gives the exact brush top/bottom Z at an XY point (the seam candidate).
+bool BrushColumnSpan(int brushIdx, float x, float y, float &zMin, float &zMax);
+// BrushColumnSpan + return only the top (zMax). false if no span at (x, y).
+bool BrushTopZAt(int brushIdx, float x, float y, float &z);
+
+// World-space polygon of brush side sideIdx, built by clipping the side's plane
+// against all other sides of the brush (the canonical brush-face winding).
+// Writes up to maxVerts verts into outVerts (flat float[maxVerts*3], CCW about
+// the side normal). Returns vert count (0 if degenerate / invalid).
+int BrushSideWinding(int brushIdx, int sideIdx, float *outVerts, int maxVerts);
+
+// Sweep an AABB [mins,maxs] (relative to its center) from start to end against
+// brush brushIdx.
+// Direct port of the engine's CM_ClipBoxToBrush (DIST_EPSILON = 1/32),
+// so the result matches what a real player-hull trace resolves against
+// this one brush.
+// Fills fraction (1.0 = no hit), the hit plane normal, and startSolid.
+// Returns -1 = invalid brush, 0 = no contact, 1 = contact (or startSolid).
+int BrushClipBox(int brushIdx, const float start[3], const float end[3],
+                 const float mins[3], const float maxs[3], float &fraction,
+                 float normal[3], bool &startSolid);
+
+// Diagnostic:
+// dump each side of brushIdx in engine iteration order (the order
+// CM_ClipBoxToBrush processes them, which the pixelsurf gate depends on):
+// per side, plane normal/dist, PLANE_* type, axis classification, bevel/thin.
+// Writes into buf, returns length.
+int BrushSideOrder(int brushIdx, char *buf, int maxlen);
+
 // Leaf accessors
 // Brushes belonging to a leaf in BSP visit order (first SOLID hit wins).
 int LeafBrushes(int leafIdx, int *outBuf, int maxOut);

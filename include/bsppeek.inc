@@ -12,9 +12,16 @@
 // check BSPPeek_Available() first if you need certainty.
 
 // Source-engine CONTENTS_* constants commonly checked:
-#define BSPP_CONTENTS_SOLID      0x1
-#define BSPP_CONTENTS_PLAYERCLIP 0x10000
-#define BSPP_CONTENTS_GRATE      0x8
+#define BSPP_CONTENTS_SOLID       0x1
+#define BSPP_CONTENTS_WINDOW      0x2
+#define BSPP_CONTENTS_GRATE       0x8
+#define BSPP_CONTENTS_WATER       0x20
+#define BSPP_CONTENTS_MOVEABLE    0x4000
+#define BSPP_CONTENTS_PLAYERCLIP  0x10000
+#define BSPP_CONTENTS_MONSTERCLIP 0x20000
+#define BSPP_CONTENTS_LADDER      0x20000000
+// Player-collidable mask: contents a player hull stops against.
+#define BSPP_MASK_PLAYERCOLLIDE   (BSPP_CONTENTS_SOLID | BSPP_CONTENTS_PLAYERCLIP)
 
 // Misc
 // Engine's internal map path string. Returns string length.
@@ -29,6 +36,13 @@ native int  BSP_MapPathName(char[] buf, int maxlen);
 //   0x08 visibility blob present
 // Returns 0 when g_BSPData is unresolved or pointing at garbage.
 native int  BSP_SelfTest();
+
+// Engine build / patch version parsed from the game dir's steam.inf.
+// Returns ServerVersion (0 if unreadable) + writes a summary line
+// ("ServerVersion=N PatchVersion=X ProductName=Y") into buf.
+// steam.inf bumps every game update, so it's the datum to diff against when
+// a signature breaks (pair with BSP_SelfTest to see WHAT broke and WHEN).
+native int  BSP_EngineBuild(char[] buf, int maxlen);
 
 // Debug: hex-dump CCollisionBSPData bytes from [startOff, endOff) to SourceMod log.
 // Used to RE field offsets. Range clamped server-side.
@@ -106,6 +120,53 @@ native int  BSP_BrushSideMaterial(int brushIdx, int sideIdx, char[] buf, int max
 // Unlike BSP_IsBoxBrush (a numsides==6 heuristic that false-negatives on bevel-padded boxes),
 // this is exact. O(1) - backed by a per-map set the ext builds on first call.
 native bool BSP_BrushIsBoxAuth(int brushIdx);
+
+// Exact brush geometry / collision (plane-accurate).
+// A cbrush_t is a convex polytope = intersection of its sides' half-spaces.
+// These solve that polytope directly, so they avoid the derived-AABB blind spot
+// that makes BSP_FindBrushPairAtSeam miss box-optimized / bevel-padded brushes.
+
+// True if pos is inside (or on) brushIdx (every side: normal·pos <= dist).
+native bool BSP_PointInBrush(int brushIdx, const float pos[3]);
+
+// Brush-accurate contents at pos: walks to the leaf, then ORs the contents of
+// every leaf-brush that actually contains pos. More precise than leaf-aggregate
+// BSP_PointContents for thin clip/trigger brushes sharing a mostly-empty leaf.
+// 0 if outside the map / no brush contains pos.
+native int  BSP_PointContentsBrushes(const float pos[3]);
+
+// Vertical extent of brushIdx at column (x, y), by clipping the line (x,y,t)
+// against every brush plane. Fills zMin/zMax.
+// false if the column misses the brush footprint.
+// Exact brush top/bottom Z at an XY point (the seam candidate).
+native bool BSP_BrushColumnSpan(int brushIdx, float x, float y, float &zMin, float &zMax);
+// BSP_BrushColumnSpan returning only the top (zMax). false if no span at (x,y).
+native bool BSP_BrushTopZAt(int brushIdx, float x, float y, float &z);
+
+// World-space polygon of brush side sideIdx, built by clipping the side's plane
+// against all other sides (canonical brush-face winding). Writes up to maxVerts
+// verts into verts[][3]. Returns vert count (0 if degenerate / invalid).
+native int  BSP_BrushSideWinding(int brushIdx, int sideIdx, float[][3] verts, int maxVerts);
+
+// Sweep an AABB [mins,maxs] (relative to its center) from start to end against
+// brushIdx. Direct port of the engine's CM_ClipBoxToBrush (DIST_EPSILON = 1/32),
+// so the result matches a real player-hull trace against this one brush.
+// Fills fraction (1.0 = no hit), hit plane normal, startSolid.
+// Returns -1 = invalid brush, 0 = no contact, 1 = contact (or startSolid).
+native int  BSP_BrushClipBox(int brushIdx, const float start[3], const float end[3],
+                             const float mins[3], const float maxs[3],
+                             float &fraction, float normal[3], bool &startSolid);
+
+// Diagnostic: dump each side of brushIdx in engine iteration order (the order
+// CM_ClipBoxToBrush processes them, which the pixelsurf gate depends on):
+// per side, plane normal/dist, PLANE_* type, axis class, bevel/thin. Returns length.
+native int  BSP_BrushSideOrder(int brushIdx, char[] buf, int maxlen);
+
+// True if the brush-accurate contents at pos include CONTENTS_LADDER.
+stock bool  BSP_IsLadder(const float pos[3])
+{
+    return (BSP_PointContentsBrushes(pos) & BSPP_CONTENTS_LADDER) != 0;
+}
 
 // Leaf accessors
 // Brushes belonging to a leaf in BSP visit order (first SOLID hit wins).

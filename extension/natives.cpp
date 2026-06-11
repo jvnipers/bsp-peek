@@ -5,6 +5,7 @@
 #include "bsp_props.h"
 #include <IGameHelpers.h>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <sp_vm_api.h>
 #include <vector>
@@ -286,6 +287,120 @@ cell_t N_BrushSideMaterial(IPluginContext *pCtx, const cell_t *params) {
 
 cell_t N_BrushIsBoxAuth(IPluginContext *, const cell_t *params) {
   return BSPData::BrushIsBoxAuth(params[1]) ? 1 : 0;
+}
+
+// Exact brush geometry / collision (plane-accurate, no AABB approximation)
+cell_t N_PointInBrush(IPluginContext *pCtx, const cell_t *params) {
+  float p[3];
+  cell_to_float3(pCtx, params[2], p);
+  return BSPData::PointInBrush(params[1], p) ? 1 : 0;
+}
+
+cell_t N_PointContentsBrushes(IPluginContext *pCtx, const cell_t *params) {
+  float p[3];
+  cell_to_float3(pCtx, params[1], p);
+  return BSPData::PointContentsBrushes(p);
+}
+
+cell_t N_BrushColumnSpan(IPluginContext *pCtx, const cell_t *params) {
+  float zMin = 0.0f, zMax = 0.0f;
+  bool ok = BSPData::BrushColumnSpan(params[1], sp_ctof(params[2]),
+                                     sp_ctof(params[3]), zMin, zMax);
+  cell_t *pMin, *pMax;
+  pCtx->LocalToPhysAddr(params[4], &pMin);
+  pCtx->LocalToPhysAddr(params[5], &pMax);
+  *pMin = sp_ftoc(ok ? zMin : 0.0f);
+  *pMax = sp_ftoc(ok ? zMax : 0.0f);
+  return ok ? 1 : 0;
+}
+
+cell_t N_BrushTopZAt(IPluginContext *pCtx, const cell_t *params) {
+  float z = 0.0f;
+  bool ok = BSPData::BrushTopZAt(params[1], sp_ctof(params[2]),
+                                 sp_ctof(params[3]), z);
+  cell_t *pZ;
+  pCtx->LocalToPhysAddr(params[4], &pZ);
+  *pZ = sp_ftoc(ok ? z : 0.0f);
+  return ok ? 1 : 0;
+}
+
+cell_t N_BrushSideWinding(IPluginContext *pCtx, const cell_t *params) {
+  int maxVerts = params[4];
+  if (maxVerts <= 0)
+    return 0;
+  std::vector<float> verts((size_t)maxVerts * 3, 0.0f);
+  int n =
+      BSPData::BrushSideWinding(params[1], params[2], verts.data(), maxVerts);
+  cell_t *out = nullptr;
+  pCtx->LocalToPhysAddr(params[3], &out);
+  for (int i = 0; i < n * 3; ++i)
+    out[i] = sp_ftoc(verts[i]);
+  return n;
+}
+
+cell_t N_BrushClipBox(IPluginContext *pCtx, const cell_t *params) {
+  float start[3], end[3], mins[3], maxs[3];
+  cell_to_float3(pCtx, params[2], start);
+  cell_to_float3(pCtx, params[3], end);
+  cell_to_float3(pCtx, params[4], mins);
+  cell_to_float3(pCtx, params[5], maxs);
+  float frac = 1.0f, normal[3] = {0, 0, 0};
+  bool startSolid = false;
+  int rc = BSPData::BrushClipBox(params[1], start, end, mins, maxs, frac,
+                                 normal, startSolid);
+  cell_t *pFrac, *pSS;
+  pCtx->LocalToPhysAddr(params[6], &pFrac);
+  pCtx->LocalToPhysAddr(params[8], &pSS);
+  *pFrac = sp_ftoc(frac);
+  float3_to_cell(pCtx, params[7], normal);
+  *pSS = startSolid ? 1 : 0;
+  return rc;
+}
+
+cell_t N_BrushSideOrder(IPluginContext *pCtx, const cell_t *params) {
+  int maxlen = params[3];
+  if (maxlen <= 0)
+    return 0;
+  std::vector<char> tmp(maxlen);
+  tmp[0] = '\0';
+  int n = BSPData::BrushSideOrder(params[1], tmp.data(), maxlen);
+  pCtx->StringToLocal(params[2], maxlen, tmp.data());
+  return n;
+}
+
+// Engine build / patch version, parsed from the game dir's steam.inf.
+// No engine interface needed. The file is plain text and updates every patch,
+// so it's the reliable datum for diagnosing gamedata sig drift after an update.
+// Returns ServerVersion (0 if unreadable), writes a summary line into buf.
+cell_t N_EngineBuild(IPluginContext *pCtx, const cell_t *params) {
+  int maxlen = params[2];
+  char path[300];
+  smutils->BuildPath(Path_Game, path, sizeof(path), "steam.inf");
+  int serverVersion = 0;
+  char patch[64] = {0};
+  char product[64] = {0};
+  FILE *f = fopen(path, "rb");
+  if (f) {
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+      int v;
+      if (sscanf(line, "ServerVersion=%d", &v) == 1)
+        serverVersion = v;
+      else if (!strncmp(line, "PatchVersion=", 13))
+        sscanf(line + 13, "%63[^\r\n]", patch);
+      else if (!strncmp(line, "ProductName=", 12))
+        sscanf(line + 12, "%63[^\r\n]", product);
+    }
+    fclose(f);
+  }
+  if (maxlen > 0) {
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+             "ServerVersion=%d PatchVersion=%s ProductName=%s", serverVersion,
+             patch[0] ? patch : "?", product[0] ? product : "?");
+    pCtx->StringToLocal(params[1], maxlen, buf);
+  }
+  return serverVersion;
 }
 
 // Leaf accessors
@@ -1323,6 +1438,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_EmptyLeaf", N_EmptyLeaf},
     {"BSP_SolidLeaf", N_SolidLeaf},
     {"BSP_SelfTest", N_SelfTest},
+    {"BSP_EngineBuild", N_EngineBuild},
 
     // Debug
     {"BSP_DebugDumpCBSP", N_DebugDumpCBSP},
@@ -1365,6 +1481,15 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_BrushSidePlaneIndex", N_BrushSidePlaneIndex},
     {"BSP_BrushSideMaterial", N_BrushSideMaterial},
     {"BSP_BrushIsBoxAuth", N_BrushIsBoxAuth},
+
+    // Exact brush geometry / collision (plane-accurate)
+    {"BSP_PointInBrush", N_PointInBrush},
+    {"BSP_PointContentsBrushes", N_PointContentsBrushes},
+    {"BSP_BrushColumnSpan", N_BrushColumnSpan},
+    {"BSP_BrushTopZAt", N_BrushTopZAt},
+    {"BSP_BrushSideWinding", N_BrushSideWinding},
+    {"BSP_BrushClipBox", N_BrushClipBox},
+    {"BSP_BrushSideOrder", N_BrushSideOrder},
 
     // Leaf accessors
     {"BSP_LeafBrushes", N_LeafBrushes},

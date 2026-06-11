@@ -1099,6 +1099,325 @@ bool BrushIsBoxAuth(int brushIdx) {
   return g_boxBrushAuth[brushIdx];
 }
 
+// Exact brush geometry / collision (plane-accurate)
+namespace {
+inline float DotV(const float a[3], const float b[3]) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+inline void CrossV(const float a[3], const float b[3], float o[3]) {
+  o[0] = a[1] * b[2] - a[2] * b[1];
+  o[1] = a[2] * b[0] - a[0] * b[2];
+  o[2] = a[0] * b[1] - a[1] * b[0];
+}
+inline void NormV(float a[3]) {
+  float l = std::sqrt(DotV(a, a));
+  if (l > 1e-9f) {
+    a[0] /= l;
+    a[1] /= l;
+    a[2] /= l;
+  }
+}
+
+// Resolve a brush's side count / first side plus the brush header pointer.
+// Returns nullptr (and leaves out-params untouched) when brushIdx is invalid.
+const uint8_t *brush_sides(int brushIdx, uint16_t &numsides, uint16_t &first) {
+  const uint8_t *b = brush_at(brushIdx);
+  if (!b)
+    return nullptr;
+  numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
+  first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
+  return b;
+}
+
+// Read side k's plane normal+dist (k is brush-relative). false if unresolved.
+bool side_plane(uint16_t first, int k, float n[3], float &d) {
+  const uint8_t *side = brushside_at((int)first + k);
+  if (!side)
+    return false;
+  const uint8_t *plane =
+      reinterpret_cast<const uint8_t *>(ReadPtr(side, OFF_CBRUSHSIDE_PLANE));
+  if (!plane)
+    return false;
+  ReadPlane(plane, n, d);
+  return true;
+}
+} // namespace
+
+bool PointInBrush(int brushIdx, const float pos[3]) {
+  uint16_t numsides, first;
+  if (!brush_sides(brushIdx, numsides, first) || numsides == 0)
+    return false;
+  for (uint16_t i = 0; i < numsides; ++i) {
+    float n[3], d;
+    if (!side_plane(first, i, n, d))
+      return false;
+    if (DotV(n, pos) - d > 0.0f)
+      return false; // strictly in front of a side -> outside
+  }
+  return true;
+}
+
+int PointContentsBrushes(const float pos[3]) {
+  int leaf = LeafAtPoint(pos);
+  if (leaf < 0)
+    return 0;
+  int brushes[1024];
+  int n = LeafBrushes(leaf, brushes, 1024);
+  if (n <= 0)
+    return 0;
+  int contents = 0;
+  for (int i = 0; i < n; ++i)
+    if (PointInBrush(brushes[i], pos))
+      contents |= GetBrushContents(brushes[i]);
+  return contents;
+}
+
+bool BrushColumnSpan(int brushIdx, float x, float y, float &zMin, float &zMax) {
+  uint16_t numsides, first;
+  if (!brush_sides(brushIdx, numsides, first) || numsides == 0)
+    return false;
+  // Line L(t) = (x, y, t).
+  // Each side n.L <= d becomes n.z*t <= d - n.x*x - n.y*y.
+  float lo = -1e30f, hi = 1e30f;
+  for (uint16_t i = 0; i < numsides; ++i) {
+    float n[3], d;
+    if (!side_plane(first, i, n, d))
+      return false;
+    float rhs = d - n[0] * x - n[1] * y;
+    if (n[2] > 1e-6f) {
+      float t = rhs / n[2]; // upper bound
+      if (t < hi)
+        hi = t;
+    } else if (n[2] < -1e-6f) {
+      float t = rhs / n[2]; // lower bound (divide by negative flips)
+      if (t > lo)
+        lo = t;
+    } else {
+      // Vertical plane: column is outside the XY footprint if rhs < 0.
+      // 0.1u slack matches FindBrushPairAtSeam's XY containment tolerance.
+      if (rhs < -0.1f)
+        return false;
+    }
+  }
+  if (lo > hi)
+    return false;
+  zMin = lo;
+  zMax = hi;
+  return true;
+}
+
+bool BrushTopZAt(int brushIdx, float x, float y, float &z) {
+  float lo, hi;
+  if (!BrushColumnSpan(brushIdx, x, y, lo, hi))
+    return false;
+  z = hi;
+  return true;
+}
+
+int BrushSideWinding(int brushIdx, int sideIdx, float *outVerts, int maxVerts) {
+  if (!outVerts || maxVerts <= 0)
+    return 0;
+  uint16_t numsides, first;
+  if (!brush_sides(brushIdx, numsides, first) || numsides == 0)
+    return 0;
+  if (sideIdx < 0 || sideIdx >= (int)numsides)
+    return 0;
+
+  float n[3], d;
+  if (!side_plane(first, sideIdx, n, d))
+    return 0;
+
+  // Seed a huge quad on the side's plane, oriented by an axis least parallel
+  // to the normal, then clip it down by every other side's half-space.
+  float seed[3] = {0, 0, 0};
+  int least = 0;
+  for (int k = 1; k < 3; ++k)
+    if (std::fabs(n[k]) < std::fabs(n[least]))
+      least = k;
+  seed[least] = 1.0f;
+  float right[3], up[3];
+  CrossV(seed, n, right);
+  NormV(right);
+  CrossV(n, right, up);
+  NormV(up);
+
+  const float R = 131072.0f; // > 4 * MAX_COORD (32768) to span any CSGO map
+  float center[3] = {n[0] * d, n[1] * d, n[2] * d};
+  struct V3 {
+    float v[3];
+  };
+  std::vector<V3> poly;
+  poly.reserve(8);
+  for (int s = 0; s < 4; ++s) {
+    // corners: (-,-), (+,-), (+,+), (-,+) about center in (right, up)
+    float sr = (s == 1 || s == 2) ? R : -R;
+    float su = (s >= 2) ? R : -R;
+    V3 p;
+    for (int k = 0; k < 3; ++k)
+      p.v[k] = center[k] + right[k] * sr + up[k] * su;
+    poly.push_back(p);
+  }
+
+  // Clip by each other side: keep the part with normal.p - dist <= 0.
+  for (uint16_t j = 0; j < numsides && !poly.empty(); ++j) {
+    if (j == (uint16_t)sideIdx)
+      continue;
+    float nj[3], dj;
+    if (!side_plane(first, j, nj, dj))
+      continue;
+    std::vector<V3> out;
+    out.reserve(poly.size() + 1);
+    size_t cnt = poly.size();
+    for (size_t a = 0; a < cnt; ++a) {
+      const V3 &A = poly[a];
+      const V3 &B = poly[(a + 1) % cnt];
+      float da = DotV(nj, A.v) - dj;
+      float db = DotV(nj, B.v) - dj;
+      if (da <= 0.0f)
+        out.push_back(A);
+      if ((da <= 0.0f) != (db <= 0.0f)) {
+        float t = da / (da - db);
+        V3 p;
+        for (int k = 0; k < 3; ++k)
+          p.v[k] = A.v[k] + t * (B.v[k] - A.v[k]);
+        out.push_back(p);
+      }
+    }
+    poly.swap(out);
+    if (poly.size() > 256) // pathological, bail to avoid runaway
+      break;
+  }
+
+  int wrote = 0;
+  for (size_t i = 0; i < poly.size() && wrote < maxVerts; ++i, ++wrote) {
+    outVerts[wrote * 3 + 0] = poly[i].v[0];
+    outVerts[wrote * 3 + 1] = poly[i].v[1];
+    outVerts[wrote * 3 + 2] = poly[i].v[2];
+  }
+  return wrote;
+}
+
+int BrushClipBox(int brushIdx, const float start[3], const float end[3],
+                 const float mins[3], const float maxs[3], float &fraction,
+                 float normal[3], bool &startSolid) {
+  fraction = 1.0f;
+  normal[0] = normal[1] = normal[2] = 0.0f;
+  startSolid = false;
+  uint16_t numsides, first;
+  if (!brush_sides(brushIdx, numsides, first) || numsides == 0)
+    return -1;
+
+  const float DIST_EPSILON = 0.03125f; // 1/32, engine constant
+  float enterfrac = -1.0f, leavefrac = 1.0f;
+  float clipN[3] = {0, 0, 0};
+  bool gotClip = false, getout = false, startout = false;
+
+  for (uint16_t i = 0; i < numsides; ++i) {
+    float n[3], d;
+    if (!side_plane(first, i, n, d))
+      return -1;
+    // Push the plane out by the box extents (support point in -normal dir).
+    float offset[3];
+    for (int k = 0; k < 3; ++k)
+      offset[k] = (n[k] < 0.0f) ? maxs[k] : mins[k];
+    float dist = d - DotV(offset, n);
+    float d1 = DotV(start, n) - dist;
+    float d2 = DotV(end, n) - dist;
+    if (d2 > 0.0f)
+      getout = true; // endpoint outside this side
+    if (d1 > 0.0f)
+      startout = true; // startpoint outside this side
+    // Completely in front of a side and not crossing inward -> never hits.
+    if (d1 > 0.0f && (d2 >= DIST_EPSILON || d2 >= d1))
+      return 0;
+    if (d1 <= 0.0f && d2 <= 0.0f)
+      continue;
+    if (d1 > d2) { // entering the brush across this side
+      float f = (d1 - DIST_EPSILON) / (d1 - d2);
+      if (f < 0.0f)
+        f = 0.0f;
+      if (f > enterfrac) {
+        enterfrac = f;
+        clipN[0] = n[0];
+        clipN[1] = n[1];
+        clipN[2] = n[2];
+        gotClip = true;
+      }
+    } else { // leaving
+      float f = (d1 + DIST_EPSILON) / (d1 - d2);
+      if (f > 1.0f)
+        f = 1.0f;
+      if (f < leavefrac)
+        leavefrac = f;
+    }
+  }
+
+  if (!startout) {
+    // Started inside the brush.
+    startSolid = true;
+    fraction = getout ? 1.0f : 0.0f; // allsolid (never exits) -> blocked at 0
+    return 1;
+  }
+  if (enterfrac < leavefrac && enterfrac > -1.0f && gotClip) {
+    if (enterfrac < 0.0f)
+      enterfrac = 0.0f;
+    fraction = enterfrac;
+    normal[0] = clipN[0];
+    normal[1] = clipN[1];
+    normal[2] = clipN[2];
+    return 1;
+  }
+  return 0;
+}
+
+int BrushSideOrder(int brushIdx, char *buf, int maxlen) {
+  if (!buf || maxlen <= 0)
+    return 0;
+  buf[0] = '\0';
+  uint16_t numsides, first;
+  if (!brush_sides(brushIdx, numsides, first) || numsides == 0)
+    return 0;
+  int off = 0;
+  off += snprintf(buf + off, maxlen - off, "brush #%d: %d sides (engine order)",
+                  brushIdx, (int)numsides);
+  static const char *kAxis[] = {"+X", "-X", "+Y", "-Y", "+Z", "-Z", "slope"};
+  for (uint16_t i = 0; i < numsides && off < maxlen - 1; ++i) {
+    float n[3], d;
+    if (!side_plane(first, i, n, d))
+      continue;
+    int axis = 6; // slope
+    if (n[0] > 0.999f)
+      axis = 0;
+    else if (n[0] < -0.999f)
+      axis = 1;
+    else if (n[1] > 0.999f)
+      axis = 2;
+    else if (n[1] < -0.999f)
+      axis = 3;
+    else if (n[2] > 0.999f)
+      axis = 4;
+    else if (n[2] < -0.999f)
+      axis = 5;
+    int bevel = BrushSideBevel(brushIdx, i);
+    int thin = BrushSideThin(brushIdx, i);
+    int ptype = -1;
+    {
+      const uint8_t *side = brushside_at((int)first + i);
+      if (side) {
+        const uint8_t *plane = reinterpret_cast<const uint8_t *>(
+            ReadPtr(side, OFF_CBRUSHSIDE_PLANE));
+        if (plane)
+          ptype = (int)*(plane + OFF_CPLANE_TYPE);
+      }
+    }
+    off += snprintf(
+        buf + off, maxlen - off,
+        "\n [%d] %s n=(%.3f,%.3f,%.3f) d=%.3f type=%d bevel=%d thin=%d", i,
+        kAxis[axis], n[0], n[1], n[2], d, ptype, bevel, thin);
+  }
+  return off;
+}
+
 // "High-level" pixelsurf
 bool FindBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower,
                          int &outUpper) {
