@@ -1,0 +1,196 @@
+==================== INFO / HEALTH ====================
+MapPathName        : maps/de_nuke.bsp
+SelfTest           : 0x7F  [BSPData=1 leaf/node=1 boxbrush=1 vis=1 dispRdr=1 props=1 disk=1]
+EngineBuild        : 1575  (ServerVersion=1575 PatchVersion=1.38.8.1 ProductName=csgo)
+==================== COUNTS ====================
+Brushes=7298 BrushSides=13087 Leaves=6962 Nodes=6831 Planes=13186
+BoxBrushes=5661 CModels=129 Areas=35 AreaPortals=94 Clusters=2941
+EmptyLeaf=6961 SolidLeaf=0
+AreaInfo[0]        : numPortals=0 firstPortal=0
+AreaPortalInfo[0]  : key=0 otherArea=0 firstClipVert=0 clipVerts=0 planenum=0
+Clusters Vis(0,0)  : 1   ClustersVisible(0,1)=0
+LeavesVisible(0,0) : 1
+VisClusterCount    : 2941   ClusterVisible(0,0)=1 LeafVisible(0,0)=1
+VisRowDecompress(0): 64 bytes
+PlaneAt[0]         : (0.00 0.00 1.00) d=-180.00 type=2
+RebuildCache       : 7298 brushes
+CacheIsBuilding    : 0
+DebugDumpCBSP(0,64): dumped to SourceMod log
+==================== BSP FILE LUMPS ====================
+BSPVersion=21 Revision=16074 HasLighting=1
+LumpInfo[0]        : ofs=2615576 len=344739 ver=0
+Counts: Verts=29500 Edges=67833 Surfedges=97328 Faces=12266 LeafFaces=16735
+Counts: TexInfo=1216 TexData=178 Cubemaps=36 Worldlights=1173 LeafWater=1
+VertexPos[0]       : (0.00 0.00 0.00)
+EdgeVertices[0]    : v0=0 v1=0
+Surfedge[0]=1  SurfedgeVertex[0]=12406
+Face[0]            : plane=2370 firstEdge=0 numEdges=6 texinfo=3738 disp=-1 area=0.0 origFace=-1 lightOfs=0
+Face[0] lightStyles: 0 0 0 0
+Face[0] centroid   : (1268.0 -1244.0 -643.0)
+Face[0] vert0      : (1352.0 -1244.0 -640.0)
+Face[0] material   : 
+TexInfo[0]         : flags=0x8030000 texdata=7
+TexData[0]         : TOOLS/TOOLSCLIP  refl=(0.66 0.05 0.02)
+Cubemap[0]         : (208 -2944 -464) size=0
+Worldlight[0]      : org=(512 -1984 -192) type=5 style=0 cluster=1885 flags=0x0 texinfo=0 owner=0
+Worldlight[0] phys : stopDot=0.000 stopDot2=0.000 exp=0.00 radius=0.0 attn(c/l/q)=0.000/0.000/0.00000
+LeafWater[0]       : surfaceZ=-812.0 minZ=-1212.0 texinfo=419
+==================== POINT / LEAF QUERIES ====================
+Query pos          : (-1366.4 -1290.6 -350.1)
+LeafAtPoint        : 5427
+PointContents      : 0x0
+PointContentsBrush : 0x8030000
+IsLadder           : 0
+Leaf 5427            : contents=0x0 cluster=2754 area=7 flags=0x1 firstFace=3073 numFaces=3
+Leaf bounds        : (-1380 -1320 -424)-(-1168 -1160 -256)
+LeafBrushes        : 13  [first=see below]
+==================== BRUSH ====================
+Brush 5881           : contents=0x8000001 sides=0 isBox(heur)=0 isBox(auth)=0
+Bounds             : (0.0 0.0 0.0)-(0.0 0.0 0.0)
+PointInBrush(ctr)  : 0
+ColumnSpan(ctr xy) : 0  zMin=0.0 zMax=0.0
+TopZAt(ctr xy)     : 0  z=0.0
+BrushClipBox       : -1 frac=1.000 normal=(0.00 0.00 0.00) startSolid=0
+SideOrder          :
+
+LeafFaces          : 3
+Node[0]            : plane(0.00 1.00 0.00) d=4096.0  children L=1 R=1431
+CModel[0] (world)  : (-6241 -5409 -6401)-(6561 12361 3457) head=0
+BoxBrush[0]        : (-652 -2352 -424)-(188 -1392 -416) orig=27 contents=0x1 surf={0,0,0,0,0,0}
+FindBrushPairAtSeam   : 0
+FindBoxBrushPairAtSeam: 0
+LeafBrushPairAtSeam   : 0 (leaf=-1 lpos=-1 upos=-1)
+NearestCubemap     : 10
+NearestStaticProp  : 3706
+FindLadderBrush(0) : 3887
+WaterSurfaceZAt    : -1000000015047466000000000000000.0
+FindEntityByKV     : worldspawn idx=0
+==================== BRUSH ====================
+Brush 0           : contents=0x8030000 sides=7 isBox(heur)=0 isBox(auth)=1
+Bounds             : (-244.0 -1152.0 -272.0)-(176.0 -1148.0 -180.0)
+Side0 plane        : (-1.00 0.00 0.00) d=244.00 bevel=0 thin=1 texinfo=0 planeIdx=5
+Side0 material     : CONCRETE/HR_C/HR_CONCRETE_WALL_006
+Side0 winding      : 5 verts
+PointInBrush(ctr)  : 0
+ColumnSpan(ctr xy) : 0  zMin=0.0 zMax=0.0
+TopZAt(ctr xy)     : 0  z=0.0
+BrushClipBox       : 0 frac=1.000 normal=(0.00 0.00 0.00) startSolid=0
+SideOrder          :
+brush #0: 7 sides (engine order)
+ [0] -X n=(-1.000,0.000,0.000) d=244.000 type=0 bevel=0 thin=1
+ [1] +X n=(1.000,0.000,0.000) d=176.000 type=0 bevel=0 thin=1
+ [2] -Y n=(0.000,-1.000,0.000) d=1152.000 type=1 bevel=0 thin=0
+ [3] +Y n=(0.000,1.000,0.000) d=-1148.000 type=1 bevel=0 thin=0
+ [4] -Z n=(0.000,0.000,-1.000) d=272.000 type=2 bevel=1 thin=0
+ [5] +Z n=(0.000,0.000,1.000) d=-180.000 type=2 bevel=0 thin=1
+ [6] slope n=(0.000,0.707,-0.707) d=-622.254 type=4 bevel=0 thin=1
+==================== DISPLACEMENTS ====================
+DispReady=1 DispCount=761 DispDiskCount=761
+DispHeightAt(xy)   : -408.00
+DispHeightAtDebug  : -408.00 (idx=330)
+DispSurfaceNormalAt: -408.00 normal=(0.00 0.00 1.00)
+DispIsPointOnDisp  : 1
+DispHeightAtMulti  : 3 hits
+DispDistToSurface  : 57.88
+DispTreeIndexAt    : 330
+DispNearestTri     : dist=57.88 normal=(0.00 0.00 1.00)
+DispTree[0]        : power=2 contents=0x1 verts=25 tris=32 surfProps={46,46,46,46}
+DispTree[0] bounds : (1927 -1601 -410)-(1993 -1542 -407)
+DispTree[0] vert0  : (1928.0 -1551.9 -409.0)
+DispDebugInfo[0]   : engine[0] base=0xd705cf0 power=2 verts=25 tris=32 bbox=(1927.000,-1601.000,-410.000)..(1993.000,-1542.996,-407.000) vp=0xd448b60 tp=0xad42bd0
+    tri0[00 08 05 0C 06 08 E9 05 00 F8 7F BC 00 00 00 00|00 F8 7F 3F 24 89 DB C3 00 08 06 04 01 08 E9 05|01 F8 7F
+DispDisk[0]        : (1928 -1600 -409)-(1992 -1543 -408) disp[0] face=10991 power=2 tris=32 bbox=(1928.000,-1600.000,-409.000)..(1992.000,-1543.996,-408.000) c0=(1928.000,-1551.996,-408.000) c1=(1992.000,-1543.996,-408.000) c2=(1992.000,-1600.000,-408.000) c3=(1928.000,-1600.000,-408.000)
+DispDiagnoseQuery  : diag (-1366.464,-1290.693): AABB-trees=3, first=330 (verts=25 tris=32) -- bbox_pass=2 invalid_idx=0 degen=0 bary_fail=1 hit=1 best_z=-408.000 closest_neg_w=-0.1858
+==================== STATIC PROPS ====================
+NumStaticProps=6891 version=11 RtStaticPropCount=6891
+Prop[0]            : org=(975 -572 -282) ang=(0 90 -90) solid=0 flags=0x11 skin=0
+Prop[0] model      : models/props/autocombine/de_nuke/_autocombine_wires_1.mdl
+Prop[0] fade=1614..1661 forcedScale=1.00 flagsEx=0x0 lightOrg=(0 0 0)
+Prop[0] leaves     : 7
+StaticPropDebug    : modelinfo=0xf69bee40 physcollision=0xf2878780 | enginetrace=0xf415f8a0 vtbl=0xf3f18fd8 | staticpropmgr=0xf69c4368 vtbl=0xf3f2cb74 | physprops=0xf2878c60 surfaces=121 | props=6891
+RtProp[0]          : org=(975 -572 -282) solid=0 fsolid=0x0 model=models/props/autocombine/de_nuke/_autocombine_wires_1.mdl
+Probe[0]           : prop 0: model=0xf6b7216c solid=0 vcollide=(nil) solidCount=-1 solid0verts=-1 tris=0 model='models/props/autocombine/de_nuke/_autocombine_wires_1.mdl'
+Prop[0] triCount   : 12
+Prop[0] tri0       : (1054.1 -766.1 -218.0)
+StaticPropTraceHull: -1
+StaticPropHullSweep: 1
+PropNearestTri     : dist=0.03 prop=3706
+StaticPropAtRay    : 3706
+==================== UNIFIED HULL TRACE ====================
+TraceHull          : ret=1 frac=0.000 hitType=3
+  endpos           : (-1746.0 -1062.2 -350.4)
+  normal           : (0.00 0.00 0.00) planeDist=0.00
+  startSolid=1 allSolid=0 contents=0x1 dispFlags=0x0
+  surfaceProps=56 surfaceFlags=0x0 material=**studio**
+==================== ENTITIES ====================
+EntityCount=1084 EntityRawLen=344738
+RawCopy(64)        : 63 bytes, head="{
+"world_maxs" "6440 12352 1728"
+"world_mins" "-6120 -5376 -121"
+Ent[0] worldspawn             (no origin) modelIdx=-1
+Ent[1] func_brush             org=(402 -896 -211) modelIdx=1
+Ent[2] func_brush             org=(420 -892 -221) modelIdx=2
+Ent[3] func_brush             org=(485 -1004 -197) modelIdx=3
+Ent[4] func_brush             org=(490 -1017 -207) modelIdx=4
+Ent[0] KV classname: worldspawn
+==================== SURFACE PROPS ====================
+SurfacePropsReady=1 SurfacePropCount=121
+Index("concrete")  : 46
+surfacedata_t[0] 'default' (friction=+0):
+  +0x00: 3F4CCCCD  f=0.8
+  +0x04: 3E800000  f=0.25
+  +0x08: 44FA0000  f=2000
+  +0x0C: 00000000  f=0
+  +0x10: 00000000  f=0
+  +0x14: 3F28F5C3  f=0.66
+  +0x18: 3F800000  f=1
+  +0x1C: 3F800000  f=1
+  +0x20: 3F000000  f=0.5
+  +0x24: 3F000000  f=0.5
+  +0x28: 00000000  f=0
+  +0x2C: 3F800000  f=1
+  +0x30: 41700000  f=15
+  +0x34: 00000000  f=0
+  +0x38: 00040003  f=3.67346e-40
+  +0x3C: 00040003  f=3.67346e-40
+  +0x40: 00080009  f=7.34697e-40
+  +0x44: 00060007  f=5.51023e-40
+  +0x48: 00000005  f=7.00649e-45
+  +0x4C: 00000000  f=0
+  +0x50: 3F800000  f=1
+  +0x54: 3F800000  f=1
+  +0x58: 3F800000  f=1
+  +0x5C: 3F000000  f=0.5
+  +0x60: 00000043  f=9.3887e-44
+  +0x64: 00000000  f=0
+  +0x68: 00000000  f=0
+  +0x6C: 08C6BD30  f=1.19612e-33
+  +0x70: 00000000  f=0
+  +0x74: 00000000  f=0
+  +0x78: 00000000  f=0
+  +0x7C: 97C45965  f=-1.26888e-24
+  +0x80: 517487C4  f=6.56406e+10
+  +0x84: ED8596D4  f=-5.16798e+27
+  +0x88: 73E720AB  f=3.66236e+31
+  +0x8C: FB2ED956  f=-9.07868e+35
+  +0x90: FFFFFFFF  f=-nan
+  +0x94: FFFFFFFF  f=-nan
+  +0x98: FFFFFFFF  f=-nan
+  +0x9C: F2810864  f=-5.11151e+30
+  +0xA0: 00000000  f=0
+  +0xA4: 00000000  f=0
+  +0xA8: 0000000A  f=1.4013e-44
+  +0xAC: 3F4CCCCD  f=0.8
+  +0xB0: 3DCCCCCD  f=0.1
+  +0xB4: 4528C000  f=2700
+  +0xB8: 00000000  f=0
+  +0xBC: 00000000  f=0
+Surf[0] default          fric=0.80 elas=0.25 dens=2000 maxSpd=1.00 jump=1.00 mat='C' climb=0
+Surf[1] solidmetal       fric=0.80 elas=0.10 dens=2700 maxSpd=1.00 jump=1.00 mat='M' climb=0
+Surf[2] metal            fric=0.80 elas=0.25 dens=2700 maxSpd=1.00 jump=1.00 mat='M' climb=0
+Surf[3] metal_barrelsoundoverride fric=0.80 elas=0.25 dens=2700 maxSpd=1.00 jump=1.00 mat='M' climb=0
+Surf[4] metal_vehiclesoundoverride fric=0.80 elas=0.25 dens=2700 maxSpd=1.00 jump=1.00 mat='M' climb=0
+Surf[5] metal_survivalcase fric=0.80 elas=0.25 dens=2700 maxSpd=1.00 jump=1.00 mat='M' climb=0
+Surf[6] metal_survivalcase_unpunchable fric=0.80 elas=0.25 dens=2700 maxSpd=1.00 jump=1.00 mat='M' climb=0
+Surf[7] metaldogtags     fric=0.80 elas=0.25 dens=2700 maxSpd=1.00 jump=1.00 mat='M' climb=0
+[bsp] full suite done.
