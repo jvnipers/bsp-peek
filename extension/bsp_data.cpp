@@ -452,12 +452,27 @@ static const uint8_t *node_at(int idx) {
   return TableEntry(OFF_MAP_NODES, idx, GetNumNodes(), SZ_CNODE);
 }
 
+// CSGO marks box-optimized brushes with cbrush_t.numsides == 0xFFFF and strips/
+// pads their planar sides (the real solid lives in the cboxbrush_t SIMD table).
+// Reading that count verbatim makes every side loop iterate 65535 times across
+// the shared brushside array, producing map-spanning garbage bounds, empty
+// windings, and a 65535-side "SideOrder". Treat the sentinel (or any count past
+// the global side table) as "no usable planar sides" so callers fall back to
+// the box table / brush AABB cache instead.
+static uint16_t BrushSideCount(const uint8_t *b) {
+  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
+  int total = GetNumBrushSides();
+  if (numsides == 0xFFFF || (total > 0 && (int)numsides > total))
+    return 0;
+  return numsides;
+}
+
 // Resolve brush `brushIdx`'s side `sideIdx` (0-based within the brush).
 static const uint8_t *brushside_for(int brushIdx, int sideIdx) {
   const uint8_t *b = brush_at(brushIdx);
   if (!b)
     return nullptr;
-  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
+  uint16_t numsides = BrushSideCount(b);
   uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
   if (sideIdx < 0 || sideIdx >= (int)numsides)
     return nullptr;
@@ -708,7 +723,7 @@ bool GetBrushBounds(int brushIdx, float mins[3], float maxs[3]) {
   const uint8_t *b = brush_at(brushIdx);
   if (!b)
     return false;
-  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
+  uint16_t numsides = BrushSideCount(b);
   uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
   if (numsides == 0)
     return false;
@@ -763,7 +778,7 @@ bool IsBoxBrush(int brushIdx) {
   const uint8_t *b = brush_at(brushIdx);
   if (!b)
     return false;
-  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
+  uint16_t numsides = BrushSideCount(b);
   uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
   if (numsides != 6)
     return false;
@@ -804,7 +819,7 @@ int BrushNumSides(int brushIdx) {
   const uint8_t *b = brush_at(brushIdx);
   if (!b)
     return -1;
-  return (int)ReadU16(b, OFF_CBRUSH_NUMSIDES);
+  return (int)BrushSideCount(b);
 }
 
 bool BrushSidePlane(int brushIdx, int sideIdx, float normal[3], float &dist) {
@@ -1144,7 +1159,7 @@ const uint8_t *brush_sides(int brushIdx, uint16_t &numsides, uint16_t &first) {
   const uint8_t *b = brush_at(brushIdx);
   if (!b)
     return nullptr;
-  numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
+  numsides = BrushSideCount(b);
   first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
   return b;
 }
