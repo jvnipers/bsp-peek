@@ -623,6 +623,39 @@ native int   BSP_TraceHull(const float start[3], const float end[3],
                            int &surfaceProps = 0, int &surfaceFlags = 0,
                            int &hitType = 0, char[] surfaceName = "", int nameLen = 0);
 
+// Surface physics properties (friction / surfaceprop)
+// Resolved from the live IPhysicsSurfaceProps singleton in the loaded vphysics
+// module.
+// The `idx` is a PHYSICS surfaceprop-database index - the kind returned
+// by BSP_TraceHull's surfaceProps out-param, BSP_DispGetSurfaceProps,
+// and BSP_BoxBrushSurfaceIndex.
+// It is NOT a texdata index:
+// (BSP_BrushSideMaterial / BSP_TexDataMaterialName use a different namespace).
+
+// True once the IPhysicsSurfaceProps interface resolved (vphysics mapped).
+native bool  BSP_SurfacePropsReady();
+// Number of entries in the surfaceprop database. 0 if unavailable.
+native int   BSP_SurfacePropCount();
+// Name of surfaceprop[idx] (e.g. "concrete", "ice", "metal"). Returns length.
+native int   BSP_SurfacePropName(int idx, char[] buf, int maxlen);
+// Database index for a surfaceprop name (e.g. "ice"). -1 if unavailable / unknown.
+native int   BSP_SurfacePropIndex(const char[] name);
+// Physics + movement params for surfaceprop[idx]. Returns false if unavailable / OOB.
+//   friction      Coulomb friction coefficient (the headline movement value)
+//   elasticity    collision restitution
+//   density       kg/m^3
+//   thickness     sheet-material thickness (inches; 0 = solid)
+//   dampening     velocity dampening
+//   maxSpeedFactor player max-speed multiplier on this surface (1.0 = normal)
+//   jumpFactor    player jump-height multiplier on this surface (1.0 = normal)
+//   material      char material code (surfacegameprops_t.material)
+//   climbable     true if the surface is flagged as a ladder surface
+native bool  BSP_SurfacePropData(int idx, float &friction, float &elasticity,
+                                 float &density, float &thickness,
+                                 float &dampening, float &maxSpeedFactor,
+                                 float &jumpFactor, int &material,
+                                 bool &climbable);
+
 stock bool   BSPPeek_Available()
 {
     return LibraryExists("bsppeek");

@@ -22,6 +22,12 @@
 #include <unordered_map>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
 namespace BSPProps {
 
 namespace {
@@ -30,6 +36,36 @@ IVModelInfo *g_modelinfo = nullptr;
 IPhysicsCollision *g_physcollision = nullptr;
 IEngineTrace *g_enginetrace = nullptr;
 IStaticPropMgrServer *g_staticpropmgr = nullptr;
+IPhysicsSurfaceProps *g_physprops = nullptr;
+
+typedef void *(*CreateInterfaceFn)(const char *name, int *returnCode);
+
+// Pull the live IPhysicsSurfaceProps singleton straight from the already-loaded
+// vphysics module's CreateInterface export.
+// vphysics interfaces are process singletons,
+// so this returns the same instance the engine/server use.
+IPhysicsSurfaceProps *ResolveSurfaceProps() {
+  CreateInterfaceFn fn = nullptr;
+#ifdef _WIN32
+  HMODULE mod = GetModuleHandleA("vphysics.dll");
+  if (mod)
+    fn = reinterpret_cast<CreateInterfaceFn>(
+        GetProcAddress(mod, "CreateInterface"));
+#else
+  // RTLD_NOLOAD: only succeed if vphysics is already mapped
+  // (it always is on a running server);
+  // balances the implicit refcount bump with dlclose.
+  void *mod = dlopen("vphysics.so", RTLD_NOW | RTLD_NOLOAD);
+  if (mod) {
+    fn = reinterpret_cast<CreateInterfaceFn>(dlsym(mod, "CreateInterface"));
+    dlclose(mod);
+  }
+#endif
+  if (!fn)
+    return nullptr;
+  return reinterpret_cast<IPhysicsSurfaceProps *>(
+      fn(VPHYSICS_SURFACEPROPS_INTERFACE_VERSION, nullptr));
+}
 
 // model path -> vcollide_t* (engine-owned, not freed here).
 // Props commonly share a model, so cache per name.
@@ -116,6 +152,10 @@ bool Init(IGameConfig *gc, char *err, size_t errLen) {
   g_physcollision = ResolveGlobal<IPhysicsCollision>(gc, "physcollision");
   g_enginetrace = ResolveGlobal<IEngineTrace>(gc, "enginetrace");
   g_staticpropmgr = ResolveGlobal<IStaticPropMgrServer>(gc, "staticpropmgr");
+  // Surface props: pulled from the vphysics module export.
+  // Stays null (friction natives disabled) if vphysics isn't mapped yet;
+  // SurfaceProps() retries lazily.
+  g_physprops = ResolveSurfaceProps();
 
   // The runtime prop-hull path (enginetrace + staticpropmgr) is what handles
   // autocombine maps.
@@ -148,12 +188,15 @@ int Debug(char *buf, size_t buflen) {
   uintptr_t sp = reinterpret_cast<uintptr_t>(g_staticpropmgr);
   uintptr_t etVt = et ? *reinterpret_cast<uintptr_t *>(et) : 0;
   uintptr_t spVt = sp ? *reinterpret_cast<uintptr_t *>(sp) : 0;
+  uintptr_t pp = reinterpret_cast<uintptr_t>(g_physprops);
   return std::snprintf(
       buf, buflen,
       "modelinfo=0x%zx physcollision=0x%zx | enginetrace=0x%zx vtbl=0x%zx | "
-      "staticpropmgr=0x%zx vtbl=0x%zx | props=%d",
+      "staticpropmgr=0x%zx vtbl=0x%zx | physprops=0x%zx surfaces=%d | props=%d",
       (size_t)mi, (size_t)pc, (size_t)et, (size_t)etVt, (size_t)sp,
-      (size_t)spVt, BSPLumps::StaticPropCount());
+      (size_t)spVt, (size_t)pp,
+      g_physprops ? g_physprops->SurfacePropCount() : 0,
+      BSPLumps::StaticPropCount());
 }
 
 void OnMapClear() {
@@ -170,6 +213,75 @@ void Shutdown() {
   g_physcollision = nullptr;
   g_enginetrace = nullptr;
   g_staticpropmgr = nullptr;
+  g_physprops = nullptr;
+}
+
+namespace {
+// Lazy accessor: resolve on first use if Init ran before vphysics was mapped.
+IPhysicsSurfaceProps *SurfaceProps() {
+  if (!g_physprops)
+    g_physprops = ResolveSurfaceProps();
+  return g_physprops;
+}
+} // namespace
+
+bool SurfacePropsReady() { return SurfaceProps() != nullptr; }
+
+int SurfacePropCount() {
+  IPhysicsSurfaceProps *sp = SurfaceProps();
+  return sp ? sp->SurfacePropCount() : 0;
+}
+
+int SurfacePropName(int idx, char *buf, int maxlen) {
+  if (!buf || maxlen <= 0)
+    return 0;
+  buf[0] = '\0';
+  IPhysicsSurfaceProps *sp = SurfaceProps();
+  if (!sp || idx < 0 || idx >= sp->SurfacePropCount())
+    return 0;
+  const char *name = sp->GetPropName(idx);
+  if (!name)
+    return 0;
+  int n = 0;
+  while (n < maxlen - 1 && name[n]) {
+    buf[n] = name[n];
+    ++n;
+  }
+  buf[n] = '\0';
+  return n;
+}
+
+int SurfacePropIndex(const char *name) {
+  IPhysicsSurfaceProps *sp = SurfaceProps();
+  if (!sp || !name)
+    return -1;
+  return sp->GetSurfaceIndex(name);
+}
+
+bool SurfacePropData(int idx, float &friction, float &elasticity,
+                     float &density, float &thickness, float &dampening,
+                     float &maxSpeedFactor, float &jumpFactor, int &material,
+                     bool &climbable) {
+  friction = elasticity = density = thickness = dampening = 0.0f;
+  maxSpeedFactor = jumpFactor = 0.0f;
+  material = 0;
+  climbable = false;
+  IPhysicsSurfaceProps *sp = SurfaceProps();
+  if (!sp || idx < 0 || idx >= sp->SurfacePropCount())
+    return false;
+  surfacedata_t *d = sp->GetSurfaceData(idx);
+  if (!d)
+    return false;
+  friction = d->physics.friction;
+  elasticity = d->physics.elasticity;
+  density = d->physics.density;
+  thickness = d->physics.thickness;
+  dampening = d->physics.dampening;
+  maxSpeedFactor = d->game.maxSpeedFactor;
+  jumpFactor = d->game.jumpFactor;
+  material = d->game.material;
+  climbable = d->game.climbable != 0;
+  return true;
 }
 
 int HullSweep(const float start[3], const float end[3], const float mins[3],

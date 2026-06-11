@@ -1498,6 +1498,60 @@ cell_t N_WorldTraceHull(IPluginContext *pCtx, const cell_t *params) {
   return rc;
 }
 
+cell_t N_SurfacePropsReady(IPluginContext *pCtx, const cell_t *params) {
+  return BSPProps::SurfacePropsReady() ? 1 : 0;
+}
+
+cell_t N_SurfacePropCount(IPluginContext *pCtx, const cell_t *params) {
+  return BSPProps::SurfacePropCount();
+}
+
+cell_t N_SurfacePropName(IPluginContext *pCtx, const cell_t *params) {
+  int maxlen = params[3];
+  if (maxlen <= 0)
+    return 0;
+  std::vector<char> tmp(maxlen);
+  int n = BSPProps::SurfacePropName(params[1], tmp.data(), maxlen);
+  pCtx->StringToLocal(params[2], maxlen, tmp.data());
+  return n;
+}
+
+cell_t N_SurfacePropIndex(IPluginContext *pCtx, const cell_t *params) {
+  char *name = nullptr;
+  pCtx->LocalToString(params[1], &name);
+  return BSPProps::SurfacePropIndex(name);
+}
+
+cell_t N_SurfacePropData(IPluginContext *pCtx, const cell_t *params) {
+  float friction, elasticity, density, thickness, dampening, maxSpeed, jump;
+  int material;
+  bool climbable;
+  bool ok = BSPProps::SurfacePropData(params[1], friction, elasticity, density,
+                                      thickness, dampening, maxSpeed, jump,
+                                      material, climbable);
+  cell_t *pFric, *pElas, *pDens, *pThick, *pDamp, *pSpeed, *pJump, *pMat,
+      *pClimb;
+  pCtx->LocalToPhysAddr(params[2], &pFric);
+  pCtx->LocalToPhysAddr(params[3], &pElas);
+  pCtx->LocalToPhysAddr(params[4], &pDens);
+  pCtx->LocalToPhysAddr(params[5], &pThick);
+  pCtx->LocalToPhysAddr(params[6], &pDamp);
+  pCtx->LocalToPhysAddr(params[7], &pSpeed);
+  pCtx->LocalToPhysAddr(params[8], &pJump);
+  pCtx->LocalToPhysAddr(params[9], &pMat);
+  pCtx->LocalToPhysAddr(params[10], &pClimb);
+  *pFric = sp_ftoc(friction);
+  *pElas = sp_ftoc(elasticity);
+  *pDens = sp_ftoc(density);
+  *pThick = sp_ftoc(thickness);
+  *pDamp = sp_ftoc(dampening);
+  *pSpeed = sp_ftoc(maxSpeed);
+  *pJump = sp_ftoc(jump);
+  *pMat = material;
+  *pClimb = climbable ? 1 : 0;
+  return ok ? 1 : 0;
+}
+
 extern const sp_nativeinfo_t g_BSPNatives[] = {
     // Misc
     {"BSP_MapPathName", N_MapPathName},
@@ -1738,6 +1792,13 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 
     // Unified world trace
     {"BSP_TraceHull", N_WorldTraceHull},
+
+    // Surface physics properties (friction / surfaceprop)
+    {"BSP_SurfacePropsReady", N_SurfacePropsReady},
+    {"BSP_SurfacePropCount", N_SurfacePropCount},
+    {"BSP_SurfacePropName", N_SurfacePropName},
+    {"BSP_SurfacePropIndex", N_SurfacePropIndex},
+    {"BSP_SurfacePropData", N_SurfacePropData},
 
     {nullptr, nullptr},
 };

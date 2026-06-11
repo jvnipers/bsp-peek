@@ -6,7 +6,8 @@ Engine-internal:
 
 - `CCollisionBSPData` (brushes, leaves, planes, nodes, submodels)
 - `CDispCollTree` (displacements)
-- *static props* (runtime VPhysics collision)
+- static props (runtime VPhysics collision)
+- surface physics props / friction (`IPhysicsSurfaceProps`)
 
 Disk-parsed BSP file lumps:
 

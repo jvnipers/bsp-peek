@@ -71,6 +71,30 @@ int WorldTraceHull(const float start[3], const float end[3],
                    int &outSurfaceProps, int &outSurfaceFlags, int &outHitType,
                    char *outSurfName, int surfNameLen);
 
+// Surface physics properties (friction / elasticity / movement modifiers).
+// Resolved from the live IPhysicsSurfaceProps singleton in the already-loaded
+// vphysics module. The index is a PHYSICS surfaceprop-database index,
+// the kind returned by WorldTraceHull's surfaceProps,
+// BSP_DispGetSurfaceProps, and BSP_BoxBrushSurfaceIndex. NOT a texdata index.
+
+// True once the IPhysicsSurfaceProps interface resolved.
+bool SurfacePropsReady();
+// Number of entries in the surfaceprop database (0 if unavailable).
+int SurfacePropCount();
+// Name of surfaceprop[idx] (e.g. "concrete", "ice", "metal"). Returns length.
+int SurfacePropName(int idx, char *buf, int maxlen);
+// Database index for a surfaceprop name. -1 if unavailable / not found.
+int SurfacePropIndex(const char *name);
+// Full physics + movement params for surfaceprop[idx].
+// false if unavailable / OOB.
+//   friction/elasticity/density/thickness/dampening: surfacephysicsparams_t.
+//   maxSpeedFactor/jumpFactor: movement modifiers (surf ramps, jump pads).
+//   material: char material code, climbable: ladder-surface flag.
+bool SurfacePropData(int idx, float &friction, float &elasticity,
+                     float &density, float &thickness, float &dampening,
+                     float &maxSpeedFactor, float &jumpFactor, int &material,
+                     bool &climbable);
+
 // Runtime (post-combine) static props, via IStaticPropMgr + ICollideable.
 // These are the actual props the engine collides,
 // indexed by the static-prop-manager index (same index PropAtRay returns).
