@@ -215,6 +215,18 @@ int CModelHeadnode(int idx);
 bool FindBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower,
                          int &outUpper);
 
+// Box-table analog of FindBrushPairAtSeam for CSGO box-optimized walls.
+// Box brushes are absent from the leafbrush lump, and multiple cboxbrush_t
+// entries can share one originalBrush index (collapsing in the cbrush-idx
+// cache), so the regular pair finder misses them.
+// Scans the cboxbrush_t table directly.
+//   lower box: maxs.z ~= seamZ AND XY AABB contains samplePos
+//   upper box: mins.z ~= seamZ AND XY AABB contains samplePos
+// Returns BOX-TABLE indices (NOT cbrush indices).
+// Caller applies contents/order policy.
+bool FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
+                            int &outLower, int &outUpper);
+
 // FindBrushPairAtSeam + leaf-visit-order check in one call.
 // Resolves the lower/upper brushes at the seam, then walks to the leaf just
 // below seamZ (samplePos.xy, seamZ - 0.5) and finds each brush's position in

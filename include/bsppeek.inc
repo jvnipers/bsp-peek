@@ -225,6 +225,15 @@ native int  BSP_CModelHeadnode(int idx);
 native bool BSP_FindBrushPairAtSeam(const float samplePos[3], float seamZ,
                                     int &outLowerBrush, int &outUpperBrush);
 
+// Box-table analog of BSP_FindBrushPairAtSeam for CSGO box-optimized walls.
+// Box brushes are absent from the leafbrush lump, and several cboxbrush_t entries can
+// share one originalBrush index (collapsing in the cbrush-indexed cache), so the regular
+// pair finder misses them. Scans the cboxbrush_t table directly.
+// outLower = BOX index w/ maxs.z == seamZ, outUpper = BOX index w/ mins.z == seamZ
+// (these are box-table indices, use BSP_BoxBrush* accessors). Returns true if both found.
+native bool BSP_FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
+                                       int &outLowerBox, int &outUpperBox);
+
 // BSP_FindBrushPairAtSeam + the leaf-visit-order gate in one call.
 // Resolves the lower/upper brushes at the seam, then samples the leaf just
 // below seamZ and reports each brush's position in that leaf's brush list.

@@ -557,6 +557,20 @@ cell_t N_FindBrushPairAtSeam(IPluginContext *pCtx, const cell_t *params) {
   return ok ? 1 : 0;
 }
 
+cell_t N_FindBoxBrushPairAtSeam(IPluginContext *pCtx, const cell_t *params) {
+  float p[3];
+  cell_to_float3(pCtx, params[1], p);
+  float seamZ = sp_ctof(params[2]);
+  int lower = -1, upper = -1;
+  bool ok = BSPData::FindBoxBrushPairAtSeam(p, seamZ, lower, upper);
+  cell_t *outLower = nullptr, *outUpper = nullptr;
+  pCtx->LocalToPhysAddr(params[3], &outLower);
+  pCtx->LocalToPhysAddr(params[4], &outUpper);
+  *outLower = lower;
+  *outUpper = upper;
+  return ok ? 1 : 0;
+}
+
 cell_t N_LeafBrushPairAtSeam(IPluginContext *pCtx, const cell_t *params) {
   float p[3];
   cell_to_float3(pCtx, params[1], p);
@@ -1523,6 +1537,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 
     // "pixelsurf"
     {"BSP_FindBrushPairAtSeam", N_FindBrushPairAtSeam},
+    {"BSP_FindBoxBrushPairAtSeam", N_FindBoxBrushPairAtSeam},
     {"BSP_LeafBrushPairAtSeam", N_LeafBrushPairAtSeam},
 
     // Brush cache

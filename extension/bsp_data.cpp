@@ -1552,6 +1552,46 @@ bool FindBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower,
   return (outLower >= 0 && outUpper >= 0);
 }
 
+// Box-table analog of FindBrushPairAtSeam for CSGO box-optimized walls.
+// The leafbrush lump and the cbrush-indexed brush cache both miss these:
+// box brushes are absent from the per-leaf leafbrush list, and several
+// cboxbrush_t entries can share one originalBrush index, so they collapse into
+// a single cache slot (only one survives -> no pair).
+// Scan the cboxbrush_t table directly instead.
+//   lower box: maxs.z ~= seamZ AND XY AABB contains samplePos
+//   upper box: mins.z ~= seamZ AND XY AABB contains samplePos
+// Returns BOX-TABLE indices (NOT cbrush indices). false if no flush pair.
+// Caller applies contents + visit-order policy (lower box index < upper).
+bool FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
+                            int &outLower, int &outUpper) {
+  outLower = -1;
+  outUpper = -1;
+  if (!g_pBSPData)
+    return false;
+  int nb = GetNumBoxBrushes();
+  if (nb <= 0)
+    return false;
+  for (int i = 0; i < nb; ++i) {
+    float mn[3], mx[3];
+    if (!BoxBrushBounds(i, mn, mx))
+      continue;
+    // XY AABB containment (0.1u slack mirrors FindBrushPairAtSeam).
+    if (samplePos[0] < mn[0] - 0.1f || samplePos[0] > mx[0] + 0.1f)
+      continue;
+    if (samplePos[1] < mn[1] - 0.1f || samplePos[1] > mx[1] + 0.1f)
+      continue;
+    float top_diff = mx[2] - seamZ;
+    if (top_diff > -0.1f && top_diff < 0.1f && outLower < 0)
+      outLower = i;
+    float bot_diff = mn[2] - seamZ;
+    if (bot_diff > -0.1f && bot_diff < 0.1f && outUpper < 0)
+      outUpper = i;
+    if (outLower >= 0 && outUpper >= 0)
+      return true;
+  }
+  return (outLower >= 0 && outUpper >= 0);
+}
+
 bool LeafBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower,
                          int &outUpper, int &outLeaf, int &outLowerPos,
                          int &outUpperPos) {
