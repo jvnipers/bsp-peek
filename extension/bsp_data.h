@@ -33,6 +33,14 @@ int MapPathName(char *buf, int maxlen);
 int EmptyLeaf();
 int SolidLeaf();
 
+// Self-test: bitmask of BSPData subsystems that deref + sanity-check OK.
+// Bit 0 (0x1): g_BSPData base resolved + brush count in sane range.
+// Bit 1 (0x2): leaf + node tables present (counts > 0, base ptrs non-null).
+// Bit 2 (0x4): cboxbrush_t SIMD table present (count > 0, base non-null).
+// Bit 3 (0x8): visibility blob present (cluster count > 0).
+// 0 = base unresolved or g_BSPData points at garbage (post-update sig break).
+int SelfTest();
+
 // Counts
 int GetNumBrushes();
 int GetNumBrushSides();
@@ -90,6 +98,16 @@ int BrushSideBevel(int brushIdx, int sideIdx);
 int BrushSideThin(int brushIdx, int sideIdx);
 // Texinfo index for this side. -1 if invalid.
 int BrushSideTexInfo(int brushIdx, int sideIdx);
+// Plane table index for this side (resolved from the side's plane pointer).
+// -1 if invalid or the pointer doesn't land on a map_planes entry.
+int BrushSidePlaneIndex(int brushIdx, int sideIdx);
+
+// Authoritative box-brush membership:
+// true if brushIdx is the originalBrush of some cboxbrush_t entry.
+// Backed by a per-map set built lazily on first call
+// (and rebuilt when the box count changes), so lookups are O(1)
+// instead of the plugin scanning the whole cboxbrush table per query.
+bool BrushIsBoxAuth(int brushIdx);
 
 // Leaf accessors
 // Brushes belonging to a leaf in BSP visit order (first SOLID hit wins).
@@ -147,6 +165,20 @@ int CModelHeadnode(int idx);
 // Returns true and fills outLower/outUpper on success.
 bool FindBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower,
                          int &outUpper);
+
+// FindBrushPairAtSeam + leaf-visit-order check in one call.
+// Resolves the lower/upper brushes at the seam, then walks to the leaf just
+// below seamZ (samplePos.xy, seamZ - 0.5) and finds each brush's position in
+// that leaf's brush list. CSGO inverts leaf-visit order vs TF2, so the lower
+// brush listed first (lowerPos < upperPos) is the pixelsurf-eligible ordering.
+//   outLeaf    : leaf index sampled below the seam (-1 if lookup failed)
+//   outLowerPos/outUpperPos: index of lower/upper brush within that leaf's
+//                            brush list (-1 if not present)
+// Returns true if both brushes were found AND both located in the leaf AND
+// lowerPos < upperPos (engine visits lower first -> stalemate goes to the top).
+bool LeafBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower,
+                         int &outUpper, int &outLeaf, int &outLowerPos,
+                         int &outUpperPos);
 
 // Brush AABB cache
 // Plugin should call once in OnMapStart so the first user-triggered query

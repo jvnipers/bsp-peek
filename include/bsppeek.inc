@@ -20,6 +20,16 @@
 // Engine's internal map path string. Returns string length.
 native int  BSP_MapPathName(char[] buf, int maxlen);
 
+// Health check: bitmask of subsystems that resolved + sanity-checked OK.
+// Lets you tell "map has no such data" apart from "a signature broke after a update"
+// (otherwise every native silently returns safe defaults in both).
+//   0x01 BSPData base + brush table sane    0x10 displacement engine reader
+//   0x02 leaf + node tables present         0x20 static-prop interfaces
+//   0x04 cboxbrush_t SIMD table present     0x40 disk BSP lumps loaded
+//   0x08 visibility blob present
+// Returns 0 when g_BSPData is unresolved or pointing at garbage.
+native int  BSP_SelfTest();
+
 // Debug: hex-dump CCollisionBSPData bytes from [startOff, endOff) to SourceMod log.
 // Used to RE field offsets. Range clamped server-side.
 native void BSP_DebugDumpCBSP(int startOff, int endOff);
@@ -83,6 +93,19 @@ native int  BSP_BrushSideBevel(int brushIdx, int sideIdx);
 native int  BSP_BrushSideThin(int brushIdx, int sideIdx);
 // Texinfo table index for this side. -1 if invalid.
 native int  BSP_BrushSideTexInfo(int brushIdx, int sideIdx);
+// Plane-table index for this side (see BSP_PlaneAt). -1 if invalid
+// or the side's plane pointer doesn't land on a map_planes entry.
+native int  BSP_BrushSidePlaneIndex(int brushIdx, int sideIdx);
+// Material name for this side (chains engine texinfo -> disk texdata -> string).
+// Returns length. 0 for tool/nodraw sides with no texdata, or if invalid.
+// Assumes engine texinfo index == disk LUMP_TEXINFO index (true on CSGO).
+native int  BSP_BrushSideMaterial(int brushIdx, int sideIdx, char[] buf, int maxlen);
+
+// Authoritative box-brush test: true iff brushIdx is the originalBrush of a
+// cboxbrush_t entry (CSGO's SIMD axis-aligned box table).
+// Unlike BSP_IsBoxBrush (a numsides==6 heuristic that false-negatives on bevel-padded boxes),
+// this is exact. O(1) - backed by a per-map set the ext builds on first call.
+native bool BSP_BrushIsBoxAuth(int brushIdx);
 
 // Leaf accessors
 // Brushes belonging to a leaf in BSP visit order (first SOLID hit wins).
@@ -138,6 +161,18 @@ native int  BSP_CModelHeadnode(int idx);
 // Returns true if BOTH found. outLower = brush w/ maxs.z == seamZ, outUpper = brush w/ mins.z == seamZ.
 native bool BSP_FindBrushPairAtSeam(const float samplePos[3], float seamZ,
                                     int &outLowerBrush, int &outUpperBrush);
+
+// BSP_FindBrushPairAtSeam + the leaf-visit-order gate in one call.
+// Resolves the lower/upper brushes at the seam, then samples the leaf just
+// below seamZ and reports each brush's position in that leaf's brush list.
+// CSGO inverts leaf-visit order vs TF2, so lowerPos < upperPos
+// (engine visits the bottom brush first) is the pixelsurf-eligible ordering.
+//   outLeaf = leaf sampled below the seam (-1 if lookup failed)
+//   outLowerPos/outUpperPos = brush position within that leaf (-1 if absent)
+// Returns true iff both brushes found AND in the leaf AND lowerPos < upperPos.
+native bool BSP_LeafBrushPairAtSeam(const float samplePos[3], float seamZ,
+                                    int &outLowerBrush, int &outUpperBrush,
+                                    int &outLeaf, int &outLowerPos, int &outUpperPos);
 
 // Brush AABB cache
 // Force a fresh build of the per-map brush AABB cache (synchronous; blocks).
@@ -267,6 +302,12 @@ native int   BSP_EntityClassname(int idx, char[] buf, int maxlen);
 native bool  BSP_EntityOrigin(int idx, float origin[3]);
 // Lookup arbitrary key on entity[idx]. Returns value length, 0 if missing.
 native int   BSP_EntityKeyValue(int idx, const char[] key, char[] buf, int maxlen);
+// Brush-model index for entity[idx]: if its "model" key is a "*N" brush-model reference,
+// returns N (usable as the cmodel/submodel index for BSP_CModel*).
+// -1 if no "model" key, a studio (.mdl) model, or idx out of range.
+// Lets you tie a moving brush ent (func_door, func_movelinear, func_brush,
+// trigger volumes) to its collision submodel.
+native int   BSP_EntityModelIndex(int idx);
 
 // Texinfo / Texdata (LUMP_TEXINFO + LUMP_TEXDATA)
 native int   BSP_TexInfoCount();

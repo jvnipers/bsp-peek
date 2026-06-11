@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <unordered_map>
@@ -639,6 +640,24 @@ int EntityKeyValue(int idx, const char *key, char *buf, int maxlen) {
   std::memcpy(buf, v.data(), n);
   buf[n] = '\0';
   return n;
+}
+
+int EntityModelIndex(int idx) {
+  if (!g.loaded || idx < 0 || idx >= (int)g.entities.size())
+    return -1;
+  const auto &kv = g.entities[idx].kv;
+  auto it = kv.find("model");
+  if (it == kv.end())
+    return -1;
+  const std::string &v = it->second;
+  // Brush models are "*N", studio props are "models/....mdl".
+  if (v.size() < 2 || v[0] != '*')
+    return -1;
+  char *end = nullptr;
+  long n = std::strtol(v.c_str() + 1, &end, 10);
+  if (end == v.c_str() + 1 || n < 0)
+    return -1;
+  return (int)n;
 }
 
 // Texinfo + Texdata

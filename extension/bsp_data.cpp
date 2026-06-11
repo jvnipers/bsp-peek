@@ -135,9 +135,18 @@ static std::atomic<bool> g_asyncBuildInProgress{false};
 // unload cleanly without the worker outliving the engine module.
 static std::thread g_asyncBuildThread;
 
+// Authoritative box-brush membership: bit set per brush index that is the
+// originalBrush of some cboxbrush_t entry. Built lazily on first BrushIsBoxAuth
+// call and invalidated when the box-brush count changes (map switch).
+// Natives run on the main thread, so no locking is needed
+// (the async worker never touches this).
+static std::vector<bool> g_boxBrushAuth;
+static int g_boxBrushAuthBuiltFor = -1; // box count this set was built for
+
 // Forward decls - built lazily by various accessors below.
 static void BuildBrushCache();
 static void BuildLeafCache();
+static void PopulateBrushCache(std::vector<BrushCacheEntry> &out);
 
 bool Init(IGameConfig *gameconf, char *error, size_t maxlen) {
   // Resolve g_BSPData base via Addresses chain.
@@ -251,6 +260,8 @@ void Shutdown() {
   g_leafCache.clear();
   g_nodeCache.clear();
   g_leafCacheBuilt = false;
+  g_boxBrushAuth.clear();
+  g_boxBrushAuthBuiltFor = -1;
 }
 
 void OnMapStart() {
@@ -260,6 +271,8 @@ void OnMapStart() {
   g_leafCache.clear();
   g_nodeCache.clear();
   g_leafCacheBuilt = false;
+  g_boxBrushAuth.clear();
+  g_boxBrushAuthBuiltFor = -1;
 }
 
 // Debug accessors (used by extension.cpp at load time)
@@ -607,6 +620,30 @@ int EmptyLeaf() { return g_pBSPData ? ReadI32(g_pBSPData, OFF_EMPTYLEAF) : -1; }
 
 int SolidLeaf() { return g_pBSPData ? ReadI32(g_pBSPData, OFF_SOLIDLEAF) : -1; }
 
+int SelfTest() {
+  int mask = 0;
+  if (!g_pBSPData)
+    return 0;
+  // Bit 0: base resolved + brush count + table look sane.
+  int nb = GetNumBrushes();
+  if (nb > 0 && nb <= 1000000 && OFF_MAP_BRUSHES != 0 &&
+      ReadPtr(g_pBSPData, OFF_MAP_BRUSHES) != nullptr)
+    mask |= 0x1;
+  // Bit 1: leaf + node tables present.
+  if (GetNumLeaves() > 0 && GetNumNodes() > 0 && OFF_MAP_LEAFS != 0 &&
+      OFF_MAP_NODES != 0 && ReadPtr(g_pBSPData, OFF_MAP_LEAFS) != nullptr &&
+      ReadPtr(g_pBSPData, OFF_MAP_NODES) != nullptr)
+    mask |= 0x2;
+  // Bit 2: cboxbrush_t SIMD table present.
+  if (GetNumBoxBrushes() > 0 && OFF_MAP_BOXBRUSHES != 0 &&
+      ReadPtr(g_pBSPData, OFF_MAP_BOXBRUSHES) != nullptr)
+    mask |= 0x4;
+  // Bit 3: visibility blob present.
+  if (GetNumClusters() > 0)
+    mask |= 0x8;
+  return mask;
+}
+
 // Point queries
 int LeafAtPoint(const float pos[3]) {
   // Start at root (node[0]), each step:
@@ -794,6 +831,25 @@ int BrushSideTexInfo(int brushIdx, int sideIdx) {
   if (!side)
     return -1;
   return (int)ReadU16(side, OFF_CBRUSHSIDE_TEXINFO);
+}
+
+int BrushSidePlaneIndex(int brushIdx, int sideIdx) {
+  const uint8_t *side = brushside_for(brushIdx, sideIdx);
+  if (!side || !g_pBSPData || OFF_MAP_PLANES == 0 || SZ_CPLANE <= 0)
+    return -1;
+  const uint8_t *plane =
+      reinterpret_cast<const uint8_t *>(ReadPtr(side, OFF_CBRUSHSIDE_PLANE));
+  const uint8_t *base =
+      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_PLANES));
+  if (!plane || !base || plane < base)
+    return -1;
+  auto delta = plane - base;
+  if (delta % SZ_CPLANE != 0)
+    return -1; // pointer doesn't land on a map_planes entry
+  int idx = (int)(delta / SZ_CPLANE);
+  if (idx < 0 || idx >= GetNumPlanes())
+    return -1;
+  return idx;
 }
 
 // Leaf accessors
@@ -1016,6 +1072,33 @@ int BoxBrushContents(int idx) {
   return GetBrushContents(orig);
 }
 
+// Build (once per map) the brush-index -> isBoxBrush bit set from the
+// cboxbrush_t table's originalBrush column.
+static void EnsureBoxBrushAuthSet() {
+  int nbox = GetNumBoxBrushes();
+  if (g_boxBrushAuthBuiltFor == nbox && !g_boxBrushAuth.empty())
+    return;
+  if (g_boxBrushAuthBuiltFor == nbox && nbox == 0)
+    return; // built, legitimately empty
+  int nbrush = GetNumBrushes();
+  g_boxBrushAuth.assign(nbrush > 0 ? nbrush : 0, false);
+  for (int i = 0; i < nbox; ++i) {
+    int orig = BoxBrushOriginalBrush(i);
+    if (orig >= 0 && orig < nbrush)
+      g_boxBrushAuth[orig] = true;
+  }
+  g_boxBrushAuthBuiltFor = nbox;
+}
+
+bool BrushIsBoxAuth(int brushIdx) {
+  if (brushIdx < 0)
+    return false;
+  EnsureBoxBrushAuthSet();
+  if (brushIdx >= (int)g_boxBrushAuth.size())
+    return false;
+  return g_boxBrushAuth[brushIdx];
+}
+
 // "High-level" pixelsurf
 bool FindBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower,
                          int &outUpper) {
@@ -1072,16 +1155,52 @@ bool FindBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower,
   return (outLower >= 0 && outUpper >= 0);
 }
 
+bool LeafBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower,
+                         int &outUpper, int &outLeaf, int &outLowerPos,
+                         int &outUpperPos) {
+  outLeaf = -1;
+  outLowerPos = -1;
+  outUpperPos = -1;
+  // Resolve the brush pair (own lock taken inside FindBrushPairAtSeam).
+  FindBrushPairAtSeam(samplePos, seamZ, outLower, outUpper);
+  if (outLower < 0 || outUpper < 0)
+    return false;
+
+  // Sample the leaf just below the seam (inside the lower brush's extent).
+  float leafSample[3] = {samplePos[0], samplePos[1], seamZ - 0.5f};
+  outLeaf = LeafAtPoint(leafSample);
+  if (outLeaf < 0)
+    return false;
+
+  // Find each brush's position in the leaf's ordered brush list.
+  // 1024 mirrors the natives-layer LeafBrushes clamp; leaves never approach it.
+  int brushes[1024];
+  int n = LeafBrushes(outLeaf, brushes, (int)(sizeof(brushes) / sizeof(int)));
+  if (n < 0)
+    return false;
+  for (int i = 0; i < n; ++i) {
+    if (brushes[i] == outLower && outLowerPos < 0)
+      outLowerPos = i;
+    if (brushes[i] == outUpper && outUpperPos < 0)
+      outUpperPos = i;
+  }
+  // Surfable ordering: both in this leaf, lower visited first.
+  return (outLowerPos >= 0 && outUpperPos >= 0 && outLowerPos < outUpperPos);
+}
+
 // Brush AABB cache
-static void BuildBrushCache() {
-  g_brushCache.clear();
-  g_brushCacheBuilt = false;
+// Populate a brush AABB cache vector: plane-derived bounds + contents per
+// brush, then fill any box-optimized brushes from the cboxbrush_t table.
+// Shared by the synchronous and async builders so both produce identical
+// caches. Leaves `out` empty (=> caller treats cache as unbuilt) on bad counts.
+static void PopulateBrushCache(std::vector<BrushCacheEntry> &out) {
+  out.clear();
   int n = GetNumBrushes();
   if (n <= 0 || n > 1000000)
     return;
-  g_brushCache.resize(n);
+  out.resize(n);
   for (int i = 0; i < n; ++i) {
-    BrushCacheEntry &e = g_brushCache[i];
+    BrushCacheEntry &e = out[i];
     e.valid = GetBrushBounds(i, e.mins, e.maxs);
     e.contents = e.valid ? GetBrushContents(i) : 0;
   }
@@ -1097,7 +1216,7 @@ static void BuildBrushCache() {
     int orig = BoxBrushOriginalBrush(i);
     if (orig < 0 || orig >= n)
       continue;
-    BrushCacheEntry &e = g_brushCache[orig];
+    BrushCacheEntry &e = out[orig];
     if (e.valid)
       continue; // keep plane-derived bounds when we already have them
     float bmins[3], bmaxs[3];
@@ -1108,8 +1227,11 @@ static void BuildBrushCache() {
       e.valid = true;
     }
   }
+}
 
-  g_brushCacheBuilt = true;
+static void BuildBrushCache() {
+  PopulateBrushCache(g_brushCache);
+  g_brushCacheBuilt = !g_brushCache.empty();
 }
 
 // Per-map leaf AABB cache via BSP tree descent.
@@ -1254,16 +1376,9 @@ void RebuildCacheAsync() {
 
   g_asyncBuildThread = std::thread([] {
     // Build into a local vector first so readers see no partial state.
+    // Same path as the sync build, incl. the cboxbrush_t gap-fill.
     std::vector<BrushCacheEntry> local;
-    int n = GetNumBrushes();
-    if (n > 0 && n <= 1000000) {
-      local.resize(n);
-      for (int i = 0; i < n; ++i) {
-        BrushCacheEntry &e = local[i];
-        e.valid = GetBrushBounds(i, e.mins, e.maxs);
-        e.contents = e.valid ? GetBrushContents(i) : 0;
-      }
-    }
+    PopulateBrushCache(local);
     {
       std::lock_guard<std::mutex> lk(g_brushCacheMutex);
       g_brushCache.swap(local);

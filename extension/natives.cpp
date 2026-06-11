@@ -184,6 +184,25 @@ cell_t N_SolidLeaf(IPluginContext *, const cell_t *) {
   return BSPData::SolidLeaf();
 }
 
+// Aggregate health check across all subsystems.
+// Lets us distinguish "map has no data" from "a signature broke after a update"
+// (every native silently returns safe defaults in both cases otherwise).
+//   bits 0..3 : BSPData (see BSPData::SelfTest)
+//   bit 4 (0x10): displacement engine reader ready
+//   bit 5 (0x20): static-prop engine interfaces resolved
+//   bit 6 (0x40): disk BSP lumps loaded for the current map
+cell_t N_SelfTest(IPluginContext *, const cell_t *) {
+  int mask = BSPData::SelfTest();
+  if (BSPDisp::EngineReady())
+    mask |= 0x10;
+  if (BSPProps::Ready())
+    mask |= 0x20;
+  EnsureLumpsLoaded();
+  if (BSPLumps::Loaded())
+    mask |= 0x40;
+  return mask;
+}
+
 // Point queries
 cell_t N_LeafAtPoint(IPluginContext *pCtx, const cell_t *params) {
   float p[3];
@@ -238,6 +257,35 @@ cell_t N_BrushSideThin(IPluginContext *, const cell_t *params) {
 }
 cell_t N_BrushSideTexInfo(IPluginContext *, const cell_t *params) {
   return BSPData::BrushSideTexInfo(params[1], params[2]);
+}
+cell_t N_BrushSidePlaneIndex(IPluginContext *, const cell_t *params) {
+  return BSPData::BrushSidePlaneIndex(params[1], params[2]);
+}
+
+// Material name for a brush side. Chains engine cbrushside_t.texinfo ->
+// disk LUMP_TEXINFO.texdata -> texdata material string. Assumes the engine's
+// runtime texinfo index equals the disk LUMP_TEXINFO index (true in CSGO:
+// the engine loads texinfo straight from the lump without reordering).
+cell_t N_BrushSideMaterial(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int maxlen = params[4];
+  if (maxlen <= 0)
+    return 0;
+  std::vector<char> tmp(maxlen);
+  tmp[0] = '\0';
+  int n = 0;
+  int texInfo = BSPData::BrushSideTexInfo(params[1], params[2]);
+  if (texInfo >= 0) {
+    int texData = BSPLumps::TexInfoTexData(texInfo);
+    if (texData >= 0)
+      n = BSPLumps::TexDataMaterialName(texData, tmp.data(), maxlen);
+  }
+  pCtx->StringToLocal(params[3], maxlen, tmp.data());
+  return n;
+}
+
+cell_t N_BrushIsBoxAuth(IPluginContext *, const cell_t *params) {
+  return BSPData::BrushIsBoxAuth(params[1]) ? 1 : 0;
 }
 
 // Leaf accessors
@@ -391,6 +439,27 @@ cell_t N_FindBrushPairAtSeam(IPluginContext *pCtx, const cell_t *params) {
   pCtx->LocalToPhysAddr(params[4], &outUpper);
   *outLower = lower;
   *outUpper = upper;
+  return ok ? 1 : 0;
+}
+
+cell_t N_LeafBrushPairAtSeam(IPluginContext *pCtx, const cell_t *params) {
+  float p[3];
+  cell_to_float3(pCtx, params[1], p);
+  float seamZ = sp_ctof(params[2]);
+  int lower = -1, upper = -1, leaf = -1, lowerPos = -1, upperPos = -1;
+  bool ok = BSPData::LeafBrushPairAtSeam(p, seamZ, lower, upper, leaf, lowerPos,
+                                         upperPos);
+  cell_t *o = nullptr;
+  pCtx->LocalToPhysAddr(params[3], &o);
+  *o = lower;
+  pCtx->LocalToPhysAddr(params[4], &o);
+  *o = upper;
+  pCtx->LocalToPhysAddr(params[5], &o);
+  *o = leaf;
+  pCtx->LocalToPhysAddr(params[6], &o);
+  *o = lowerPos;
+  pCtx->LocalToPhysAddr(params[7], &o);
+  *o = upperPos;
   return ok ? 1 : 0;
 }
 
@@ -658,6 +727,11 @@ cell_t N_EntityKeyValue(IPluginContext *pCtx, const cell_t *params) {
   int n = BSPLumps::EntityKeyValue(params[1], key, tmp.data(), maxlen);
   pCtx->StringToLocal(params[3], maxlen, tmp.data());
   return n;
+}
+
+cell_t N_EntityModelIndex(IPluginContext *, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::EntityModelIndex(params[1]);
 }
 
 cell_t N_TexInfoCount(IPluginContext *, const cell_t *) {
@@ -1248,6 +1322,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_MapPathName", N_MapPathName},
     {"BSP_EmptyLeaf", N_EmptyLeaf},
     {"BSP_SolidLeaf", N_SolidLeaf},
+    {"BSP_SelfTest", N_SelfTest},
 
     // Debug
     {"BSP_DebugDumpCBSP", N_DebugDumpCBSP},
@@ -1287,6 +1362,9 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_BrushSideBevel", N_BrushSideBevel},
     {"BSP_BrushSideThin", N_BrushSideThin},
     {"BSP_BrushSideTexInfo", N_BrushSideTexInfo},
+    {"BSP_BrushSidePlaneIndex", N_BrushSidePlaneIndex},
+    {"BSP_BrushSideMaterial", N_BrushSideMaterial},
+    {"BSP_BrushIsBoxAuth", N_BrushIsBoxAuth},
 
     // Leaf accessors
     {"BSP_LeafBrushes", N_LeafBrushes},
@@ -1320,6 +1398,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 
     // "pixelsurf"
     {"BSP_FindBrushPairAtSeam", N_FindBrushPairAtSeam},
+    {"BSP_LeafBrushPairAtSeam", N_LeafBrushPairAtSeam},
 
     // Brush cache
     {"BSP_RebuildCache", N_RebuildCache},
@@ -1366,6 +1445,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_EntityClassname", N_EntityClassname},
     {"BSP_EntityOrigin", N_EntityOrigin},
     {"BSP_EntityKeyValue", N_EntityKeyValue},
+    {"BSP_EntityModelIndex", N_EntityModelIndex},
     {"BSP_FindEntityByKeyValue", N_FindEntityByKeyValue},
 
     {"BSP_TexInfoCount", N_TexInfoCount},

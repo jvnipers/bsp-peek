@@ -29,11 +29,16 @@ bool HasLighting();
 
 // Entities (LUMP_ENTITIES = 0, raw text)
 int EntityRawLen();
-int EntityRawCopy(char *buf, int maxlen); // returns bytes copied (incl. null)
+int EntityRawCopy(char *buf, int maxlen); // returns bytes copied (excl. null)
 int EntityCount();
 int EntityClassname(int idx, char *buf, int maxlen);
 bool EntityOrigin(int idx, float out[3]); // false if "origin" missing
 int EntityKeyValue(int idx, const char *key, char *buf, int maxlen);
+// Brush-model index for entity[idx]: parses its "model" key, and if it is a
+// "*N" brush-model reference returns N (the cmodel/submodel index usable with
+// BSPData::CModel*). Returns -1 if the entity has no "model" key, the value is
+// a studio/.mdl path rather than a "*N" reference, or idx is OOB.
+int EntityModelIndex(int idx);
 
 // Texinfo (LUMP_TEXINFO = 18) + Texdata (LUMP_TEXDATA = 2)
 int TexInfoCount();
