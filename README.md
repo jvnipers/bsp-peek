@@ -1,6 +1,26 @@
 # BSP-Peek - SourceMod extension for BSP queries
 
-Exposes engine-internal `CCollisionBSPData` (brushes, leaves, planes, nodes, submodels), `CDispCollTree` (displacements) and static props (sprp lump + runtime VPhysics collision) + disk-parsed BSP file lumps (entities, texinfo, leaffaces, worldlights, header) to SourceMod plugins.
+Extension to expose engine-internal BSP/Collision data and disk-parsed BSP file lumps to SourceMod plugins.
+
+Engine-internal:
+
+- `CCollisionBSPData` (brushes, leaves, planes, nodes, submodels)
+- `CDispCollTree` (displacements)
+- *static props* (runtime VPhysics collision)
+
+Disk-parsed BSP file lumps:
+
+- entities
+- texinfo
+- leaffaces
+- worldlights
+- static props
+- vis
+- vertexes
+- faces
+- edges, surfedges
+- cubemaps
+- header
 
 Currently only supports CS:GO (x86)
 
@@ -21,13 +41,13 @@ docker compose run --rm build
 ### Native
 
 ```bash
-mkdir build && cd build
+mkdir -p build && cd build
 python ../configure.py --enable-optimize --targets=x86
 ambuild
 ```
 
 Required toolchain:
 
-- **Windows**: Visual Studio Build Tools 2022
+- **Windows**: Visual Studio Build Tools 2019+
 - **Linux**: `gcc-multilib g++-multilib libstdc++6:i386`
-- Both: Python 3 + AMBuild 2+
+- Both: Python 3.9+ and AMBuild 2.2+
