@@ -141,6 +141,11 @@ static std::thread g_asyncBuildThread;
 // Natives run on the main thread, so no locking is needed
 // (the async worker never touches this).
 static std::vector<bool> g_boxBrushAuth;
+// Parallel map: brush index -> its cboxbrush_t index (-1 if not a box brush).
+// Built alongside g_boxBrushAuth. Lets the plane-accurate accessors fall back
+// to the authoritative box AABB for box-optimized brushes (whose cbrush_t
+// sides are stripped / bevel-padded, so their planes are not usable).
+static std::vector<int> g_brushToBoxIdx;
 static int g_boxBrushAuthBuiltFor = -1; // box count this set was built for
 
 // Forward decls - built lazily by various accessors below.
@@ -261,6 +266,7 @@ void Shutdown() {
   g_nodeCache.clear();
   g_leafCacheBuilt = false;
   g_boxBrushAuth.clear();
+  g_brushToBoxIdx.clear();
   g_boxBrushAuthBuiltFor = -1;
 }
 
@@ -272,6 +278,7 @@ void OnMapStart() {
   g_nodeCache.clear();
   g_leafCacheBuilt = false;
   g_boxBrushAuth.clear();
+  g_brushToBoxIdx.clear();
   g_boxBrushAuthBuiltFor = -1;
 }
 
@@ -1082,12 +1089,25 @@ static void EnsureBoxBrushAuthSet() {
     return; // built, legitimately empty
   int nbrush = GetNumBrushes();
   g_boxBrushAuth.assign(nbrush > 0 ? nbrush : 0, false);
+  g_brushToBoxIdx.assign(nbrush > 0 ? nbrush : 0, -1);
   for (int i = 0; i < nbox; ++i) {
     int orig = BoxBrushOriginalBrush(i);
-    if (orig >= 0 && orig < nbrush)
+    if (orig >= 0 && orig < nbrush) {
       g_boxBrushAuth[orig] = true;
+      g_brushToBoxIdx[orig] = i;
+    }
   }
   g_boxBrushAuthBuiltFor = nbox;
+}
+
+// cboxbrush_t index for a brush index, or -1 if the brush is not box-optimized.
+static int BoxIndexForBrush(int brushIdx) {
+  if (brushIdx < 0)
+    return -1;
+  EnsureBoxBrushAuthSet();
+  if (brushIdx >= (int)g_brushToBoxIdx.size())
+    return -1;
+  return g_brushToBoxIdx[brushIdx];
 }
 
 bool BrushIsBoxAuth(int brushIdx) {
@@ -1144,6 +1164,16 @@ bool side_plane(uint16_t first, int k, float n[3], float &d) {
 } // namespace
 
 bool PointInBrush(int brushIdx, const float pos[3]) {
+  // Box-optimized brushes have stripped/bevel-padded sides, so their planes are
+  // not usable. Their solid IS the SIMD box AABB, test against that directly.
+  int bi = BoxIndexForBrush(brushIdx);
+  if (bi >= 0) {
+    float mn[3], mx[3];
+    if (!BoxBrushBounds(bi, mn, mx))
+      return false;
+    return pos[0] >= mn[0] && pos[0] <= mx[0] && pos[1] >= mn[1] &&
+           pos[1] <= mx[1] && pos[2] >= mn[2] && pos[2] <= mx[2];
+  }
   uint16_t numsides, first;
   if (!brush_sides(brushIdx, numsides, first) || numsides == 0)
     return false;
@@ -1173,6 +1203,21 @@ int PointContentsBrushes(const float pos[3]) {
 }
 
 bool BrushColumnSpan(int brushIdx, float x, float y, float &zMin, float &zMax) {
+  // Box-optimized brush: authoritative extent is the SIMD box AABB
+  //(an axis box is exactly its AABB), not the stripped cbrush_t planes.
+  int bi = BoxIndexForBrush(brushIdx);
+  if (bi >= 0) {
+    float mn[3], mx[3];
+    if (!BoxBrushBounds(bi, mn, mx))
+      return false;
+    // 0.1u XY slack mirrors FindBrushPairAtSeam's containment tolerance.
+    if (x < mn[0] - 0.1f || x > mx[0] + 0.1f || y < mn[1] - 0.1f ||
+        y > mx[1] + 0.1f)
+      return false;
+    zMin = mn[2];
+    zMax = mx[2];
+    return true;
+  }
   uint16_t numsides, first;
   if (!brush_sides(brushIdx, numsides, first) || numsides == 0)
     return false;
@@ -1303,19 +1348,52 @@ int BrushClipBox(int brushIdx, const float start[3], const float end[3],
   fraction = 1.0f;
   normal[0] = normal[1] = normal[2] = 0.0f;
   startSolid = false;
-  uint16_t numsides, first;
-  if (!brush_sides(brushIdx, numsides, first) || numsides == 0)
-    return -1;
+
+  // Gather this brush's clipping planes. Box-optimized brushes have stripped /
+  // bevel-padded sides, so synthesize the 6 axis planes from the SIMD box AABB
+  // (the box is exactly that AABB). Other brushes use their cbrush_t sides.
+  float planeN[256][3];
+  float planeD[256];
+  int nplanes = 0;
+  int bi = BoxIndexForBrush(brushIdx);
+  if (bi >= 0) {
+    float mn[3], mx[3];
+    if (!BoxBrushBounds(bi, mn, mx))
+      return -1;
+    const float axes[6][3] = {{1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
+                              {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
+    const float dists[6] = {mx[0], -mn[0], mx[1], -mn[1], mx[2], -mn[2]};
+    for (int i = 0; i < 6; ++i) {
+      planeN[i][0] = axes[i][0];
+      planeN[i][1] = axes[i][1];
+      planeN[i][2] = axes[i][2];
+      planeD[i] = dists[i];
+    }
+    nplanes = 6;
+  } else {
+    uint16_t numsides, first;
+    if (!brush_sides(brushIdx, numsides, first) || numsides == 0)
+      return -1;
+    for (uint16_t i = 0; i < numsides && nplanes < 256; ++i) {
+      float n[3], d;
+      if (!side_plane(first, i, n, d))
+        return -1;
+      planeN[nplanes][0] = n[0];
+      planeN[nplanes][1] = n[1];
+      planeN[nplanes][2] = n[2];
+      planeD[nplanes] = d;
+      ++nplanes;
+    }
+  }
 
   const float DIST_EPSILON = 0.03125f; // 1/32, engine constant
   float enterfrac = -1.0f, leavefrac = 1.0f;
   float clipN[3] = {0, 0, 0};
   bool gotClip = false, getout = false, startout = false;
 
-  for (uint16_t i = 0; i < numsides; ++i) {
-    float n[3], d;
-    if (!side_plane(first, i, n, d))
-      return -1;
+  for (int i = 0; i < nplanes; ++i) {
+    const float *n = planeN[i];
+    float d = planeD[i];
     // Push the plane out by the box extents (support point in -normal dir).
     float offset[3];
     for (int k = 0; k < 3; ++k)

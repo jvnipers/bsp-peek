@@ -146,6 +146,8 @@ native bool BSP_BrushTopZAt(int brushIdx, float x, float y, float &z);
 // World-space polygon of brush side sideIdx, built by clipping the side's plane
 // against all other sides (canonical brush-face winding). Writes up to maxVerts
 // verts into verts[][3]. Returns vert count (0 if degenerate / invalid).
+// NOTE: returns 0 for box-optimized brushes (their cbrush_t sides are stripped),
+// use BSP_BoxBrushBounds for those (an axis box's faces are its 6 AABB faces).
 native int  BSP_BrushSideWinding(int brushIdx, int sideIdx, float verts[][3], int maxVerts);
 
 // Sweep an AABB [mins,maxs] (relative to its center) from start to end against
