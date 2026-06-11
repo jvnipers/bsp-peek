@@ -159,6 +159,12 @@ class ExtensionConfig(object):
         ]
         if cxx.family == "gcc":
             cxx.cflags += ["-mfpmath=sse"]
+        if cxx.family == "clang":
+            cxx.cflags += [
+                "-Wno-implicit-const-int-float-conversion",
+                "-Wno-macro-redefined",
+                "-Wno-implicit-exception-spec-mismatch",
+            ]
         if builder.options.opt == "1":
             cxx.cflags += ["-O3"]
         cxx.cflags += ["-fno-omit-frame-pointer"]
@@ -176,6 +182,7 @@ class ExtensionConfig(object):
             "_ITERATOR_DEBUG_LEVEL=0",
         ]
         cxx.cflags += ["/W3"]
+        cxx.cflags += ["/wd4005"]
         cxx.cxxflags += [
             "/EHsc",
             "/GR-",
