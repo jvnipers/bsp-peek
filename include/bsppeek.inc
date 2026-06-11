@@ -656,6 +656,44 @@ native bool  BSP_SurfacePropData(int idx, float &friction, float &elasticity,
                                  float &jumpFactor, int &material,
                                  bool &climbable);
 
+// Leaf water data (LUMP_LEAFWATERDATA)
+// One entry per body of water, gives its surface plane.
+// Pair with BSP_PointContents & BSPP_CONTENTS_WATER to know when you're submerged,
+// then this for "how high to surface".
+#define BSP_WATER_NO_SURFACE -1.0e30
+
+native int   BSP_LeafWaterCount();
+// surfaceZ = water top, minZ = bottom, surfaceTexInfo = texinfo index. false if OOB.
+native bool  BSP_LeafWaterData(int idx, float &surfaceZ, float &minZ, int &surfaceTexInfo);
+// Z-band heuristic: 
+// surface Z of the water body whose [minZ,surfaceZ] contains pos.z (lowest qualifying).
+// Returns BSP_WATER_NO_SURFACE if pos is in no band.
+// No XY test (the lump has no XY bounds), so it can false-match separate pools
+// at the same height, confirm with BSP_PointContents when precision matters.
+native float BSP_WaterSurfaceZAt(const float pos[3]);
+
+// Brush-entity / trigger / ladder helpers
+// Convenience over the entity + cmodel accessors for the common routing cases
+// (trigger volumes, movers, ladders).
+
+// World AABB of a brush entity (any "model" == "*N" ent: triggers, func_door,
+// func_brush, func_ladder...). Chains EntityModelIndex -> CModelBounds + origin.
+// false if entIdx isn't a brush-model entity.
+native bool  BSP_EntityBrushBounds(int entIdx, float mins[3], float maxs[3]);
+// Applied push velocity of a trigger_push: AngleVectors(pushdir) * speed (speed defaults to 40).
+// Returns false (and zero vel) if entIdx isn't a trigger_push.
+native bool  BSP_TriggerPushVelocity(int entIdx, float vel[3]);
+// Origin of the entity referenced by entIdx's "target" key
+// (e.g. a trigger_teleport's info_teleport_destination).
+// false if no target / not found.
+native bool  BSP_EntityTargetOrigin(int entIdx, float origin[3]);
+// Enumerate world brushes with CONTENTS_LADDER:
+// returns the next brush index >= startIdx that is a ladder volume,
+// or -1 when none remain.
+// Call again with result+1 to iterate. 
+// (func_ladder entities: use BSP_FindEntityByKeyValue + BSP_EntityBrushBounds instead.)
+native int   BSP_FindLadderBrush(int startIdx = 0);
+
 stock bool   BSPPeek_Available()
 {
     return LibraryExists("bsppeek");

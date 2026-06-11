@@ -35,6 +35,7 @@ constexpr int LUMP_LIGHTING = 8;
 constexpr int LUMP_WORLDLIGHTS_LDR = 15;
 constexpr int LUMP_LEAFFACES = 16;
 constexpr int LUMP_TEXINFO = 18;
+constexpr int LUMP_LEAFWATERDATA = 36;
 constexpr int LUMP_CUBEMAPS = 42;
 constexpr int LUMP_TEXDATA_STRING_DATA = 43;
 constexpr int LUMP_TEXDATA_STRING_TABLE = 44;
@@ -90,6 +91,17 @@ constexpr int kFace_Styles = 16;   // uint8[4]
 constexpr int kFace_LightOfs = 20; // int32
 constexpr int kFace_Area = 24;     // float
 constexpr int kFace_OrigFace = 44; // int32
+
+// dleafwaterdata_t: float surfaceZ + float minZ + short surfaceTexInfoID.
+// Natural size 10, but the SDK struct's 4-byte alignment pads sizeof to 12,
+// which is the stride vbsp wrote. Stride is re-derived from the lump length at
+// load (12 preferred, 10 fallback) to stay robust if a tool packed it tight.
+constexpr int kSizeofLeafWater = 12;
+constexpr int kLeafWater_SurfaceZ = 0; // float
+constexpr int kLeafWater_MinZ = 4;     // float
+constexpr int kLeafWater_TexInfo = 8;  // short
+// Sentinel returned by WaterSurfaceZAt when no water body contains pos.z.
+constexpr float kWaterNoSurface = -1.0e30f;
 
 // dcubemapsample_t = 16B: int origin[3] + int size
 constexpr int kSizeofCubemap = 16;
@@ -180,7 +192,9 @@ struct State {
   std::string entityRaw;
   std::vector<Entity> entities;
 
-  std::vector<uint8_t> visLump;       // LUMP_VISIBILITY raw bytes
+  std::vector<uint8_t> visLump;           // LUMP_VISIBILITY raw bytes
+  std::vector<uint8_t> leafWaterLump;     // array of dleafwaterdata_t
+  int leafWaterStride = kSizeofLeafWater; // derived per-map (12 or 10)
   std::vector<uint8_t> cubemapsLump;  // array of dcubemapsample_t (16B each)
   std::vector<uint8_t> vertexesLump;  // array of Vector (12B each)
   std::vector<uint8_t> edgesLump;     // array of dedge_t (4B each)
@@ -433,6 +447,8 @@ void Clear() {
   g.entityRaw.clear();
   g.entities.clear();
   g.visLump.clear();
+  g.leafWaterLump.clear();
+  g.leafWaterStride = kSizeofLeafWater;
   g.cubemapsLump.clear();
   g.vertexesLump.clear();
   g.edgesLump.clear();
@@ -505,6 +521,15 @@ bool LoadFromMap(const char *mapname, const char *bspPath, char *err,
   // Visibility
   ReadFile(f, g.lumps[LUMP_VISIBILITY].fileofs,
            g.lumps[LUMP_VISIBILITY].filelen, g.visLump);
+  // Leaf water data:
+  // derive the on-disk stride from the length (12 padded, 10 tight)
+  // so the count is right regardless of how the lump was packed.
+  ReadFile(f, g.lumps[LUMP_LEAFWATERDATA].fileofs,
+           g.lumps[LUMP_LEAFWATERDATA].filelen, g.leafWaterLump);
+  if (!g.leafWaterLump.empty()) {
+    size_t n = g.leafWaterLump.size();
+    g.leafWaterStride = (n % 12 == 0) ? 12 : (n % 10 == 0 ? 10 : 12);
+  }
   // Cubemaps
   ReadFile(f, g.lumps[LUMP_CUBEMAPS].fileofs, g.lumps[LUMP_CUBEMAPS].filelen,
            g.cubemapsLump);
@@ -763,6 +788,46 @@ bool ClusterVisible(int cluster, int other) {
     }
   }
   return false;
+}
+
+// Leaf water data
+int LeafWaterCount() {
+  if (!g.loaded || g.leafWaterLump.empty())
+    return 0;
+  return (int)(g.leafWaterLump.size() / (size_t)g.leafWaterStride);
+}
+
+bool LeafWaterData(int idx, float &surfaceZ, float &minZ, int &surfaceTexInfo) {
+  surfaceZ = minZ = 0.0f;
+  surfaceTexInfo = -1;
+  if (idx < 0 || idx >= LeafWaterCount())
+    return false;
+  const uint8_t *p =
+      g.leafWaterLump.data() + (size_t)idx * (size_t)g.leafWaterStride;
+  surfaceZ = ReadF32(p, kLeafWater_SurfaceZ);
+  minZ = ReadF32(p, kLeafWater_MinZ);
+  surfaceTexInfo = ReadI16(p, kLeafWater_TexInfo);
+  return true;
+}
+
+float WaterSurfaceZAt(const float pos[3]) {
+  // No XY bounds in the lump, so this is a Z-band heuristic:
+  // among water bodies whose [minZ, surfaceZ] span contains pos.z,
+  // return the lowest surface at or above pos.z.
+  // Returns kWaterNoSurface if none qualifies.
+  int n = LeafWaterCount();
+  float best = kWaterNoSurface;
+  for (int i = 0; i < n; ++i) {
+    float surfaceZ, minZ;
+    int ti;
+    if (!LeafWaterData(i, surfaceZ, minZ, ti))
+      continue;
+    if (pos[2] < minZ || pos[2] > surfaceZ)
+      continue;
+    if (best == kWaterNoSurface || surfaceZ < best)
+      best = surfaceZ;
+  }
+  return best;
 }
 
 // Cubemaps

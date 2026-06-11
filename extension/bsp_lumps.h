@@ -55,6 +55,16 @@ int VisClusterCount();
 // Decompresses RLE on-the-fly. false on invalid input or no vis data.
 bool ClusterVisible(int cluster, int other);
 
+// Leaf water data (LUMP_LEAFWATERDATA = 36, dleafwaterdata_t)
+// One entry per distinct body of water. Gives the water surface plane.
+int LeafWaterCount();
+// surfaceZ = water surface height, minZ = bottom, surfaceTexInfo = texinfo idx.
+// false if OOB.
+bool LeafWaterData(int idx, float &surfaceZ, float &minZ, int &surfaceTexInfo);
+// Z-band heuristic: surface Z of the water body whose [minZ,surfaceZ] contains
+// pos.z (lowest qualifying surface). Returns -1e30 if pos is in no water band.
+float WaterSurfaceZAt(const float pos[3]);
+
 // Cubemaps (LUMP_CUBEMAPS = 42, dcubemapsample_t = 16B)
 int CubemapCount();
 // World-space origin (stored as int[3] in BSP, returned as float[3]).

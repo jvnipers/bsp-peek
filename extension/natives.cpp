@@ -6,6 +6,7 @@
 #include <IGameHelpers.h>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <sp_vm_api.h>
 #include <vector>
@@ -1552,6 +1553,110 @@ cell_t N_SurfacePropData(IPluginContext *pCtx, const cell_t *params) {
   return ok ? 1 : 0;
 }
 
+// Leaf water data
+cell_t N_LeafWaterCount(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  return BSPLumps::LeafWaterCount();
+}
+
+cell_t N_LeafWaterData(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float surfaceZ, minZ;
+  int texinfo;
+  bool ok = BSPLumps::LeafWaterData(params[1], surfaceZ, minZ, texinfo);
+  cell_t *pSurf, *pMin, *pTex;
+  pCtx->LocalToPhysAddr(params[2], &pSurf);
+  pCtx->LocalToPhysAddr(params[3], &pMin);
+  pCtx->LocalToPhysAddr(params[4], &pTex);
+  *pSurf = sp_ftoc(surfaceZ);
+  *pMin = sp_ftoc(minZ);
+  *pTex = texinfo;
+  return ok ? 1 : 0;
+}
+
+cell_t N_WaterSurfaceZAt(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float pos[3];
+  cell_to_float3(pCtx, params[1], pos);
+  return sp_ftoc(BSPLumps::WaterSurfaceZAt(pos));
+}
+
+// Brush-entity / trigger helpers (composition over entity + cmodel data)
+
+// World AABB of a brush entity: cmodel (model-local) bounds + entity origin.
+cell_t N_EntityBrushBounds(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  int modelIdx = BSPLumps::EntityModelIndex(params[1]);
+  float mins[3] = {0, 0, 0}, maxs[3] = {0, 0, 0};
+  bool ok = modelIdx >= 0 && BSPData::CModelBounds(modelIdx, mins, maxs);
+  if (ok) {
+    float org[3] = {0, 0, 0};
+    BSPLumps::EntityOrigin(params[1], org); // 0 if no "origin" key
+    for (int i = 0; i < 3; ++i) {
+      mins[i] += org[i];
+      maxs[i] += org[i];
+    }
+  }
+  float3_to_cell(pCtx, params[2], mins);
+  float3_to_cell(pCtx, params[3], maxs);
+  return ok ? 1 : 0;
+}
+
+// trigger_push applied velocity = AngleVectors(pushdir).forward * speed.
+cell_t N_TriggerPushVelocity(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float vel[3] = {0, 0, 0};
+  char cls[64];
+  BSPLumps::EntityClassname(params[1], cls, sizeof(cls));
+  if (std::strcmp(cls, "trigger_push") != 0) {
+    float3_to_cell(pCtx, params[2], vel);
+    return 0;
+  }
+  char buf[64];
+  float pitch = 0, yaw = 0, roll = 0;
+  if (BSPLumps::EntityKeyValue(params[1], "pushdir", buf, sizeof(buf)) > 0)
+    std::sscanf(buf, "%f %f %f", &pitch, &yaw, &roll);
+  float speed = 40.0f; // trigger_push default
+  if (BSPLumps::EntityKeyValue(params[1], "speed", buf, sizeof(buf)) > 0)
+    speed = (float)std::atof(buf);
+  // AngleVectors forward (pitch, yaw): matches the engine's push direction.
+  const float d2r = 3.14159265358979323846f / 180.0f;
+  float sp = std::sin(pitch * d2r), cp = std::cos(pitch * d2r);
+  float sy = std::sin(yaw * d2r), cy = std::cos(yaw * d2r);
+  vel[0] = cp * cy * speed;
+  vel[1] = cp * sy * speed;
+  vel[2] = -sp * speed;
+  float3_to_cell(pCtx, params[2], vel);
+  return 1;
+}
+
+// Origin of the entity targeted by entIdx's "target" key (teleport dest etc.).
+cell_t N_EntityTargetOrigin(IPluginContext *pCtx, const cell_t *params) {
+  EnsureLumpsLoaded();
+  float origin[3] = {0, 0, 0};
+  char target[128];
+  bool ok = false;
+  if (BSPLumps::EntityKeyValue(params[1], "target", target, sizeof(target)) >
+      0) {
+    int dest = BSPLumps::FindEntityByKeyValue("targetname", target, 0);
+    if (dest >= 0)
+      ok = BSPLumps::EntityOrigin(dest, origin);
+  }
+  float3_to_cell(pCtx, params[2], origin);
+  return ok ? 1 : 0;
+}
+
+// Next world brush at/after startIdx whose contents include CONTENTS_LADDER.
+cell_t N_FindLadderBrush(IPluginContext *pCtx, const cell_t *params) {
+  const int CONTENTS_LADDER = 0x20000000;
+  int n = BSPData::GetNumBrushes();
+  for (int i = params[1] < 0 ? 0 : params[1]; i < n; ++i) {
+    if (BSPData::GetBrushContents(i) & CONTENTS_LADDER)
+      return i;
+  }
+  return -1;
+}
+
 extern const sp_nativeinfo_t g_BSPNatives[] = {
     // Misc
     {"BSP_MapPathName", N_MapPathName},
@@ -1799,6 +1904,17 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_SurfacePropName", N_SurfacePropName},
     {"BSP_SurfacePropIndex", N_SurfacePropIndex},
     {"BSP_SurfacePropData", N_SurfacePropData},
+
+    // Leaf water data
+    {"BSP_LeafWaterCount", N_LeafWaterCount},
+    {"BSP_LeafWaterData", N_LeafWaterData},
+    {"BSP_WaterSurfaceZAt", N_WaterSurfaceZAt},
+
+    // Brush-entity / trigger / ladder helpers
+    {"BSP_EntityBrushBounds", N_EntityBrushBounds},
+    {"BSP_TriggerPushVelocity", N_TriggerPushVelocity},
+    {"BSP_EntityTargetOrigin", N_EntityTargetOrigin},
+    {"BSP_FindLadderBrush", N_FindLadderBrush},
 
     {nullptr, nullptr},
 };
