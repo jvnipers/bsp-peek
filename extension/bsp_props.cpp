@@ -1,5 +1,6 @@
 #include "bsp_props.h"
 #include "bsp_lumps.h"
+#include "bsp_util.h"
 
 #include "bspflags.h"        // MASK_SOLID, MASK_PLAYERSOLID
 #include "const.h"           // SolidType_t
@@ -37,6 +38,21 @@ IPhysicsCollision *g_physcollision = nullptr;
 IEngineTrace *g_enginetrace = nullptr;
 IStaticPropMgrServer *g_staticpropmgr = nullptr;
 IPhysicsSurfaceProps *g_physprops = nullptr;
+
+// Byte offsets of surfacedata_t::game.*
+// within the live struct GetSurfaceData returns.
+// The hl2sdk-csgo header mislocates `game` (=+0x44):
+// CSGO's audio block is larger than the header's and surfacegameprops_t
+// carries two extra floats (penetration/damage modifiers) before `material`,
+// so reading via the  SDK struct yields maxSpeedFactor/jumpFactor == 0.
+// Overridable via gamedata (decimal).
+// The physics block at +0x00 is correct, so it still uses the SDK struct.
+//   defaults:
+// maxSpeedFactor 0x50, jumpFactor 0x54, material(u16) 0x60, climbable(u8) 0x62.
+int OFF_SD_MAXSPEED = 0x50;
+int OFF_SD_JUMP = 0x54;
+int OFF_SD_MATERIAL = 0x60;
+int OFF_SD_CLIMBABLE = 0x62;
 
 typedef void *(*CreateInterfaceFn)(const char *name, int *returnCode);
 
@@ -156,6 +172,12 @@ bool Init(IGameConfig *gc, char *err, size_t errLen) {
   // Stays null (friction natives disabled) if vphysics isn't mapped yet;
   // SurfaceProps() retries lazily.
   g_physprops = ResolveSurfaceProps();
+
+  // surfacedata_t::game.* offsets (see decl). Decimal in gamedata.
+  OFF_SD_MAXSPEED = BSPUtil::GetKeyInt(gc, "surfacedata_maxspeedfactor", 0x50);
+  OFF_SD_JUMP = BSPUtil::GetKeyInt(gc, "surfacedata_jumpfactor", 0x54);
+  OFF_SD_MATERIAL = BSPUtil::GetKeyInt(gc, "surfacedata_material", 0x60);
+  OFF_SD_CLIMBABLE = BSPUtil::GetKeyInt(gc, "surfacedata_climbable", 0x62);
 
   // The runtime prop-hull path (enginetrace + staticpropmgr) is what handles
   // autocombine maps.
@@ -277,11 +299,40 @@ bool SurfacePropData(int idx, float &friction, float &elasticity,
   density = d->physics.density;
   thickness = d->physics.thickness;
   dampening = d->physics.dampening;
-  maxSpeedFactor = d->game.maxSpeedFactor;
-  jumpFactor = d->game.jumpFactor;
-  material = d->game.material;
-  climbable = d->game.climbable != 0;
+  // game.* via RE'd offsets, not the SDK struct (which mislocates `game`).
+  const uint8_t *p = reinterpret_cast<const uint8_t *>(d);
+  maxSpeedFactor = BSPUtil::ReadF32(p, OFF_SD_MAXSPEED);
+  jumpFactor = BSPUtil::ReadF32(p, OFF_SD_JUMP);
+  material = (int)BSPUtil::ReadU16(p, OFF_SD_MATERIAL);
+  climbable = BSPUtil::ReadU8(p, OFF_SD_CLIMBABLE) != 0;
   return true;
+}
+
+int SurfacePropDump(int idx, char *buf, size_t buflen) {
+  if (!buf || buflen == 0)
+    return 0;
+  buf[0] = '\0';
+  IPhysicsSurfaceProps *sp = SurfaceProps();
+  if (!sp || idx < 0 || idx >= sp->SurfacePropCount())
+    return 0;
+  surfacedata_t *d = sp->GetSurfaceData(idx);
+  if (!d)
+    return 0;
+  const uint8_t *p = reinterpret_cast<const uint8_t *>(d);
+  const char *name = sp->GetPropName(idx);
+  // 0xC0 bytes covers physics+audio+sounds+game+soundhandles on any layout.
+  int off =
+      std::snprintf(buf, buflen, "surfacedata_t[%d] '%s' (friction=+0):\n", idx,
+                    name ? name : "?");
+  for (int o = 0; o + 4 <= 0xC0 && off < (int)buflen - 1; o += 4) {
+    uint32_t u;
+    float f;
+    std::memcpy(&u, p + o, 4);
+    std::memcpy(&f, p + o, 4);
+    off += std::snprintf(buf + off, buflen - off, "  +0x%02X: %08X  f=%g\n", o,
+                         u, f);
+  }
+  return off;
 }
 
 int HullSweep(const float start[3], const float end[3], const float mins[3],

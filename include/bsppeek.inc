@@ -655,6 +655,10 @@ native bool  BSP_SurfacePropData(int idx, float &friction, float &elasticity,
                                  float &dampening, float &maxSpeedFactor,
                                  float &jumpFactor, int &material,
                                  bool &climbable);
+// Diagnostic: hex+float dump of the live surfacedata_t for surfaceprop[idx].
+// friction is the +0x00 anchor, used to locate the runtime game.* offsets when
+// the SDK struct layout drifts. Returns length.
+native int   BSP_SurfacePropDump(int idx, char[] buf, int maxlen);
 
 // Leaf water data (LUMP_LEAFWATERDATA)
 // One entry per body of water, gives its surface plane.
@@ -665,7 +669,7 @@ native bool  BSP_SurfacePropData(int idx, float &friction, float &elasticity,
 native int   BSP_LeafWaterCount();
 // surfaceZ = water top, minZ = bottom, surfaceTexInfo = texinfo index. false if OOB.
 native bool  BSP_LeafWaterData(int idx, float &surfaceZ, float &minZ, int &surfaceTexInfo);
-// Z-band heuristic: 
+// Z-band heuristic:
 // surface Z of the water body whose [minZ,surfaceZ] contains pos.z (lowest qualifying).
 // Returns BSP_WATER_NO_SURFACE if pos is in no band.
 // No XY test (the lump has no XY bounds), so it can false-match separate pools
@@ -690,7 +694,7 @@ native bool  BSP_EntityTargetOrigin(int entIdx, float origin[3]);
 // Enumerate world brushes with CONTENTS_LADDER:
 // returns the next brush index >= startIdx that is a ladder volume,
 // or -1 when none remain.
-// Call again with result+1 to iterate. 
+// Call again with result+1 to iterate.
 // (func_ladder entities: use BSP_FindEntityByKeyValue + BSP_EntityBrushBounds instead.)
 native int   BSP_FindLadderBrush(int startIdx = 0);
 

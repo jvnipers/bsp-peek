@@ -1553,6 +1553,16 @@ cell_t N_SurfacePropData(IPluginContext *pCtx, const cell_t *params) {
   return ok ? 1 : 0;
 }
 
+cell_t N_SurfacePropDump(IPluginContext *pCtx, const cell_t *params) {
+  int maxlen = params[3];
+  if (maxlen <= 0)
+    return 0;
+  std::vector<char> tmp(maxlen);
+  int n = BSPProps::SurfacePropDump(params[1], tmp.data(), maxlen);
+  pCtx->StringToLocal(params[2], maxlen, tmp.data());
+  return n;
+}
+
 // Leaf water data
 cell_t N_LeafWaterCount(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
@@ -1904,6 +1914,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_SurfacePropName", N_SurfacePropName},
     {"BSP_SurfacePropIndex", N_SurfacePropIndex},
     {"BSP_SurfacePropData", N_SurfacePropData},
+    {"BSP_SurfacePropDump", N_SurfacePropDump},
 
     // Leaf water data
     {"BSP_LeafWaterCount", N_LeafWaterCount},
