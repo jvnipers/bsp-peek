@@ -4,16 +4,21 @@ Extension to expose engine-internal BSP/Collision data and disk-parsed BSP file 
 
 Engine-internal:
 
-- `CCollisionBSPData` (brushes, leaves, planes, nodes, submodels)
+- `CCollisionBSPData` (brushes, brush sides, box brushes, leaves, planes, nodes, submodels, areas, area portals)
+- visibility / PVS (clusters, leaf visibility)
 - `CDispCollTree` (displacements)
 - static props (runtime VPhysics collision)
+- world collision tracing (`BSP_TraceHull` - brushes + displacements + props)
 - surface physics props / friction (`IPhysicsSurfaceProps`)
 
 Disk-parsed BSP file lumps:
 
 - entities
 - texinfo
+- texdata (material names, reflectivity)
+- planes
 - leaffaces
+- leaf water
 - worldlights
 - static props
 - vis
