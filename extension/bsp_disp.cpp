@@ -86,6 +86,40 @@ inline bool IsTreeSane(const uint8_t *tree) {
   return true;
 }
 
+// Read a tree's AABB (mins/maxs, 3 floats each) from its struct fields.
+inline void ReadTreeAABB(const uint8_t *tree, float mn[3], float mx[3]) {
+  mn[0] = ReadF32(tree, OFF_TREE_MINS + 0);
+  mn[1] = ReadF32(tree, OFF_TREE_MINS + 4);
+  mn[2] = ReadF32(tree, OFF_TREE_MINS + 8);
+  mx[0] = ReadF32(tree, OFF_TREE_MAXS + 0);
+  mx[1] = ReadF32(tree, OFF_TREE_MAXS + 4);
+  mx[2] = ReadF32(tree, OFF_TREE_MAXS + 8);
+}
+
+// Decode a tree's vert/tri tables and invoke fn(triRec, v0, v1, v2) for every
+// triangle whose indices are in range.
+// Centralizes the per-tri unpack that every engine query loop repeats.
+template <typename F>
+inline void ForEachTreeTriangle(const uint8_t *tree, F &&fn) {
+  const uint8_t *vertsPtr = (const uint8_t *)ReadPtr(tree, OFF_TREE_VERTS_PTR);
+  int vertsCnt = ReadI32(tree, OFF_TREE_VERTS_CNT);
+  const uint8_t *trisPtr = (const uint8_t *)ReadPtr(tree, OFF_TREE_TRIS_PTR);
+  int trisCnt = ReadI32(tree, OFF_TREE_TRIS_CNT);
+  for (int t = 0; t < trisCnt; t++) {
+    const uint8_t *triRec = trisPtr + (size_t)t * SZ_DISPCOLL_TRI;
+    uint16_t i0 = triRec[OFF_TRI_INDICES + 0];
+    uint16_t i1 = triRec[OFF_TRI_INDICES + 2];
+    uint16_t i2 = triRec[OFF_TRI_INDICES + 4];
+    if (i0 >= vertsCnt || i1 >= vertsCnt || i2 >= vertsCnt)
+      continue;
+    Vec3 v0, v1, v2;
+    std::memcpy(&v0, vertsPtr + (size_t)i0 * SZ_VERT, sizeof(Vec3));
+    std::memcpy(&v1, vertsPtr + (size_t)i1 * SZ_VERT, sizeof(Vec3));
+    std::memcpy(&v2, vertsPtr + (size_t)i2 * SZ_VERT, sizeof(Vec3));
+    fn(triRec, v0, v1, v2);
+  }
+}
+
 } // namespace engine
 
 // DISK - parses BSP file lumps into triangle meshes
@@ -485,46 +519,25 @@ float EngineHeightAtDebug(float x, float y, int &outIdx) {
     if (!engine::IsTreeSane(tree))
       continue;
 
-    float minX = ReadF32(tree, engine::OFF_TREE_MINS + 0);
-    float minY = ReadF32(tree, engine::OFF_TREE_MINS + 4);
-    float maxX = ReadF32(tree, engine::OFF_TREE_MAXS + 0);
-    float maxY = ReadF32(tree, engine::OFF_TREE_MAXS + 4);
-    if (x < minX || x > maxX || y < minY || y > maxY)
+    float mn[3], mx[3];
+    engine::ReadTreeAABB(tree, mn, mx);
+    if (x < mn[0] || x > mx[0] || y < mn[1] || y > mx[1])
       continue;
 
-    const uint8_t *vertsPtr =
-        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_VERTS_PTR);
-    int vertsCnt = ReadI32(tree, engine::OFF_TREE_VERTS_CNT);
-    const uint8_t *trisPtr =
-        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
-    int trisCnt = ReadI32(tree, engine::OFF_TREE_TRIS_CNT);
-
-    for (int t = 0; t < trisCnt; t++) {
-      const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;
-      uint16_t i0 = triRec[engine::OFF_TRI_INDICES + 0];
-      uint16_t i1 = triRec[engine::OFF_TRI_INDICES + 2];
-      uint16_t i2 = triRec[engine::OFF_TRI_INDICES + 4];
-      if (i0 >= vertsCnt || i1 >= vertsCnt || i2 >= vertsCnt)
-        continue;
-
-      Vec3 v0, v1, v2;
-      std::memcpy(&v0, vertsPtr + (size_t)i0 * engine::SZ_VERT, sizeof(Vec3));
-      std::memcpy(&v1, vertsPtr + (size_t)i1 * engine::SZ_VERT, sizeof(Vec3));
-      std::memcpy(&v2, vertsPtr + (size_t)i2 * engine::SZ_VERT, sizeof(Vec3));
-
+    engine::ForEachTreeTriangle(tree, [&](const uint8_t *, const Vec3 &v0,
+                                          const Vec3 &v1, const Vec3 &v2) {
       float triMinX = std::fmin(v0.x, std::fmin(v1.x, v2.x));
       float triMaxX = std::fmax(v0.x, std::fmax(v1.x, v2.x));
       float triMinY = std::fmin(v0.y, std::fmin(v1.y, v2.y));
       float triMaxY = std::fmax(v0.y, std::fmax(v1.y, v2.y));
       if (x < triMinX || x > triMaxX || y < triMinY || y > triMaxY)
-        continue;
-
+        return;
       float z = TriHeightZXY(v0, v1, v2, x, y);
       if (!std::isnan(z) && z > best) {
         best = z;
         outIdx = i;
       }
-    }
+    });
   }
   return best;
 }
@@ -606,33 +619,14 @@ float EngineDistToSurface(const float pos[3], float maxDist) {
     const uint8_t *tree = engine::TreePtr(i);
     if (!engine::IsTreeSane(tree))
       continue;
-    float mnx = ReadF32(tree, engine::OFF_TREE_MINS + 0);
-    float mny = ReadF32(tree, engine::OFF_TREE_MINS + 4);
-    float mnz = ReadF32(tree, engine::OFF_TREE_MINS + 8);
-    float mxx = ReadF32(tree, engine::OFF_TREE_MAXS + 0);
-    float mxy = ReadF32(tree, engine::OFF_TREE_MAXS + 4);
-    float mxz = ReadF32(tree, engine::OFF_TREE_MAXS + 8);
-    if (pos[0] < mnx - maxDist || pos[0] > mxx + maxDist ||
-        pos[1] < mny - maxDist || pos[1] > mxy + maxDist ||
-        pos[2] < mnz - maxDist || pos[2] > mxz + maxDist)
+    float mn[3], mx[3];
+    engine::ReadTreeAABB(tree, mn, mx);
+    if (pos[0] < mn[0] - maxDist || pos[0] > mx[0] + maxDist ||
+        pos[1] < mn[1] - maxDist || pos[1] > mx[1] + maxDist ||
+        pos[2] < mn[2] - maxDist || pos[2] > mx[2] + maxDist)
       continue;
-    const uint8_t *vertsPtr =
-        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_VERTS_PTR);
-    int vertsCnt = ReadI32(tree, engine::OFF_TREE_VERTS_CNT);
-    const uint8_t *trisPtr =
-        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
-    int trisCnt = ReadI32(tree, engine::OFF_TREE_TRIS_CNT);
-    for (int t = 0; t < trisCnt; t++) {
-      const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;
-      uint16_t i0 = triRec[engine::OFF_TRI_INDICES + 0];
-      uint16_t i1 = triRec[engine::OFF_TRI_INDICES + 2];
-      uint16_t i2 = triRec[engine::OFF_TRI_INDICES + 4];
-      if (i0 >= vertsCnt || i1 >= vertsCnt || i2 >= vertsCnt)
-        continue;
-      Vec3 v0, v1, v2;
-      std::memcpy(&v0, vertsPtr + (size_t)i0 * engine::SZ_VERT, sizeof(Vec3));
-      std::memcpy(&v1, vertsPtr + (size_t)i1 * engine::SZ_VERT, sizeof(Vec3));
-      std::memcpy(&v2, vertsPtr + (size_t)i2 * engine::SZ_VERT, sizeof(Vec3));
+    engine::ForEachTreeTriangle(tree, [&](const uint8_t *, const Vec3 &v0,
+                                          const Vec3 &v1, const Vec3 &v2) {
       float q[3];
       ClosestPtPointTriangle(pos, v0, v1, v2, q);
       float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
@@ -640,10 +634,8 @@ float EngineDistToSurface(const float pos[3], float maxDist) {
       if (dsq < bestSq) {
         bestSq = dsq;
         found = true;
-        if (bestSq <= 0.0f)
-          return 0.0f;
       }
-    }
+    });
   }
   return found ? std::sqrt(bestSq) : kNoHit;
 }
@@ -668,33 +660,14 @@ float EngineNearestTri(const float pos[3], float maxDist, float outNormal[3],
     const uint8_t *tree = engine::TreePtr(i);
     if (!engine::IsTreeSane(tree))
       continue;
-    float mnx = ReadF32(tree, engine::OFF_TREE_MINS + 0);
-    float mny = ReadF32(tree, engine::OFF_TREE_MINS + 4);
-    float mnz = ReadF32(tree, engine::OFF_TREE_MINS + 8);
-    float mxx = ReadF32(tree, engine::OFF_TREE_MAXS + 0);
-    float mxy = ReadF32(tree, engine::OFF_TREE_MAXS + 4);
-    float mxz = ReadF32(tree, engine::OFF_TREE_MAXS + 8);
-    if (pos[0] < mnx - maxDist || pos[0] > mxx + maxDist ||
-        pos[1] < mny - maxDist || pos[1] > mxy + maxDist ||
-        pos[2] < mnz - maxDist || pos[2] > mxz + maxDist)
+    float mn[3], mx[3];
+    engine::ReadTreeAABB(tree, mn, mx);
+    if (pos[0] < mn[0] - maxDist || pos[0] > mx[0] + maxDist ||
+        pos[1] < mn[1] - maxDist || pos[1] > mx[1] + maxDist ||
+        pos[2] < mn[2] - maxDist || pos[2] > mx[2] + maxDist)
       continue;
-    const uint8_t *vertsPtr =
-        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_VERTS_PTR);
-    int vertsCnt = ReadI32(tree, engine::OFF_TREE_VERTS_CNT);
-    const uint8_t *trisPtr =
-        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
-    int trisCnt = ReadI32(tree, engine::OFF_TREE_TRIS_CNT);
-    for (int t = 0; t < trisCnt; t++) {
-      const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;
-      uint16_t i0 = triRec[engine::OFF_TRI_INDICES + 0];
-      uint16_t i1 = triRec[engine::OFF_TRI_INDICES + 2];
-      uint16_t i2 = triRec[engine::OFF_TRI_INDICES + 4];
-      if (i0 >= vertsCnt || i1 >= vertsCnt || i2 >= vertsCnt)
-        continue;
-      Vec3 v0, v1, v2;
-      std::memcpy(&v0, vertsPtr + (size_t)i0 * engine::SZ_VERT, sizeof(Vec3));
-      std::memcpy(&v1, vertsPtr + (size_t)i1 * engine::SZ_VERT, sizeof(Vec3));
-      std::memcpy(&v2, vertsPtr + (size_t)i2 * engine::SZ_VERT, sizeof(Vec3));
+    engine::ForEachTreeTriangle(tree, [&](const uint8_t *triRec, const Vec3 &v0,
+                                          const Vec3 &v1, const Vec3 &v2) {
       float q[3];
       ClosestPtPointTriangle(pos, v0, v1, v2, q);
       float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
@@ -707,7 +680,7 @@ float EngineNearestTri(const float pos[3], float maxDist, float outNormal[3],
         bV1 = v1;
         bV2 = v2;
       }
-    }
+    });
   }
   if (!found)
     return kNoHit;
@@ -738,33 +711,14 @@ int EngineTreeIndexAt(const float pos[3], float maxDist) {
     const uint8_t *tree = engine::TreePtr(i);
     if (!engine::IsTreeSane(tree))
       continue;
-    float mnx = ReadF32(tree, engine::OFF_TREE_MINS + 0);
-    float mny = ReadF32(tree, engine::OFF_TREE_MINS + 4);
-    float mnz = ReadF32(tree, engine::OFF_TREE_MINS + 8);
-    float mxx = ReadF32(tree, engine::OFF_TREE_MAXS + 0);
-    float mxy = ReadF32(tree, engine::OFF_TREE_MAXS + 4);
-    float mxz = ReadF32(tree, engine::OFF_TREE_MAXS + 8);
-    if (pos[0] < mnx - maxDist || pos[0] > mxx + maxDist ||
-        pos[1] < mny - maxDist || pos[1] > mxy + maxDist ||
-        pos[2] < mnz - maxDist || pos[2] > mxz + maxDist)
+    float mn[3], mx[3];
+    engine::ReadTreeAABB(tree, mn, mx);
+    if (pos[0] < mn[0] - maxDist || pos[0] > mx[0] + maxDist ||
+        pos[1] < mn[1] - maxDist || pos[1] > mx[1] + maxDist ||
+        pos[2] < mn[2] - maxDist || pos[2] > mx[2] + maxDist)
       continue;
-    const uint8_t *vertsPtr =
-        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_VERTS_PTR);
-    int vertsCnt = ReadI32(tree, engine::OFF_TREE_VERTS_CNT);
-    const uint8_t *trisPtr =
-        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
-    int trisCnt = ReadI32(tree, engine::OFF_TREE_TRIS_CNT);
-    for (int t = 0; t < trisCnt; t++) {
-      const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;
-      uint16_t i0 = triRec[engine::OFF_TRI_INDICES + 0];
-      uint16_t i1 = triRec[engine::OFF_TRI_INDICES + 2];
-      uint16_t i2 = triRec[engine::OFF_TRI_INDICES + 4];
-      if (i0 >= vertsCnt || i1 >= vertsCnt || i2 >= vertsCnt)
-        continue;
-      Vec3 v0, v1, v2;
-      std::memcpy(&v0, vertsPtr + (size_t)i0 * engine::SZ_VERT, sizeof(Vec3));
-      std::memcpy(&v1, vertsPtr + (size_t)i1 * engine::SZ_VERT, sizeof(Vec3));
-      std::memcpy(&v2, vertsPtr + (size_t)i2 * engine::SZ_VERT, sizeof(Vec3));
+    engine::ForEachTreeTriangle(tree, [&](const uint8_t *, const Vec3 &v0,
+                                          const Vec3 &v1, const Vec3 &v2) {
       float q[3];
       ClosestPtPointTriangle(pos, v0, v1, v2, q);
       float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
@@ -773,7 +727,7 @@ int EngineTreeIndexAt(const float pos[3], float maxDist) {
         bestSq = dsq;
         bestTree = i;
       }
-    }
+    });
   }
   return bestTree;
 }
@@ -1061,46 +1015,25 @@ static float EngineSurfaceNormalAt(float x, float y, float outNormal[3]) {
     const uint8_t *tree = engine::TreePtr(i);
     if (!engine::IsTreeSane(tree))
       continue;
-    float minX = ReadF32(tree, engine::OFF_TREE_MINS + 0);
-    float minY = ReadF32(tree, engine::OFF_TREE_MINS + 4);
-    float maxX = ReadF32(tree, engine::OFF_TREE_MAXS + 0);
-    float maxY = ReadF32(tree, engine::OFF_TREE_MAXS + 4);
-    if (x < minX || x > maxX || y < minY || y > maxY)
+    float mn[3], mx[3];
+    engine::ReadTreeAABB(tree, mn, mx);
+    if (x < mn[0] || x > mx[0] || y < mn[1] || y > mx[1])
       continue;
 
-    const uint8_t *vertsPtr =
-        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_VERTS_PTR);
-    int vertsCnt = ReadI32(tree, engine::OFF_TREE_VERTS_CNT);
-    const uint8_t *trisPtr =
-        (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
-    int trisCnt = ReadI32(tree, engine::OFF_TREE_TRIS_CNT);
-
-    for (int t = 0; t < trisCnt; t++) {
-      const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;
-      uint16_t i0 = triRec[engine::OFF_TRI_INDICES + 0];
-      uint16_t i1 = triRec[engine::OFF_TRI_INDICES + 2];
-      uint16_t i2 = triRec[engine::OFF_TRI_INDICES + 4];
-      if (i0 >= vertsCnt || i1 >= vertsCnt || i2 >= vertsCnt)
-        continue;
-
-      Vec3 v0, v1, v2;
-      std::memcpy(&v0, vertsPtr + (size_t)i0 * engine::SZ_VERT, sizeof(Vec3));
-      std::memcpy(&v1, vertsPtr + (size_t)i1 * engine::SZ_VERT, sizeof(Vec3));
-      std::memcpy(&v2, vertsPtr + (size_t)i2 * engine::SZ_VERT, sizeof(Vec3));
-
+    engine::ForEachTreeTriangle(tree, [&](const uint8_t *triRec, const Vec3 &v0,
+                                          const Vec3 &v1, const Vec3 &v2) {
       float triMinX = std::fmin(v0.x, std::fmin(v1.x, v2.x));
       float triMaxX = std::fmax(v0.x, std::fmax(v1.x, v2.x));
       float triMinY = std::fmin(v0.y, std::fmin(v1.y, v2.y));
       float triMaxY = std::fmax(v0.y, std::fmax(v1.y, v2.y));
       if (x < triMinX || x > triMaxX || y < triMinY || y > triMaxY)
-        continue;
-
+        return;
       float z = TriHeightZXY(v0, v1, v2, x, y);
       if (!std::isnan(z) && z > best) {
         best = z;
         std::memcpy(&bestNormal, triRec + engine::OFF_TRI_NORMAL, sizeof(Vec3));
       }
-    }
+    });
   }
   if (best > kNoHit) {
     outNormal[0] = bestNormal.x;

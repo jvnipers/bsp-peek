@@ -394,45 +394,54 @@ void DebugDumpCBSPPtr(int ptrOff, int bytes) {
   }
 }
 
-// Internal helpers - table-relative pointer resolution
-static const uint8_t *brush_at(int idx) {
-  if (!g_pBSPData || idx < 0 || idx >= GetNumBrushes())
+// Internal helpers - table-relative pointer resolution.
+// Resolve element `idx` of an array whose base pointer lives at tableOff inside
+// g_BSPData. Gates on a null base, an unconfigured (0) offset, a bad stride and
+// a [0,count) range, so every accessor below collapses to one call.
+static const uint8_t *TableEntry(int tableOff, int idx, int count, int stride) {
+  if (!g_pBSPData || tableOff == 0 || stride <= 0 || idx < 0 || idx >= count)
     return nullptr;
   const uint8_t *table =
-      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_BRUSHES));
+      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, tableOff));
   if (!table)
     return nullptr;
-  return table + (size_t)idx * SZ_CBRUSH;
+  return table + (size_t)idx * stride;
+}
+
+// Read a cplane_t's normal + dist from its resolved pointer.
+static void ReadPlane(const uint8_t *plane, float normal[3], float &dist) {
+  normal[0] = ReadF32(plane, OFF_CPLANE_NORMAL + 0);
+  normal[1] = ReadF32(plane, OFF_CPLANE_NORMAL + 4);
+  normal[2] = ReadF32(plane, OFF_CPLANE_NORMAL + 8);
+  dist = ReadF32(plane, OFF_CPLANE_DIST);
+}
+
+static const uint8_t *brush_at(int idx) {
+  return TableEntry(OFF_MAP_BRUSHES, idx, GetNumBrushes(), SZ_CBRUSH);
 }
 
 static const uint8_t *brushside_at(int idx) {
-  if (!g_pBSPData || idx < 0 || idx >= GetNumBrushSides())
-    return nullptr;
-  const uint8_t *table = reinterpret_cast<const uint8_t *>(
-      ReadPtr(g_pBSPData, OFF_MAP_BRUSHSIDES));
-  if (!table)
-    return nullptr;
-  return table + (size_t)idx * SZ_CBRUSHSIDE;
+  return TableEntry(OFF_MAP_BRUSHSIDES, idx, GetNumBrushSides(), SZ_CBRUSHSIDE);
 }
 
 static const uint8_t *leaf_at(int idx) {
-  if (!g_pBSPData || OFF_MAP_LEAFS == 0 || idx < 0 || idx >= GetNumLeaves())
-    return nullptr;
-  const uint8_t *table =
-      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_LEAFS));
-  if (!table)
-    return nullptr;
-  return table + (size_t)idx * SZ_CLEAF;
+  return TableEntry(OFF_MAP_LEAFS, idx, GetNumLeaves(), SZ_CLEAF);
 }
 
 static const uint8_t *node_at(int idx) {
-  if (!g_pBSPData || OFF_MAP_NODES == 0 || idx < 0 || idx >= GetNumNodes())
+  return TableEntry(OFF_MAP_NODES, idx, GetNumNodes(), SZ_CNODE);
+}
+
+// Resolve brush `brushIdx`'s side `sideIdx` (0-based within the brush).
+static const uint8_t *brushside_for(int brushIdx, int sideIdx) {
+  const uint8_t *b = brush_at(brushIdx);
+  if (!b)
     return nullptr;
-  const uint8_t *table =
-      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_NODES));
-  if (!table)
+  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
+  uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
+  if (sideIdx < 0 || sideIdx >= (int)numsides)
     return nullptr;
-  return table + (size_t)idx * SZ_CNODE;
+  return brushside_at((int)first + sideIdx);
 }
 
 // Counts
@@ -490,24 +499,11 @@ int GetNumClusters() {
 
 // Areas / area portals
 static const uint8_t *area_at(int idx) {
-  if (!g_pBSPData || OFF_MAP_AREAS == 0 || idx < 0 || idx >= GetNumAreas())
-    return nullptr;
-  const uint8_t *table =
-      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_AREAS));
-  if (!table)
-    return nullptr;
-  return table + (size_t)idx * SZ_DAREA;
+  return TableEntry(OFF_MAP_AREAS, idx, GetNumAreas(), SZ_DAREA);
 }
 
 static const uint8_t *areaportal_at(int idx) {
-  if (!g_pBSPData || OFF_MAP_AREAPORTALS == 0 || idx < 0 ||
-      idx >= GetNumAreaPortals())
-    return nullptr;
-  const uint8_t *table = reinterpret_cast<const uint8_t *>(
-      ReadPtr(g_pBSPData, OFF_MAP_AREAPORTALS));
-  if (!table)
-    return nullptr;
-  return table + (size_t)idx * SZ_DAP;
+  return TableEntry(OFF_MAP_AREAPORTALS, idx, GetNumAreaPortals(), SZ_DAP);
 }
 
 bool AreaInfo(int areaIdx, int &numPortals, int &firstPortal) {
@@ -768,64 +764,33 @@ int BrushNumSides(int brushIdx) {
 }
 
 bool BrushSidePlane(int brushIdx, int sideIdx, float normal[3], float &dist) {
-  const uint8_t *b = brush_at(brushIdx);
-  if (!b)
-    return false;
-  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
-  uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
-  if (sideIdx < 0 || sideIdx >= (int)numsides)
-    return false;
-  const uint8_t *side = brushside_at((int)first + sideIdx);
+  const uint8_t *side = brushside_for(brushIdx, sideIdx);
   if (!side)
     return false;
   const uint8_t *plane =
       reinterpret_cast<const uint8_t *>(ReadPtr(side, OFF_CBRUSHSIDE_PLANE));
   if (!plane)
     return false;
-  normal[0] = ReadF32(plane, OFF_CPLANE_NORMAL + 0);
-  normal[1] = ReadF32(plane, OFF_CPLANE_NORMAL + 4);
-  normal[2] = ReadF32(plane, OFF_CPLANE_NORMAL + 8);
-  dist = ReadF32(plane, OFF_CPLANE_DIST);
+  ReadPlane(plane, normal, dist);
   return true;
 }
 
 int BrushSideBevel(int brushIdx, int sideIdx) {
-  const uint8_t *b = brush_at(brushIdx);
-  if (!b)
-    return -1;
-  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
-  uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
-  if (sideIdx < 0 || sideIdx >= (int)numsides)
-    return -1;
-  const uint8_t *side = brushside_at((int)first + sideIdx);
+  const uint8_t *side = brushside_for(brushIdx, sideIdx);
   if (!side)
     return -1;
   return (int)*(side + OFF_CBRUSHSIDE_BEVEL); // byte read
 }
 
 int BrushSideThin(int brushIdx, int sideIdx) {
-  const uint8_t *b = brush_at(brushIdx);
-  if (!b)
-    return -1;
-  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
-  uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
-  if (sideIdx < 0 || sideIdx >= (int)numsides)
-    return -1;
-  const uint8_t *side = brushside_at((int)first + sideIdx);
+  const uint8_t *side = brushside_for(brushIdx, sideIdx);
   if (!side)
     return -1;
   return (int)*(side + OFF_CBRUSHSIDE_THIN);
 }
 
 int BrushSideTexInfo(int brushIdx, int sideIdx) {
-  const uint8_t *b = brush_at(brushIdx);
-  if (!b)
-    return -1;
-  uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
-  uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
-  if (sideIdx < 0 || sideIdx >= (int)numsides)
-    return -1;
-  const uint8_t *side = brushside_at((int)first + sideIdx);
+  const uint8_t *side = brushside_for(brushIdx, sideIdx);
   if (!side)
     return -1;
   return (int)ReadU16(side, OFF_CBRUSHSIDE_TEXINFO);
@@ -939,10 +904,7 @@ bool NodePlane(int nodeIdx, float normal[3], float &dist) {
       reinterpret_cast<const uint8_t *>(ReadPtr(node, OFF_CNODE_PLANE));
   if (!plane)
     return false;
-  normal[0] = ReadF32(plane, OFF_CPLANE_NORMAL + 0);
-  normal[1] = ReadF32(plane, OFF_CPLANE_NORMAL + 4);
-  normal[2] = ReadF32(plane, OFF_CPLANE_NORMAL + 8);
-  dist = ReadF32(plane, OFF_CPLANE_DIST);
+  ReadPlane(plane, normal, dist);
   return true;
 }
 
@@ -964,10 +926,7 @@ bool PlaneAt(int planeIdx, float normal[3], float &dist) {
   if (!table)
     return false;
   const uint8_t *plane = table + (size_t)planeIdx * SZ_CPLANE;
-  normal[0] = ReadF32(plane, OFF_CPLANE_NORMAL + 0);
-  normal[1] = ReadF32(plane, OFF_CPLANE_NORMAL + 4);
-  normal[2] = ReadF32(plane, OFF_CPLANE_NORMAL + 8);
-  dist = ReadF32(plane, OFF_CPLANE_DIST);
+  ReadPlane(plane, normal, dist);
   return true;
 }
 
@@ -983,13 +942,7 @@ int PlaneType(int planeIdx) {
 
 // Submodel (cmodel_t) accessors.
 static const uint8_t *cmodel_at(int idx) {
-  if (!g_pBSPData || OFF_MAP_CMODELS == 0 || idx < 0 || idx >= GetNumCModels())
-    return nullptr;
-  const uint8_t *table =
-      reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_CMODELS));
-  if (!table)
-    return nullptr;
-  return table + (size_t)idx * SZ_CMODEL;
+  return TableEntry(OFF_MAP_CMODELS, idx, GetNumCModels(), SZ_CMODEL);
 }
 
 bool CModelBounds(int idx, float mins[3], float maxs[3]) {
@@ -1024,14 +977,7 @@ int CModelHeadnode(int idx) {
 
 // Box brush (cboxbrush_t) accessors - SIMD-optimized axis-aligned brushes.
 static const uint8_t *boxbrush_at(int idx) {
-  if (!g_pBSPData || OFF_MAP_BOXBRUSHES == 0 || idx < 0 ||
-      idx >= GetNumBoxBrushes())
-    return nullptr;
-  const uint8_t *table = reinterpret_cast<const uint8_t *>(
-      ReadPtr(g_pBSPData, OFF_MAP_BOXBRUSHES));
-  if (!table)
-    return nullptr;
-  return table + (size_t)idx * SZ_CBOXBRUSH;
+  return TableEntry(OFF_MAP_BOXBRUSHES, idx, GetNumBoxBrushes(), SZ_CBOXBRUSH);
 }
 
 bool BoxBrushBounds(int idx, float mins[3], float maxs[3]) {

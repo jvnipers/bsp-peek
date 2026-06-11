@@ -54,6 +54,24 @@ static inline void cell_to_float3(IPluginContext *pCtx, cell_t addr,
   out[2] = sp_ctof(src[2]);
 }
 
+// Write a float[3] back to a plugin-supplied by-ref cell array.
+static inline void float3_to_cell(IPluginContext *pCtx, cell_t addr,
+                                  const float v[3]) {
+  cell_t *out = nullptr;
+  pCtx->LocalToPhysAddr(addr, &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(v[i]);
+}
+
+// Like float3_to_cell, but writes zeros when the producing call failed.
+static inline void float3_to_cell_ok(IPluginContext *pCtx, cell_t addr,
+                                     const float v[3], bool ok) {
+  cell_t *out = nullptr;
+  pCtx->LocalToPhysAddr(addr, &out);
+  for (int i = 0; i < 3; ++i)
+    out[i] = sp_ftoc(ok ? v[i] : 0.0f);
+}
+
 // Debug
 cell_t N_DebugDumpCBSP(IPluginContext *, const cell_t *params) {
   BSPData::DebugDumpCBSP(params[1], params[2]);
@@ -188,13 +206,8 @@ cell_t N_BrushBounds(IPluginContext *pCtx, const cell_t *params) {
   float mins[3], maxs[3];
   if (!BSPData::GetBrushBounds(params[1], mins, maxs))
     mins[0] = mins[1] = mins[2] = maxs[0] = maxs[1] = maxs[2] = 0.0f;
-  cell_t *outMins = nullptr, *outMaxs = nullptr;
-  pCtx->LocalToPhysAddr(params[2], &outMins);
-  pCtx->LocalToPhysAddr(params[3], &outMaxs);
-  for (int i = 0; i < 3; ++i) {
-    outMins[i] = sp_ftoc(mins[i]);
-    outMaxs[i] = sp_ftoc(maxs[i]);
-  }
+  float3_to_cell(pCtx, params[2], mins);
+  float3_to_cell(pCtx, params[3], maxs);
   return 0;
 }
 
@@ -210,11 +223,9 @@ cell_t N_BrushSidePlane(IPluginContext *pCtx, const cell_t *params) {
   float normal[3] = {0, 0, 0};
   float dist = 0.0f;
   bool ok = BSPData::BrushSidePlane(params[1], params[2], normal, dist);
-  cell_t *outNormal = nullptr, *outDist = nullptr;
-  pCtx->LocalToPhysAddr(params[3], &outNormal);
+  float3_to_cell(pCtx, params[3], normal);
+  cell_t *outDist = nullptr;
   pCtx->LocalToPhysAddr(params[4], &outDist);
-  for (int i = 0; i < 3; ++i)
-    outNormal[i] = sp_ftoc(normal[i]);
   *outDist = sp_ftoc(dist);
   return ok ? 1 : 0;
 }
@@ -269,13 +280,8 @@ cell_t N_LeafNumFaces(IPluginContext *, const cell_t *params) {
 cell_t N_LeafBounds(IPluginContext *pCtx, const cell_t *params) {
   float mins[3], maxs[3];
   bool ok = BSPData::LeafBounds(params[1], mins, maxs);
-  cell_t *outMins = nullptr, *outMaxs = nullptr;
-  pCtx->LocalToPhysAddr(params[2], &outMins);
-  pCtx->LocalToPhysAddr(params[3], &outMaxs);
-  for (int i = 0; i < 3; ++i) {
-    outMins[i] = sp_ftoc(ok ? mins[i] : 0.0f);
-    outMaxs[i] = sp_ftoc(ok ? maxs[i] : 0.0f);
-  }
+  float3_to_cell_ok(pCtx, params[2], mins, ok);
+  float3_to_cell_ok(pCtx, params[3], maxs, ok);
   return ok ? 1 : 0;
 }
 
@@ -284,11 +290,9 @@ cell_t N_NodePlane(IPluginContext *pCtx, const cell_t *params) {
   float normal[3] = {0, 0, 0};
   float dist = 0.0f;
   bool ok = BSPData::NodePlane(params[1], normal, dist);
-  cell_t *outNormal = nullptr, *outDist = nullptr;
-  pCtx->LocalToPhysAddr(params[2], &outNormal);
+  float3_to_cell(pCtx, params[2], normal);
+  cell_t *outDist = nullptr;
   pCtx->LocalToPhysAddr(params[3], &outDist);
-  for (int i = 0; i < 3; ++i)
-    outNormal[i] = sp_ftoc(normal[i]);
   *outDist = sp_ftoc(dist);
   return ok ? 1 : 0;
 }
@@ -307,13 +311,8 @@ cell_t N_NodeChildren(IPluginContext *pCtx, const cell_t *params) {
 cell_t N_NodeBounds(IPluginContext *pCtx, const cell_t *params) {
   float mins[3], maxs[3];
   bool ok = BSPData::NodeBounds(params[1], mins, maxs);
-  cell_t *outMins = nullptr, *outMaxs = nullptr;
-  pCtx->LocalToPhysAddr(params[2], &outMins);
-  pCtx->LocalToPhysAddr(params[3], &outMaxs);
-  for (int i = 0; i < 3; ++i) {
-    outMins[i] = sp_ftoc(ok ? mins[i] : 0.0f);
-    outMaxs[i] = sp_ftoc(ok ? maxs[i] : 0.0f);
-  }
+  float3_to_cell_ok(pCtx, params[2], mins, ok);
+  float3_to_cell_ok(pCtx, params[3], maxs, ok);
   return ok ? 1 : 0;
 }
 
@@ -322,11 +321,9 @@ cell_t N_PlaneAt(IPluginContext *pCtx, const cell_t *params) {
   float normal[3] = {0, 0, 0};
   float dist = 0.0f;
   bool ok = BSPData::PlaneAt(params[1], normal, dist);
-  cell_t *outNormal = nullptr, *outDist = nullptr;
-  pCtx->LocalToPhysAddr(params[2], &outNormal);
+  float3_to_cell(pCtx, params[2], normal);
+  cell_t *outDist = nullptr;
   pCtx->LocalToPhysAddr(params[3], &outDist);
-  for (int i = 0; i < 3; ++i)
-    outNormal[i] = sp_ftoc(normal[i]);
   *outDist = sp_ftoc(dist);
   return ok ? 1 : 0;
 }
@@ -339,13 +336,8 @@ cell_t N_PlaneType(IPluginContext *, const cell_t *params) {
 cell_t N_BoxBrushBounds(IPluginContext *pCtx, const cell_t *params) {
   float mins[3], maxs[3];
   bool ok = BSPData::BoxBrushBounds(params[1], mins, maxs);
-  cell_t *outMins = nullptr, *outMaxs = nullptr;
-  pCtx->LocalToPhysAddr(params[2], &outMins);
-  pCtx->LocalToPhysAddr(params[3], &outMaxs);
-  for (int i = 0; i < 3; ++i) {
-    outMins[i] = sp_ftoc(ok ? mins[i] : 0.0f);
-    outMaxs[i] = sp_ftoc(ok ? maxs[i] : 0.0f);
-  }
+  float3_to_cell_ok(pCtx, params[2], mins, ok);
+  float3_to_cell_ok(pCtx, params[3], maxs, ok);
   return ok ? 1 : 0;
 }
 
@@ -371,23 +363,15 @@ cell_t N_BoxBrushContents(IPluginContext *, const cell_t *params) {
 cell_t N_CModelBounds(IPluginContext *pCtx, const cell_t *params) {
   float mins[3], maxs[3];
   bool ok = BSPData::CModelBounds(params[1], mins, maxs);
-  cell_t *outMins = nullptr, *outMaxs = nullptr;
-  pCtx->LocalToPhysAddr(params[2], &outMins);
-  pCtx->LocalToPhysAddr(params[3], &outMaxs);
-  for (int i = 0; i < 3; ++i) {
-    outMins[i] = sp_ftoc(ok ? mins[i] : 0.0f);
-    outMaxs[i] = sp_ftoc(ok ? maxs[i] : 0.0f);
-  }
+  float3_to_cell_ok(pCtx, params[2], mins, ok);
+  float3_to_cell_ok(pCtx, params[3], maxs, ok);
   return ok ? 1 : 0;
 }
 
 cell_t N_CModelOrigin(IPluginContext *pCtx, const cell_t *params) {
   float origin[3] = {0, 0, 0};
   bool ok = BSPData::CModelOrigin(params[1], origin);
-  cell_t *outOrigin = nullptr;
-  pCtx->LocalToPhysAddr(params[2], &outOrigin);
-  for (int i = 0; i < 3; ++i)
-    outOrigin[i] = sp_ftoc(origin[i]);
+  float3_to_cell(pCtx, params[2], origin);
   return ok ? 1 : 0;
 }
 
@@ -444,10 +428,7 @@ cell_t N_DispSurfaceNormalAt(IPluginContext *pCtx, const cell_t *params) {
   float normal[3] = {0, 0, 1};
   float z =
       BSPDisp::SurfaceNormalAt(sp_ctof(params[1]), sp_ctof(params[2]), normal);
-  cell_t *outNormal = nullptr;
-  pCtx->LocalToPhysAddr(params[3], &outNormal);
-  for (int i = 0; i < 3; ++i)
-    outNormal[i] = sp_ftoc(normal[i]);
+  float3_to_cell(pCtx, params[3], normal);
   return sp_ftoc(z);
 }
 
@@ -476,17 +457,10 @@ cell_t N_DispNearestTri(IPluginContext *pCtx, const cell_t *params) {
   cell_to_float3(pCtx, params[1], pos);
   float d =
       BSPDisp::DistNearestTri(pos, sp_ctof(params[2]), normal, v0, v1, v2);
-  cell_t *pN = nullptr, *pV0 = nullptr, *pV1 = nullptr, *pV2 = nullptr;
-  pCtx->LocalToPhysAddr(params[3], &pN);
-  pCtx->LocalToPhysAddr(params[4], &pV0);
-  pCtx->LocalToPhysAddr(params[5], &pV1);
-  pCtx->LocalToPhysAddr(params[6], &pV2);
-  for (int i = 0; i < 3; ++i) {
-    pN[i] = sp_ftoc(normal[i]);
-    pV0[i] = sp_ftoc(v0[i]);
-    pV1[i] = sp_ftoc(v1[i]);
-    pV2[i] = sp_ftoc(v2[i]);
-  }
+  float3_to_cell(pCtx, params[3], normal);
+  float3_to_cell(pCtx, params[4], v0);
+  float3_to_cell(pCtx, params[5], v1);
+  float3_to_cell(pCtx, params[6], v2);
   return sp_ftoc(d);
 }
 
@@ -518,13 +492,8 @@ cell_t N_DispCount(IPluginContext *, const cell_t *) {
 cell_t N_DispGetBounds(IPluginContext *pCtx, const cell_t *params) {
   float mins[3], maxs[3];
   bool ok = BSPDisp::EngineGetBounds(params[1], mins, maxs);
-  cell_t *outMins = nullptr, *outMaxs = nullptr;
-  pCtx->LocalToPhysAddr(params[2], &outMins);
-  pCtx->LocalToPhysAddr(params[3], &outMaxs);
-  for (int i = 0; i < 3; ++i) {
-    outMins[i] = sp_ftoc(ok ? mins[i] : 0.0f);
-    outMaxs[i] = sp_ftoc(ok ? maxs[i] : 0.0f);
-  }
+  float3_to_cell_ok(pCtx, params[2], mins, ok);
+  float3_to_cell_ok(pCtx, params[3], maxs, ok);
   return ok ? 1 : 0;
 }
 
@@ -556,10 +525,7 @@ cell_t N_DispTriCount(IPluginContext *pCtx, const cell_t *params) {
 cell_t N_DispGetVert(IPluginContext *pCtx, const cell_t *params) {
   float pos[3] = {0, 0, 0};
   bool ok = BSPDisp::EngineGetVert(params[1], params[2], pos);
-  cell_t *outPos = nullptr;
-  pCtx->LocalToPhysAddr(params[3], &outPos);
-  for (int i = 0; i < 3; ++i)
-    outPos[i] = sp_ftoc(pos[i]);
+  float3_to_cell(pCtx, params[3], pos);
   return ok ? 1 : 0;
 }
 
@@ -595,13 +561,8 @@ cell_t N_DispDiskBounds(IPluginContext *pCtx, const cell_t *params) {
   EnsureDispLoaded();
   float mins[3], maxs[3];
   bool ok = BSPDisp::DiskGetBounds(params[1], mins, maxs);
-  cell_t *outMins = nullptr, *outMaxs = nullptr;
-  pCtx->LocalToPhysAddr(params[2], &outMins);
-  pCtx->LocalToPhysAddr(params[3], &outMaxs);
-  for (int i = 0; i < 3; ++i) {
-    outMins[i] = sp_ftoc(ok ? mins[i] : 0.0f);
-    outMaxs[i] = sp_ftoc(ok ? maxs[i] : 0.0f);
-  }
+  float3_to_cell_ok(pCtx, params[2], mins, ok);
+  float3_to_cell_ok(pCtx, params[3], maxs, ok);
   return ok ? 1 : 0;
 }
 
@@ -682,10 +643,7 @@ cell_t N_EntityOrigin(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   float origin[3] = {0, 0, 0};
   bool ok = BSPLumps::EntityOrigin(params[1], origin);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(origin[i]);
+  float3_to_cell(pCtx, params[2], origin);
   return ok ? 1 : 0;
 }
 
@@ -734,10 +692,7 @@ cell_t N_TexDataReflectivity(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   float refl[3] = {0, 0, 0};
   bool ok = BSPLumps::TexDataReflectivity(params[1], refl);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(refl[i]);
+  float3_to_cell(pCtx, params[2], refl);
   return ok ? 1 : 0;
 }
 
@@ -745,10 +700,7 @@ cell_t N_FaceVertex(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   float v[3] = {0, 0, 0};
   bool ok = BSPLumps::FaceVertex(params[1], params[2], v);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[3], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(v[i]);
+  float3_to_cell(pCtx, params[3], v);
   return ok ? 1 : 0;
 }
 
@@ -756,10 +708,7 @@ cell_t N_FaceCentroid(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   float v[3] = {0, 0, 0};
   bool ok = BSPLumps::FaceCentroid(params[1], v);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(v[i]);
+  float3_to_cell(pCtx, params[2], v);
   return ok ? 1 : 0;
 }
 
@@ -817,10 +766,7 @@ cell_t N_CubemapOrigin(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   float v[3] = {0, 0, 0};
   bool ok = BSPLumps::CubemapOrigin(params[1], v);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(v[i]);
+  float3_to_cell(pCtx, params[2], v);
   return ok ? 1 : 0;
 }
 
@@ -870,10 +816,7 @@ cell_t N_VertexPos(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   float v[3] = {0, 0, 0};
   bool ok = BSPLumps::VertexPos(params[1], v);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(v[i]);
+  float3_to_cell(pCtx, params[2], v);
   return ok ? 1 : 0;
 }
 
@@ -966,10 +909,7 @@ cell_t N_WorldlightOrigin(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   float v[3] = {0, 0, 0};
   bool ok = BSPLumps::WorldlightOrigin(params[1], v);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(v[i]);
+  float3_to_cell(pCtx, params[2], v);
   return ok ? 1 : 0;
 }
 
@@ -977,10 +917,7 @@ cell_t N_WorldlightIntensity(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   float v[3] = {0, 0, 0};
   bool ok = BSPLumps::WorldlightIntensity(params[1], v);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(v[i]);
+  float3_to_cell(pCtx, params[2], v);
   return ok ? 1 : 0;
 }
 
@@ -988,10 +925,7 @@ cell_t N_WorldlightNormal(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   float v[3] = {0, 0, 0};
   bool ok = BSPLumps::WorldlightNormal(params[1], v);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(v[i]);
+  float3_to_cell(pCtx, params[2], v);
   return ok ? 1 : 0;
 }
 
@@ -1013,10 +947,7 @@ cell_t N_WorldlightShadowCastOffset(IPluginContext *pCtx,
   EnsureLumpsLoaded();
   float v[3] = {0, 0, 0};
   bool ok = BSPLumps::WorldlightShadowCastOffset(params[1], v);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(v[i]);
+  float3_to_cell(pCtx, params[2], v);
   return ok ? 1 : 0;
 }
 
@@ -1076,10 +1007,7 @@ cell_t N_StaticPropOrigin(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   float v[3] = {0, 0, 0};
   bool ok = BSPLumps::StaticPropOrigin(params[1], v);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(v[i]);
+  float3_to_cell(pCtx, params[2], v);
   return ok ? 1 : 0;
 }
 
@@ -1087,10 +1015,7 @@ cell_t N_StaticPropAngles(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   float v[3] = {0, 0, 0};
   bool ok = BSPLumps::StaticPropAngles(params[1], v);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(v[i]);
+  float3_to_cell(pCtx, params[2], v);
   return ok ? 1 : 0;
 }
 
@@ -1141,10 +1066,7 @@ cell_t N_StaticPropLightingOrigin(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   float v[3] = {0, 0, 0};
   bool ok = BSPLumps::StaticPropLightingOrigin(params[1], v);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(v[i]);
+  float3_to_cell(pCtx, params[2], v);
   return ok ? 1 : 0;
 }
 
@@ -1161,33 +1083,22 @@ cell_t N_RtStaticPropCount(IPluginContext *, const cell_t *) {
 cell_t N_RtStaticPropBounds(IPluginContext *pCtx, const cell_t *params) {
   float mins[3] = {0, 0, 0}, maxs[3] = {0, 0, 0};
   bool ok = BSPProps::RtBounds(params[1], mins, maxs);
-  cell_t *pMins, *pMaxs;
-  pCtx->LocalToPhysAddr(params[2], &pMins);
-  pCtx->LocalToPhysAddr(params[3], &pMaxs);
-  for (int i = 0; i < 3; ++i) {
-    pMins[i] = sp_ftoc(mins[i]);
-    pMaxs[i] = sp_ftoc(maxs[i]);
-  }
+  float3_to_cell(pCtx, params[2], mins);
+  float3_to_cell(pCtx, params[3], maxs);
   return ok ? 1 : 0;
 }
 
 cell_t N_RtStaticPropOrigin(IPluginContext *pCtx, const cell_t *params) {
   float v[3] = {0, 0, 0};
   bool ok = BSPProps::RtOrigin(params[1], v);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(v[i]);
+  float3_to_cell(pCtx, params[2], v);
   return ok ? 1 : 0;
 }
 
 cell_t N_RtStaticPropAngles(IPluginContext *pCtx, const cell_t *params) {
   float v[3] = {0, 0, 0};
   bool ok = BSPProps::RtAngles(params[1], v);
-  cell_t *out;
-  pCtx->LocalToPhysAddr(params[2], &out);
-  for (int i = 0; i < 3; ++i)
-    out[i] = sp_ftoc(v[i]);
+  float3_to_cell(pCtx, params[2], v);
   return ok ? 1 : 0;
 }
 
@@ -1233,15 +1144,9 @@ cell_t N_StaticPropTriCount(IPluginContext *, const cell_t *params) {
 cell_t N_StaticPropTri(IPluginContext *pCtx, const cell_t *params) {
   float v0[3] = {0, 0, 0}, v1[3] = {0, 0, 0}, v2[3] = {0, 0, 0};
   bool ok = BSPProps::Triangle(params[1], params[2], v0, v1, v2);
-  cell_t *p0, *p1, *p2;
-  pCtx->LocalToPhysAddr(params[3], &p0);
-  pCtx->LocalToPhysAddr(params[4], &p1);
-  pCtx->LocalToPhysAddr(params[5], &p2);
-  for (int i = 0; i < 3; ++i) {
-    p0[i] = sp_ftoc(v0[i]);
-    p1[i] = sp_ftoc(v1[i]);
-    p2[i] = sp_ftoc(v2[i]);
-  }
+  float3_to_cell(pCtx, params[3], v0);
+  float3_to_cell(pCtx, params[4], v1);
+  float3_to_cell(pCtx, params[5], v2);
   return ok ? 1 : 0;
 }
 
@@ -1253,19 +1158,13 @@ cell_t N_StaticPropNearestTri(IPluginContext *pCtx, const cell_t *params) {
         v2[3] = {0, 0, 0};
   float dist = BSPProps::NearestTri(pos, sp_ctof(params[2]), propIdx, normal,
                                     v0, v1, v2);
-  cell_t *pProp, *pNorm, *p0, *p1, *p2;
+  cell_t *pProp;
   pCtx->LocalToPhysAddr(params[3], &pProp);
-  pCtx->LocalToPhysAddr(params[4], &pNorm);
-  pCtx->LocalToPhysAddr(params[5], &p0);
-  pCtx->LocalToPhysAddr(params[6], &p1);
-  pCtx->LocalToPhysAddr(params[7], &p2);
   *pProp = propIdx;
-  for (int i = 0; i < 3; ++i) {
-    pNorm[i] = sp_ftoc(normal[i]);
-    p0[i] = sp_ftoc(v0[i]);
-    p1[i] = sp_ftoc(v1[i]);
-    p2[i] = sp_ftoc(v2[i]);
-  }
+  float3_to_cell(pCtx, params[4], normal);
+  float3_to_cell(pCtx, params[5], v0);
+  float3_to_cell(pCtx, params[6], v1);
+  float3_to_cell(pCtx, params[7], v2);
   return sp_ftoc(dist);
 }
 
@@ -1302,16 +1201,12 @@ cell_t N_StaticPropHullSweep(IPluginContext *pCtx, const cell_t *params) {
   bool startSolid = false;
   int rc = BSPProps::HullSweep(start, end, mins, maxs, refZ, frac, endpos,
                                normal, startSolid);
-  cell_t *pFrac, *pEnd, *pNorm, *pSS;
+  cell_t *pFrac, *pSS;
   pCtx->LocalToPhysAddr(params[6], &pFrac);
-  pCtx->LocalToPhysAddr(params[7], &pEnd);
-  pCtx->LocalToPhysAddr(params[8], &pNorm);
   pCtx->LocalToPhysAddr(params[9], &pSS);
   *pFrac = sp_ftoc(frac);
-  for (int i = 0; i < 3; ++i) {
-    pEnd[i] = sp_ftoc(endpos[i]);
-    pNorm[i] = sp_ftoc(normal[i]);
-  }
+  float3_to_cell(pCtx, params[7], endpos);
+  float3_to_cell(pCtx, params[8], normal);
   *pSS = startSolid ? 1 : 0;
   return rc;
 }
@@ -1338,16 +1233,12 @@ cell_t N_StaticPropTraceHull(IPluginContext *pCtx, const cell_t *params) {
   bool startSolid = false;
   int rc = BSPProps::TraceHull(params[1], start, end, mins, maxs, frac, endpos,
                                normal, startSolid);
-  cell_t *pFrac, *pEnd, *pNorm, *pSS;
+  cell_t *pFrac, *pSS;
   pCtx->LocalToPhysAddr(params[6], &pFrac);
-  pCtx->LocalToPhysAddr(params[7], &pEnd);
-  pCtx->LocalToPhysAddr(params[8], &pNorm);
   pCtx->LocalToPhysAddr(params[9], &pSS);
   *pFrac = sp_ftoc(frac);
-  for (int i = 0; i < 3; ++i) {
-    pEnd[i] = sp_ftoc(endpos[i]);
-    pNorm[i] = sp_ftoc(normal[i]);
-  }
+  float3_to_cell(pCtx, params[7], endpos);
+  float3_to_cell(pCtx, params[8], normal);
   *pSS = startSolid ? 1 : 0;
   return rc;
 }
