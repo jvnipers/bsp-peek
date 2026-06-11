@@ -57,6 +57,15 @@ public:
   TraceType_t GetTraceType() const override { return TRACE_EVERYTHING; }
 };
 
+// Hits everything: world, static props, AND brush-model entities.
+// Under TRACE_EVERYTHING the world + static props always participate;
+// returning true here additionally keeps server entities (func_* brush models).
+class AllFilter : public ITraceFilter {
+public:
+  bool ShouldHitEntity(IHandleEntity *, int) override { return true; }
+  TraceType_t GetTraceType() const override { return TRACE_EVERYTHING; }
+};
+
 vcollide_t *GetPropVCollide(int propIdx) {
   char name[256];
   if (BSPLumps::StaticPropModelName(propIdx, name, sizeof(name)) <= 0)
@@ -231,6 +240,89 @@ int HullSweep(const float start[3], const float end[3], const float mins[3],
     }
   }
   return haveHit ? 1 : 0;
+}
+
+int WorldTraceHull(const float start[3], const float end[3],
+                   const float mins[3], const float maxs[3], int mask,
+                   bool hitEntities, float &outFraction, float outEndPos[3],
+                   float outNormal[3], bool &outStartSolid, bool &outAllSolid,
+                   int &outContents, int &outDispFlags, float &outPlaneDist,
+                   int &outSurfaceProps, int &outSurfaceFlags, int &outHitType,
+                   char *outSurfName, int surfNameLen) {
+  outFraction = 1.0f;
+  outEndPos[0] = end[0];
+  outEndPos[1] = end[1];
+  outEndPos[2] = end[2];
+  outNormal[0] = outNormal[1] = outNormal[2] = 0.0f;
+  outStartSolid = false;
+  outAllSolid = false;
+  outContents = 0;
+  outDispFlags = 0;
+  outPlaneDist = 0.0f;
+  outSurfaceProps = 0;
+  outSurfaceFlags = 0;
+  outHitType = 0;
+  if (outSurfName && surfNameLen > 0)
+    outSurfName[0] = '\0';
+
+  if (!g_enginetrace)
+    return -1;
+
+  Vector vstart(start[0], start[1], start[2]);
+  Vector vend(end[0], end[1], end[2]);
+  Vector vmins(mins[0], mins[1], mins[2]);
+  Vector vmaxs(maxs[0], maxs[1], maxs[2]);
+  Ray_t ray;
+  ray.Init(vstart, vend, vmins, vmaxs);
+
+  CGameTrace tr;
+  tr.fraction = 1.0f;
+  tr.startsolid = false;
+  tr.allsolid = false;
+  if (hitEntities) {
+    AllFilter filter;
+    g_enginetrace->TraceRay(ray, mask, &filter, &tr);
+  } else {
+    WorldPropsFilter filter;
+    g_enginetrace->TraceRay(ray, mask, &filter, &tr);
+  }
+
+  outFraction = tr.fraction;
+  outEndPos[0] = tr.endpos.x;
+  outEndPos[1] = tr.endpos.y;
+  outEndPos[2] = tr.endpos.z;
+  outNormal[0] = tr.plane.normal.x;
+  outNormal[1] = tr.plane.normal.y;
+  outNormal[2] = tr.plane.normal.z;
+  outPlaneDist = tr.plane.dist;
+  outStartSolid = tr.startsolid;
+  outAllSolid = tr.allsolid;
+  outContents = tr.contents;
+  outDispFlags = tr.dispFlags;
+  outSurfaceProps = tr.surface.surfaceProps;
+  outSurfaceFlags = tr.surface.flags;
+
+  bool hit = (tr.fraction < 1.0f) || tr.startsolid || tr.allsolid;
+  if (hit) {
+    if (tr.dispFlags != 0)
+      outHitType = 2; // displacement
+    else if (tr.surface.name && std::strcmp(tr.surface.name, "**studio**") == 0)
+      outHitType = 3; // static prop
+    else
+      outHitType = 1; // world brush or brush-model entity
+  }
+
+  if (outSurfName && surfNameLen > 0) {
+    const char *name = tr.surface.name ? tr.surface.name : "";
+    int n = 0;
+    while (n < surfNameLen - 1 && name[n]) {
+      outSurfName[n] = name[n];
+      ++n;
+    }
+    outSurfName[n] = '\0';
+  }
+
+  return hit ? 1 : 0;
 }
 
 int TraceHull(int propIdx, const float start[3], const float end[3],

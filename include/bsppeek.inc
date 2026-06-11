@@ -590,6 +590,39 @@ native int   BSP_StaticPropHullSweep(const float start[3], const float end[3],
 // Confirms the gamedata-resolved globals are real. Returns length.
 native int   BSP_StaticPropDebug(char[] buf, int maxlen);
 
+// Unified world hull trace
+// Sweep an AABB [mins,maxs] from start to end against the WHOLE collision world
+// via the engine's IEngineTrace::TraceRay - the same path the player collides on.
+// World brushes, displacements, and static props always participate.
+// brush-model entities (func_door, func_brush, movers, trigger volumes...)
+// participate only when hitEntities is true.
+// Dynamic point entities (players/NPCs) are never hit.
+//
+//   mask         contents mask (e.g. BSPP_MASK_PLAYERCOLLIDE / MASK_PLAYERSOLID)
+//   fraction     1.0 = no contact, else fraction of the sweep completed
+//   endpos       hull center at the contact (or `end` if no hit)
+//   normal       impact plane normal
+//   startSolid   hull began inside solid
+//   allSolid     entire sweep was inside solid (plane/normal not meaningful)
+//   contents     CONTENTS_* on the far side of the surface hit
+//   dispFlags    DISPSURF_FLAG_* (non-zero => hit a displacement surface)
+//   planeDist    impact plane distance (normal.pos == planeDist on the surface)
+//   surfaceProps surfaceprop index of the hit surface (feed IPhysicsSurfaceProps)
+//   surfaceFlags SURF_* flags of the hit surface
+//   hitType      0 = nothing, 1 = world/brush (incl. brush entity),
+//                2 = displacement, 3 = static prop
+//   surfaceName  impact material name ("**studio**" props, "**displacement**" disps)
+// Returns: -1 = unavailable (engine trace not resolved), 0 = no hit, 1 = hit.
+native int   BSP_TraceHull(const float start[3], const float end[3],
+                           const float mins[3], const float maxs[3], int mask,
+                           bool   hitEntities,
+                           float &fraction, float endpos[3], float normal[3],
+                           bool &startSolid,
+                           bool &allSolid = false, int &contents = 0,
+                           int &dispFlags = 0, float &planeDist = 0.0,
+                           int &surfaceProps = 0, int &surfaceFlags = 0,
+                           int &hitType = 0, char[] surfaceName = "", int nameLen = 0);
+
 stock bool   BSPPeek_Available()
 {
     return LibraryExists("bsppeek");

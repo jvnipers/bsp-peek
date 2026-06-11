@@ -1446,6 +1446,58 @@ cell_t N_StaticPropTraceHull(IPluginContext *pCtx, const cell_t *params) {
   return rc;
 }
 
+cell_t N_WorldTraceHull(IPluginContext *pCtx, const cell_t *params) {
+  float start[3], end[3], mins[3], maxs[3];
+  cell_to_float3(pCtx, params[1], start);
+  cell_to_float3(pCtx, params[2], end);
+  cell_to_float3(pCtx, params[3], mins);
+  cell_to_float3(pCtx, params[4], maxs);
+  int mask = params[5];
+  bool hitEntities = params[6] != 0;
+
+  float frac = 1.0f, endpos[3] = {0, 0, 0}, normal[3] = {0, 0, 0};
+  float planeDist = 0.0f;
+  bool startSolid = false, allSolid = false;
+  int contents = 0, dispFlags = 0, surfProps = 0, surfFlags = 0, hitType = 0;
+
+  int nameLen = params[19];
+  std::vector<char> nameBuf(nameLen > 0 ? nameLen : 1);
+  nameBuf[0] = '\0';
+
+  int rc = BSPProps::WorldTraceHull(
+      start, end, mins, maxs, mask, hitEntities, frac, endpos, normal,
+      startSolid, allSolid, contents, dispFlags, planeDist, surfProps,
+      surfFlags, hitType, nameBuf.data(), nameLen);
+
+  cell_t *pFrac, *pStartSolid, *pAllSolid, *pContents, *pDispFlags, *pPlaneDist,
+      *pSurfProps, *pSurfFlags, *pHitType;
+  pCtx->LocalToPhysAddr(params[7], &pFrac);
+  pCtx->LocalToPhysAddr(params[10], &pStartSolid);
+  pCtx->LocalToPhysAddr(params[11], &pAllSolid);
+  pCtx->LocalToPhysAddr(params[12], &pContents);
+  pCtx->LocalToPhysAddr(params[13], &pDispFlags);
+  pCtx->LocalToPhysAddr(params[14], &pPlaneDist);
+  pCtx->LocalToPhysAddr(params[15], &pSurfProps);
+  pCtx->LocalToPhysAddr(params[16], &pSurfFlags);
+  pCtx->LocalToPhysAddr(params[17], &pHitType);
+
+  *pFrac = sp_ftoc(frac);
+  float3_to_cell(pCtx, params[8], endpos);
+  float3_to_cell(pCtx, params[9], normal);
+  *pStartSolid = startSolid ? 1 : 0;
+  *pAllSolid = allSolid ? 1 : 0;
+  *pContents = contents;
+  *pDispFlags = dispFlags;
+  *pPlaneDist = sp_ftoc(planeDist);
+  *pSurfProps = surfProps;
+  *pSurfFlags = surfFlags;
+  *pHitType = hitType;
+  if (nameLen > 0)
+    pCtx->StringToLocal(params[18], nameLen, nameBuf.data());
+
+  return rc;
+}
+
 extern const sp_nativeinfo_t g_BSPNatives[] = {
     // Misc
     {"BSP_MapPathName", N_MapPathName},
@@ -1683,6 +1735,9 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_StaticPropTraceHull", N_StaticPropTraceHull},
     {"BSP_StaticPropHullSweep", N_StaticPropHullSweep},
     {"BSP_StaticPropDebug", N_StaticPropDebug},
+
+    // Unified world trace
+    {"BSP_TraceHull", N_WorldTraceHull},
 
     {nullptr, nullptr},
 };

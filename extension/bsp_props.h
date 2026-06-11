@@ -50,6 +50,27 @@ int HullSweep(const float start[3], const float end[3], const float mins[3],
               const float maxs[3], float refZ, float &outFraction,
               float outEndPos[3], float outNormal[3], bool &outStartSolid);
 
+// Unified world hull trace: sweep an AABB [mins,maxs] from start to end against
+// the WHOLE collision world via IEngineTrace::TraceRay
+// world brushes, displacements, and static props always participate.
+// Brush-model entities (func_*) participate only when hitEntities is true
+// (dynamic point entities are always excluded).
+// The result matches a real player-hull trace for the given contents `mask`
+// (e.g. MASK_PLAYERSOLID).
+//   outHitType: 0 = nothing, 1 = world/brush (incl. brush entity),
+//               2 = displacement, 3 = static prop.
+//   outSurfName: impact surface material name ("**studio**" for props,
+//               "**displacement**" for disps); may be null to skip.
+//   return: -1 = unavailable (enginetrace not resolved),
+//            0 = no hit, 1 = hit (or startsolid).
+int WorldTraceHull(const float start[3], const float end[3],
+                   const float mins[3], const float maxs[3], int mask,
+                   bool hitEntities, float &outFraction, float outEndPos[3],
+                   float outNormal[3], bool &outStartSolid, bool &outAllSolid,
+                   int &outContents, int &outDispFlags, float &outPlaneDist,
+                   int &outSurfaceProps, int &outSurfaceFlags, int &outHitType,
+                   char *outSurfName, int surfNameLen);
+
 // Runtime (post-combine) static props, via IStaticPropMgr + ICollideable.
 // These are the actual props the engine collides,
 // indexed by the static-prop-manager index (same index PropAtRay returns).
