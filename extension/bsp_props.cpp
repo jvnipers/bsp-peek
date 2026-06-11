@@ -14,11 +14,13 @@
 #include "vcollide.h"
 #include "vphysics_interface.h"
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace BSPProps {
 
@@ -36,6 +38,15 @@ std::unordered_map<std::string, vcollide_t *> g_vcollideCache;
 
 // Runtime (post-combine) static-prop count, cached per map. -1 = uncomputed.
 int g_rtPropCount = -1;
+
+// ICollideable* -> static-prop-manager index, built lazily per map.
+// Used to turn a trace-hit collideable back into the canonical prop index.
+std::unordered_map<ICollideable *, int> g_collToIndex;
+bool g_collMapBuilt = false;
+
+// World-space collision triangles per prop idx (9 floats per tri),
+// built lazily.
+std::unordered_map<int, std::vector<float>> g_meshCache;
 
 // Trace filter for "what static prop is along this ray": world + static props
 // only. Under TRACE_EVERYTHING static props always hit and are not passed to
@@ -139,6 +150,9 @@ int Debug(char *buf, size_t buflen) {
 void OnMapClear() {
   g_vcollideCache.clear();
   g_rtPropCount = -1;
+  g_collToIndex.clear();
+  g_collMapBuilt = false;
+  g_meshCache.clear();
 }
 
 void Shutdown() {
@@ -296,6 +310,19 @@ ICollideable *RtProp(int idx) {
     return nullptr;
   return g_staticpropmgr->GetStaticPropByIndex(idx);
 }
+
+void EnsureCollMap() {
+  if (g_collMapBuilt)
+    return;
+  g_collToIndex.clear();
+  int n = RtCount();
+  for (int i = 0; i < n; ++i) {
+    ICollideable *c = g_staticpropmgr->GetStaticPropByIndex(i);
+    if (c)
+      g_collToIndex[c] = i;
+  }
+  g_collMapBuilt = true;
+}
 } // namespace
 
 bool RtBounds(int idx, float outMins[3], float outMaxs[3]) {
@@ -368,21 +395,292 @@ int RtModelName(int idx, char *buf, int maxlen) {
 }
 
 int PropAtRay(const float start[3], const float end[3]) {
-  if (!g_enginetrace)
+  if (!g_enginetrace || !g_staticpropmgr)
     return -1;
   Vector vstart(start[0], start[1], start[2]);
   Vector vend(end[0], end[1], end[2]);
   Ray_t ray;
   ray.Init(vstart, vend);
+
+  // Trace world + static props to find where (and whether) a prop is hit.
   WorldPropsFilter filter;
   CGameTrace tr;
+  tr.fraction = 1.0f;
   g_enginetrace->TraceRay(ray, MASK_SOLID, &filter, &tr);
-  // A static-prop hit sets the world entity + the prop index in trace.hitbox;
-  // its surface name is "**studio**" (vs a material name for a world brush).
-  if (tr.fraction < 1.0f && tr.surface.name &&
-      std::strcmp(tr.surface.name, "**studio**") == 0)
-    return tr.hitbox;
-  return -1;
+  if (!(tr.fraction < 1.0f && tr.surface.name &&
+        std::strcmp(tr.surface.name, "**studio**") == 0))
+    return -1; // hit a brush or nothing
+
+  // Identify which prop: gather the props around the hit point and clip the
+  // same ray against each (trace.hitbox is NOT the staticpropmgr index).
+  // The earliest contact is the aimed prop.
+  Vector hp(tr.endpos.x, tr.endpos.y, tr.endpos.z);
+  Vector bmin(hp.x - 8.0f, hp.y - 8.0f, hp.z - 8.0f);
+  Vector bmax(hp.x + 8.0f, hp.y + 8.0f, hp.z + 8.0f);
+  CUtlVector<ICollideable *> cands;
+  g_staticpropmgr->GetAllStaticPropsInAABB(bmin, bmax, &cands);
+  ICollideable *best = nullptr;
+  float bestFrac = 2.0f;
+  for (int i = 0; i < cands.Count(); ++i) {
+    ICollideable *c = cands[i];
+    if (!c)
+      continue;
+    CGameTrace ct;
+    ct.fraction = 1.0f;
+    g_enginetrace->ClipRayToCollideable(ray, MASK_SOLID, c, &ct);
+    if (ct.fraction < bestFrac) {
+      bestFrac = ct.fraction;
+      best = c;
+    }
+  }
+  if (!best)
+    return -1;
+
+  EnsureCollMap();
+  auto it = g_collToIndex.find(best);
+  return (it != g_collToIndex.end()) ? it->second : -1;
+}
+
+int ProbeMesh(int idx, char *buf, size_t buflen) {
+  if (!buf || buflen == 0)
+    return 0;
+  buf[0] = '\0';
+  ICollideable *c = RtProp(idx);
+  if (!c)
+    return std::snprintf(buf, buflen, "prop %d: no collideable (rtCount=%d)",
+                         idx, RtCount());
+  const model_t *m = c->GetCollisionModel();
+  int solid = (int)c->GetSolid();
+  const char *mdl = (m && g_modelinfo) ? g_modelinfo->GetModelName(m) : nullptr;
+  vcollide_t *vc = (m && g_modelinfo) ? g_modelinfo->GetVCollide(m) : nullptr;
+  int solidCount = vc ? (int)vc->solidCount : -1;
+  // Run CreateDebugMesh on the first solid to confirm the full mesh pipeline.
+  int vertCount = -1;
+  if (vc && vc->solidCount > 0 && vc->solids && vc->solids[0] &&
+      g_physcollision) {
+    Vector *verts = nullptr;
+    vertCount = g_physcollision->CreateDebugMesh(vc->solids[0], &verts);
+    if (verts)
+      g_physcollision->DestroyDebugMesh(vertCount, verts);
+  }
+  return std::snprintf(
+      buf, buflen,
+      "prop %d: model=%p solid=%d vcollide=%p solidCount=%d solid0verts=%d "
+      "tris=%d model='%s'",
+      idx, (void *)m, solid, (void *)vc, solidCount, vertCount,
+      vertCount > 0 ? vertCount / 3 : 0, mdl ? mdl : "");
+}
+
+// Collision mesh (world-space triangles), via CreateDebugMesh
+
+namespace {
+
+void AppendTri(std::vector<float> &out, const Vector &a, const Vector &b,
+               const Vector &c) {
+  out.push_back(a.x);
+  out.push_back(a.y);
+  out.push_back(a.z);
+  out.push_back(b.x);
+  out.push_back(b.y);
+  out.push_back(b.z);
+  out.push_back(c.x);
+  out.push_back(c.y);
+  out.push_back(c.z);
+}
+
+// Build (and cache) prop idx's world-space collision triangles.
+// Returns nullptr only if the prop index is invalid,
+// a prop with no geometry caches an empty list.
+const std::vector<float> *GetPropMesh(int idx) {
+  auto it = g_meshCache.find(idx);
+  if (it != g_meshCache.end())
+    return &it->second;
+  ICollideable *c = RtProp(idx);
+  if (!c)
+    return nullptr;
+
+  std::vector<float> mesh;
+  const matrix3x4_t &xform = c->CollisionToWorldTransform();
+  const model_t *model = c->GetCollisionModel();
+  vcollide_t *vc =
+      (model && g_modelinfo) ? g_modelinfo->GetVCollide(model) : nullptr;
+  bool built = false;
+  if (vc && vc->solidCount > 0 && vc->solids && g_physcollision) {
+    for (int s = 0; s < vc->solidCount; ++s) {
+      CPhysCollide *col = vc->solids[s];
+      if (!col)
+        continue;
+      Vector *verts = nullptr;
+      int n = g_physcollision->CreateDebugMesh(col, &verts);
+      if (verts && n >= 3) {
+        for (int i = 0; i + 2 < n; i += 3) {
+          Vector a, b, cc;
+          VectorTransform(verts[i], xform, a);
+          VectorTransform(verts[i + 1], xform, b);
+          VectorTransform(verts[i + 2], xform, cc);
+          AppendTri(mesh, a, b, cc);
+        }
+        built = true;
+      }
+      if (verts)
+        g_physcollision->DestroyDebugMesh(n, verts);
+    }
+  }
+  if (!built) {
+    // No vcollide (SOLID_BBOX / non-physics): 12 triangles from the local OBB.
+    const Vector &mn = c->OBBMins();
+    const Vector &mx = c->OBBMaxs();
+    Vector lc[8] = {Vector(mn.x, mn.y, mn.z), Vector(mx.x, mn.y, mn.z),
+                    Vector(mx.x, mx.y, mn.z), Vector(mn.x, mx.y, mn.z),
+                    Vector(mn.x, mn.y, mx.z), Vector(mx.x, mn.y, mx.z),
+                    Vector(mx.x, mx.y, mx.z), Vector(mn.x, mx.y, mx.z)};
+    Vector w[8];
+    for (int i = 0; i < 8; ++i)
+      VectorTransform(lc[i], xform, w[i]);
+    static const int f[12][3] = {{0, 2, 1}, {0, 3, 2}, {4, 5, 6}, {4, 6, 7},
+                                 {0, 1, 5}, {0, 5, 4}, {1, 2, 6}, {1, 6, 5},
+                                 {2, 3, 7}, {2, 7, 6}, {3, 0, 4}, {3, 4, 7}};
+    for (int i = 0; i < 12; ++i)
+      AppendTri(mesh, w[f[i][0]], w[f[i][1]], w[f[i][2]]);
+  }
+
+  auto &stored = g_meshCache[idx];
+  stored = std::move(mesh);
+  return &stored;
+}
+
+// Squared distance from p to triangle abc + the closest point (Ericson, RTCD).
+float ClosestPtTriSq(const Vector &p, const Vector &a, const Vector &b,
+                     const Vector &c, Vector &out) {
+  Vector ab = b - a, ac = c - a, ap = p - a;
+  float d1 = ab.Dot(ap), d2 = ac.Dot(ap);
+  if (d1 <= 0.0f && d2 <= 0.0f) {
+    out = a;
+    return (p - a).LengthSqr();
+  }
+  Vector bp = p - b;
+  float d3 = ab.Dot(bp), d4 = ac.Dot(bp);
+  if (d3 >= 0.0f && d4 <= d3) {
+    out = b;
+    return (p - b).LengthSqr();
+  }
+  float vc = d1 * d4 - d3 * d2;
+  if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) {
+    float v = d1 / (d1 - d3);
+    out = a + ab * v;
+    return (p - out).LengthSqr();
+  }
+  Vector cp = p - c;
+  float d5 = ab.Dot(cp), d6 = ac.Dot(cp);
+  if (d6 >= 0.0f && d5 <= d6) {
+    out = c;
+    return (p - c).LengthSqr();
+  }
+  float vb = d5 * d2 - d1 * d6;
+  if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) {
+    float w = d2 / (d2 - d6);
+    out = a + ac * w;
+    return (p - out).LengthSqr();
+  }
+  float va = d3 * d6 - d5 * d4;
+  if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f) {
+    float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+    out = b + (c - b) * w;
+    return (p - out).LengthSqr();
+  }
+  float denom = 1.0f / (va + vb + vc);
+  float v = vb * denom, w = vc * denom;
+  out = a + ab * v + ac * w;
+  return (p - out).LengthSqr();
+}
+
+} // namespace
+
+int TriCount(int idx) {
+  const std::vector<float> *m = GetPropMesh(idx);
+  return m ? (int)(m->size() / 9) : 0;
+}
+
+bool Triangle(int idx, int triIdx, float v0[3], float v1[3], float v2[3]) {
+  const std::vector<float> *m = GetPropMesh(idx);
+  if (!m)
+    return false;
+  if (triIdx < 0 || (size_t)(triIdx + 1) * 9 > m->size())
+    return false;
+  const float *p = &(*m)[(size_t)triIdx * 9];
+  v0[0] = p[0];
+  v0[1] = p[1];
+  v0[2] = p[2];
+  v1[0] = p[3];
+  v1[1] = p[4];
+  v1[2] = p[5];
+  v2[0] = p[6];
+  v2[1] = p[7];
+  v2[2] = p[8];
+  return true;
+}
+
+float NearestTri(const float pos[3], float maxDist, int &outPropIdx,
+                 float outNormal[3], float v0[3], float v1[3], float v2[3]) {
+  outPropIdx = -1;
+  if (!g_staticpropmgr || !g_physcollision)
+    return -1.0f;
+  Vector p(pos[0], pos[1], pos[2]);
+  Vector bmin(p.x - maxDist, p.y - maxDist, p.z - maxDist);
+  Vector bmax(p.x + maxDist, p.y + maxDist, p.z + maxDist);
+  CUtlVector<ICollideable *> cands;
+  g_staticpropmgr->GetAllStaticPropsInAABB(bmin, bmax, &cands);
+  if (cands.Count() == 0)
+    return -1.0f;
+  EnsureCollMap();
+
+  float bestSq = maxDist * maxDist;
+  bool found = false;
+  Vector ba, bb, bc;
+  for (int ci = 0; ci < cands.Count(); ++ci) {
+    auto it = g_collToIndex.find(cands[ci]);
+    if (it == g_collToIndex.end())
+      continue;
+    const std::vector<float> *m = GetPropMesh(it->second);
+    if (!m)
+      continue;
+    size_t triN = m->size() / 9;
+    for (size_t t = 0; t < triN; ++t) {
+      const float *q = &(*m)[t * 9];
+      Vector a(q[0], q[1], q[2]), b(q[3], q[4], q[5]), c(q[6], q[7], q[8]);
+      Vector cp;
+      float d2 = ClosestPtTriSq(p, a, b, c, cp);
+      if (d2 < bestSq) {
+        bestSq = d2;
+        found = true;
+        outPropIdx = it->second;
+        ba = a;
+        bb = b;
+        bc = c;
+      }
+    }
+  }
+  if (!found)
+    return -1.0f;
+  v0[0] = ba.x;
+  v0[1] = ba.y;
+  v0[2] = ba.z;
+  v1[0] = bb.x;
+  v1[1] = bb.y;
+  v1[2] = bb.z;
+  v2[0] = bc.x;
+  v2[1] = bc.y;
+  v2[2] = bc.z;
+  Vector n = (bb - ba).Cross(bc - ba);
+  float len = n.Length();
+  if (len > 1e-6f) {
+    outNormal[0] = n.x / len;
+    outNormal[1] = n.y / len;
+    outNormal[2] = n.z / len;
+  } else {
+    outNormal[0] = outNormal[1] = outNormal[2] = 0.0f;
+  }
+  return std::sqrt(bestSq);
 }
 
 } // namespace BSPProps

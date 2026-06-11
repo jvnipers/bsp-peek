@@ -1216,6 +1216,59 @@ cell_t N_StaticPropAtRay(IPluginContext *pCtx, const cell_t *params) {
   return BSPProps::PropAtRay(start, end);
 }
 
+cell_t N_StaticPropProbe(IPluginContext *pCtx, const cell_t *params) {
+  int maxlen = params[3];
+  if (maxlen <= 0)
+    return 0;
+  std::vector<char> tmp(maxlen);
+  int n = BSPProps::ProbeMesh(params[1], tmp.data(), maxlen);
+  pCtx->StringToLocal(params[2], maxlen, tmp.data());
+  return n;
+}
+
+cell_t N_StaticPropTriCount(IPluginContext *, const cell_t *params) {
+  return BSPProps::TriCount(params[1]);
+}
+
+cell_t N_StaticPropTri(IPluginContext *pCtx, const cell_t *params) {
+  float v0[3] = {0, 0, 0}, v1[3] = {0, 0, 0}, v2[3] = {0, 0, 0};
+  bool ok = BSPProps::Triangle(params[1], params[2], v0, v1, v2);
+  cell_t *p0, *p1, *p2;
+  pCtx->LocalToPhysAddr(params[3], &p0);
+  pCtx->LocalToPhysAddr(params[4], &p1);
+  pCtx->LocalToPhysAddr(params[5], &p2);
+  for (int i = 0; i < 3; ++i) {
+    p0[i] = sp_ftoc(v0[i]);
+    p1[i] = sp_ftoc(v1[i]);
+    p2[i] = sp_ftoc(v2[i]);
+  }
+  return ok ? 1 : 0;
+}
+
+cell_t N_StaticPropNearestTri(IPluginContext *pCtx, const cell_t *params) {
+  float pos[3];
+  cell_to_float3(pCtx, params[1], pos);
+  int propIdx = -1;
+  float normal[3] = {0, 0, 0}, v0[3] = {0, 0, 0}, v1[3] = {0, 0, 0},
+        v2[3] = {0, 0, 0};
+  float dist = BSPProps::NearestTri(pos, sp_ctof(params[2]), propIdx, normal,
+                                    v0, v1, v2);
+  cell_t *pProp, *pNorm, *p0, *p1, *p2;
+  pCtx->LocalToPhysAddr(params[3], &pProp);
+  pCtx->LocalToPhysAddr(params[4], &pNorm);
+  pCtx->LocalToPhysAddr(params[5], &p0);
+  pCtx->LocalToPhysAddr(params[6], &p1);
+  pCtx->LocalToPhysAddr(params[7], &p2);
+  *pProp = propIdx;
+  for (int i = 0; i < 3; ++i) {
+    pNorm[i] = sp_ftoc(normal[i]);
+    p0[i] = sp_ftoc(v0[i]);
+    p1[i] = sp_ftoc(v1[i]);
+    p2[i] = sp_ftoc(v2[i]);
+  }
+  return sp_ftoc(dist);
+}
+
 cell_t N_StaticPropLeaves(IPluginContext *pCtx, const cell_t *params) {
   EnsureLumpsLoaded();
   int maxOut = params[3];
@@ -1510,6 +1563,10 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
     {"BSP_RtStaticPropSolidFlags", N_RtStaticPropSolidFlags},
     {"BSP_RtStaticPropModelName", N_RtStaticPropModelName},
     {"BSP_StaticPropAtRay", N_StaticPropAtRay},
+    {"BSP_StaticPropProbe", N_StaticPropProbe},
+    {"BSP_StaticPropTriCount", N_StaticPropTriCount},
+    {"BSP_StaticPropTri", N_StaticPropTri},
+    {"BSP_StaticPropNearestTri", N_StaticPropNearestTri},
 
     // Prop collision queries (engine)
     {"BSP_StaticPropTraceHull", N_StaticPropTraceHull},

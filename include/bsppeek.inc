@@ -431,6 +431,23 @@ native int   BSP_RtStaticPropModelName(int idx, char[] buf, int maxlen);
 // -1 if the ray hits a brush / nothing.
 native int   BSP_StaticPropAtRay(const float start[3], const float end[3]);
 
+// Diagnostic:
+// Runs the collision-mesh pipeline (GetCollisionModel ->
+// GetVCollide -> CreateDebugMesh) for runtime prop `idx`,
+// writes model/vcollide/solid/vert counts into buf.
+// Confirms the mesh is reachable (esp. on prop-combine maps). Returns length.
+native int   BSP_StaticPropProbe(int idx, char[] buf, int maxlen);
+
+// Runtime prop collision mesh, world-space triangles (engine CreateDebugMesh
+// transformed to world). Props with no .phy collision fall back to 12 OBB tris.
+// Built + cached per prop on first access, works on prop-combine maps.
+native int   BSP_StaticPropTriCount(int idx);
+native bool  BSP_StaticPropTri(int idx, int triIdx, float v0[3], float v1[3], float v2[3]);
+// Nearest collision triangle to pos across props within maxDist. Returns distance
+// (-1.0 if none), sets propIdx + the tri's plane normal + 3 world-space verts.
+native float BSP_StaticPropNearestTri(const float pos[3], float maxDist, int &propIdx,
+                                      float normal[3], float v0[3], float v1[3], float v2[3]);
+
 // Sweep an AABB [mins,maxs] from start to end against static prop `idx`
 // (at the prop's origin/angles) via VPhysics.
 // The exact engine collision, isolated to this one prop by its model's vcollide.

@@ -65,6 +65,25 @@ int RtModelName(int idx, char *buf, int maxlen); // returns length
 // brush / nothing. Identifies the prop under an aim.
 int PropAtRay(const float start[3], const float end[3]);
 
+// Diagnostic:
+// Runs the collision-mesh pipeline (GetCollisionModel ->
+// GetVCollide -> CreateDebugMesh) for runtime prop `idx`,
+// writes model/vcollide/solid/vert counts into buf.
+// Confirms the mesh is reachable (esp. on prop-combine maps). Returns length.
+int ProbeMesh(int idx, char *buf, size_t buflen);
+
+// Runtime prop collision mesh, world-space triangles
+// (CreateDebugMesh transformed by the prop's collision->world matrix).
+// Props with no .phy fall back to 12 OBB tris.
+// Built + cached per prop on first access.
+int TriCount(int idx);
+bool Triangle(int idx, int triIdx, float v0[3], float v1[3], float v2[3]);
+// Nearest collision triangle to pos across the props within maxDist.
+// Returns the distance (-1 if none),
+// sets outPropIdx + the tri's plane normal + 3 world verts.
+float NearestTri(const float pos[3], float maxDist, int &outPropIdx,
+                 float outNormal[3], float v0[3], float v1[3], float v2[3]);
+
 } // namespace BSPProps
 
 #endif
