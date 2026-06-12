@@ -1629,7 +1629,7 @@ bool FindBoxBrushOverhang(const float samplePos[3], int &outBoxIdx,
   outHeight = 0.f;
   if (!g_pBSPData)
     return false;
-  const int CONTENTS_SOLID = 0x1;
+  const int CONTENTS_PLAYERCOLLIDE = 0x1 | 0x10000;
   const float PROBE = 1.0f; // clear the eps-bevel padding box brushes carry
   int nb = GetNumBoxBrushes();
   if (nb <= 0)
@@ -1650,8 +1650,8 @@ bool FindBoxBrushOverhang(const float samplePos[3], int &outBoxIdx,
       continue;
     if (samplePos[1] < mn[1] - 0.1f || samplePos[1] > mx[1] + 0.1f)
       continue;
-    if ((BoxBrushContents(i) & CONTENTS_SOLID) == 0)
-      continue; // only solid box brushes carry the texturebug collision
+    if ((BoxBrushContents(i) & CONTENTS_PLAYERCOLLIDE) == 0)
+      continue; // player-collidable box brushes only (solid or playerclip)
 
     // Underside must be open: the player has to fall past the bottom face.
     float cx = samplePos[0] < mn[0]
@@ -1661,7 +1661,7 @@ bool FindBoxBrushOverhang(const float samplePos[3], int &outBoxIdx,
                    ? mn[1]
                    : (samplePos[1] > mx[1] ? mx[1] : samplePos[1]);
     float probeBelow[3] = {cx, cy, mn[2] - PROBE};
-    if (PointContentsBrushes(probeBelow) & CONTENTS_SOLID)
+    if (PointContentsBrushes(probeBelow) & CONTENTS_PLAYERCOLLIDE)
       continue; // underside buried -> nothing to drop past
 
     float midZ = (mn[2] + mx[2]) * 0.5f;
@@ -1691,7 +1691,7 @@ bool FindBoxBrushOverhang(const float samplePos[3], int &outBoxIdx,
         probeOut[axis] = wallCoord + (positive ? PROBE : -PROBE);
         probeOut[otherAxis] = (mn[otherAxis] + mx[otherAxis]) * 0.5f;
         probeOut[2] = midZ;
-        if (PointContentsBrushes(probeOut) & CONTENTS_SOLID)
+        if (PointContentsBrushes(probeOut) & CONTENTS_PLAYERCOLLIDE)
           continue; // wall buried behind neighbor geometry
         bestFace = face;
         bestCoord = wallCoord;

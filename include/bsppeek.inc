@@ -235,7 +235,8 @@ native bool BSP_FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
                                        int &outLowerBox, int &outUpperBox);
 
 // Texturebug overhang geometry.
-// Finds a solid box brush at samplePos' XY column whose underside (-Z) is open
+// Finds a player-collidable (SOLID or PLAYERCLIP) box brush at samplePos' XY
+// column whose underside (-Z) is open
 // AND which has an exposed vertical wall the player can hug.
 // Box-table index space (use BSP_BoxBrush*).
 //
