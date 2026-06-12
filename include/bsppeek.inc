@@ -251,10 +251,44 @@ native bool BSP_FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
 //   height    : brush vertical extent (maxs.z - mins.z); Ineq(10) numerator term.
 //
 // Returns true if an overhang was found at samplePos' XY column.
+// Among multiple qualifying boxes in the column, returns the one whose bottom
+// edge is nearest BELOW samplePos.z (the next edge a falling player crosses),
+// if none below, nearest above.
 // Full AABB via BSP_BoxBrushBounds(boxIdx, ...); contents via BSP_BoxBrushContents.
 native bool BSP_FindBoxBrushOverhang(const float samplePos[3], int &boxIdx,
                                      int &face, float &wallCoord, float &bottomZ,
                                      float &height);
+
+// CSGO player hull heights (g_CSViewVectors).
+#define BSP_CSGO_HULL_STAND 72.0
+#define BSP_CSGO_HULL_DUCK  54.0
+// Engine trace epsilon (cmodel.cpp DIST_EPSILON).
+#define BSP_DIST_EPSILON    0.03125
+
+// BSP_FindBoxBrushOverhang + the face-selection velocity window in one call
+// (the "texturebug" condition).
+// Tests whether vel satisfies the topside-misreport window
+// (cmodel.cpp IntersectRayWithBoxBrush Ineq 7/10):
+//   |v_perp| < (|v_z| * DIST_EPSILON) / (H_brush + hullHeight)
+// where v_perp is the velocity component along the hugged wall's normal axis.
+//
+//   playerPos  : player origin (trace start).
+//   vel        : player velocity at the trace tick.
+//   hullHeight : player hull height — 72.0 standing, 54.0 ducked (CSGO).
+//   boxIdx     : cboxbrush_t index of the overhang brush.
+//   face       : hugged wall (0=-X, 1=+X, 2=-Y, 3=+Y).
+//   wallCoord  : world coord of that wall plane.
+//   bottomZ    : brush underside z (= brush mins.z); the crossing plane.
+//   height     : brush vertical extent (maxs.z - mins.z).
+//   maxVPerp   : window width — max |v_perp| that triggers the bug.
+//   vPerp      : actual |v_perp| from vel (compare to maxVPerp for margin).
+//
+// Returns true iff overhang found AND v_z < 0 AND |v_perp| < maxVPerp.
+// Full AABB via BSP_BoxBrushBounds(boxIdx, ...); contents via BSP_BoxBrushContents.
+native bool BSP_BoxBrushOverhangWindow(const float playerPos[3], const float vel[3],
+                                       float hullHeight, int &boxIdx, int &face,
+                                       float &wallCoord, float &bottomZ, float &height,
+                                       float &maxVPerp, float &vPerp);
 
 // BSP_FindBrushPairAtSeam + the leaf-visit-order gate in one call.
 // Resolves the lower/upper brushes at the seam, then samples the leaf just

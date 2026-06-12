@@ -1615,6 +1615,10 @@ bool FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
 // (face axis+sign, world coord), the underside z, and the brush height.
 // Among exposed lateral faces, picks the one whose outward normal points toward
 // samplePos. false if none.
+// A column usually pierces several qualifying boxes,
+// the winner is the one whose bottom edge is nearest BELOW samplePos.z
+// (the next edge a falling player crosses).
+// If none lie below, nearest above is returned instead.
 bool FindBoxBrushOverhang(const float samplePos[3], int &outBoxIdx,
                           int &outFace, float &outWallCoord, float &outBottomZ,
                           float &outHeight) {
@@ -1630,6 +1634,12 @@ bool FindBoxBrushOverhang(const float samplePos[3], int &outBoxIdx,
   int nb = GetNumBoxBrushes();
   if (nb <= 0)
     return false;
+
+  // Best-below / best-above tracking (see selection note above).
+  int bestBelowIdx = -1, bestBelowFace = -1;
+  float bestBelowCoord = 0.f, bestBelowBz = 0.f, bestBelowH = 0.f;
+  int bestAboveIdx = -1, bestAboveFace = -1;
+  float bestAboveCoord = 0.f, bestAboveBz = 0.f, bestAboveH = 0.f;
 
   for (int i = 0; i < nb; ++i) {
     float mn[3], mx[3];
@@ -1691,14 +1701,76 @@ bool FindBoxBrushOverhang(const float samplePos[3], int &outBoxIdx,
     if (bestFace < 0)
       continue; // no exposed lateral wall on this box
 
-    outBoxIdx = i;
-    outFace = bestFace;
-    outWallCoord = bestCoord;
-    outBottomZ = mn[2];
-    outHeight = mx[2] - mn[2];
+    // Qualifies. Slot into below/above by bottom edge vs samplePos.z
+    // (0.1 slack so standing exactly on the edge still counts as "below").
+    if (mn[2] <= samplePos[2] + 0.1f) {
+      if (bestBelowIdx < 0 || mn[2] > bestBelowBz) {
+        bestBelowIdx = i;
+        bestBelowFace = bestFace;
+        bestBelowCoord = bestCoord;
+        bestBelowBz = mn[2];
+        bestBelowH = mx[2] - mn[2];
+      }
+    } else {
+      if (bestAboveIdx < 0 || mn[2] < bestAboveBz) {
+        bestAboveIdx = i;
+        bestAboveFace = bestFace;
+        bestAboveCoord = bestCoord;
+        bestAboveBz = mn[2];
+        bestAboveH = mx[2] - mn[2];
+      }
+    }
+  }
+
+  if (bestBelowIdx >= 0) {
+    outBoxIdx = bestBelowIdx;
+    outFace = bestBelowFace;
+    outWallCoord = bestBelowCoord;
+    outBottomZ = bestBelowBz;
+    outHeight = bestBelowH;
+    return true;
+  }
+  if (bestAboveIdx >= 0) {
+    outBoxIdx = bestAboveIdx;
+    outFace = bestAboveFace;
+    outWallCoord = bestAboveCoord;
+    outBottomZ = bestAboveBz;
+    outHeight = bestAboveH;
     return true;
   }
   return false;
+}
+
+bool BoxBrushOverhangWindow(const float playerPos[3], const float vel[3],
+                            float hullHeight, int &outBoxIdx, int &outFace,
+                            float &outWallCoord, float &outBottomZ,
+                            float &outHeight, float &outMaxVPerp,
+                            float &outVPerp) {
+  outBoxIdx = -1;
+  outFace = -1;
+  outWallCoord = 0.f;
+  outBottomZ = 0.f;
+  outHeight = 0.f;
+  outMaxVPerp = 0.f;
+  outVPerp = 0.f;
+
+  if (!FindBoxBrushOverhang(playerPos, outBoxIdx, outFace, outWallCoord,
+                            outBottomZ, outHeight))
+    return false;
+
+  float vz = vel[2];
+  if (vz >= 0.f) // must be falling
+    return false;
+
+  const float DIST_EPSILON = 0.03125f;
+  int wallAxis = outFace >> 1; // 0=X 1=Y
+  float vPerp = fabsf(vel[wallAxis]);
+  float maxVPerp = fabsf(vz) * DIST_EPSILON / (outHeight + hullHeight);
+
+  outMaxVPerp = maxVPerp;
+  outVPerp = vPerp;
+
+  return vPerp < maxVPerp;
 }
 
 bool LeafBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower,

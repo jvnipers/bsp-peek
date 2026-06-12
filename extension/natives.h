@@ -77,8 +77,9 @@ cell_t N_CModelBounds(IPluginContext *pCtx, const cell_t *params);
 cell_t N_CModelOrigin(IPluginContext *pCtx, const cell_t *params);
 cell_t N_CModelHeadnode(IPluginContext *pCtx, const cell_t *params);
 
-// High-level pixelsurf
+// High-level pixelsurf / texturebug
 cell_t N_FindBrushPairAtSeam(IPluginContext *pCtx, const cell_t *params);
+cell_t N_BoxBrushOverhangWindow(IPluginContext *pCtx, const cell_t *params);
 
 // Brush AABB cache
 cell_t N_RebuildCache(IPluginContext *pCtx, const cell_t *params);
