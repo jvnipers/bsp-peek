@@ -3,16 +3,16 @@
 
 #include "smsdk_ext.h"
 
-class BSPPeek : public SDKExtension {
+class BSPPeek : public SDKExtension
+{
 public:
-  bool SDK_OnLoad(char *error, size_t maxlen, bool late) override;
-  void SDK_OnUnload() override;
-  void SDK_OnAllLoaded() override;
-  bool QueryRunning(char *error, size_t maxlen) override;
+	bool SDK_OnLoad(char *error, size_t maxlen, bool late) override;
+	void SDK_OnUnload() override;
+	void SDK_OnAllLoaded() override;
+	bool QueryRunning(char *error, size_t maxlen) override;
 
-  // Notified when a new map's BSP collision data is ready to query.
-  void OnCoreMapStart(edict_t *pEdictList, int edictCount,
-                      int clientMax) override;
+	// Notified when a new map's BSP collision data is ready to query.
+	void OnCoreMapStart(edict_t *pEdictList, int edictCount, int clientMax) override;
 };
 
 extern BSPPeek g_BSPPeek;
