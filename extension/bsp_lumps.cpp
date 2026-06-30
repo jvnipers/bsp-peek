@@ -58,10 +58,9 @@ namespace BSPLumps
 
 		// Static prop dict entry = char m_Name[128].
 		constexpr int kStaticPropNameLen = 128;
-		// StaticPropLump_t field offsets.
-		// The prefix is identical across versions >= 4, the fields past it appeared incrementally
-		// (skin/fades v4, lighting origin v4-6, forced fade scale v5, flagsEx v10).
-		// Each is read only when the per-prop stride covers it, so older versions just skip them.
+		// StaticPropLump_t field offsets. The prefix is identical for versions >= 4.
+		// Later fields appeared incrementally (skin/fades v4, lighting origin v4-6, forced fade scale v5, flagsEx v10)
+		// and are read only when the stride covers them.
 		constexpr int kSP_Origin = 0;
 		constexpr int kSP_Angles = 12;
 		constexpr int kSP_PropType = 24;
@@ -93,8 +92,8 @@ namespace BSPLumps
 		constexpr int kFace_OrigFace = 44; // int32
 
 		// dleafwaterdata_t: float surfaceZ + float minZ + short surfaceTexInfoID.
-		// Natural size 10, but the SDK struct's 4-byte alignment pads sizeof to 12, which is the stride vbsp wrote.
-		// Stride is re-derived from the lump length at load (12 preferred, 10 fallback).
+		// Natural size 10, but 4-byte alignment pads sizeof to 12 (the stride vbsp wrote).
+		// Stride is re-derived from the lump length at load (12, else 10).
 		constexpr int kSizeofLeafWater = 12;
 		constexpr int kLeafWater_SurfaceZ = 0; // float
 		constexpr int kLeafWater_MinZ = 4;     // float
@@ -123,11 +122,11 @@ namespace BSPLumps
 		constexpr int kTexData_Reflectivity = 0;
 		constexpr int kTexData_NameStringTableID = 12;
 
-		// dworldlight_t (CSGO):
-		//   origin[3]=12 + intensity[3]=12 + normal[3]=12 + shadow_cast_offset[3]=12 + cluster=4 + type=4 + style=4
-		//   + stopdot=4 + stopdot2=4 + exponent=4 + radius=4 + constant_attn=4 + linear_attn=4 + quadratic_attn=4
-		//   + flags=4 + texinfo=4 + owner=4 = 100 bytes.
-		//   Actual size varies by SDK, CSGO is 100.
+		// dworldlight_t (CSGO): origin[3]=12 + intensity[3]=12 + normal[3]=12
+		//   + shadow_cast_offset[3]=12 + cluster=4 + type=4 + style=4
+		//   + stopdot=4 + stopdot2=4 + exponent=4 + radius=4 + constant_attn=4
+		//   + linear_attn=4 + quadratic_attn=4 + flags=4 + texinfo=4 + owner=4
+		//   = 100 bytes. Actual size varies by SDK. CSGO is 100.
 		constexpr int kSizeofWorldlight = 100;
 		constexpr int kWL_Origin = 0;
 		constexpr int kWL_Intensity = 12;
@@ -164,8 +163,7 @@ namespace BSPLumps
 		};
 
 		// Parsed static prop (sprp game lump).
-		// Fields past the stable prefix are populated only when the per-prop stride covers them
-		// (older lump versions leave them 0).
+		// Fields past the stable prefix are 0 on older lump versions whose stride doesn't cover them.
 		struct StaticProp
 		{
 			float origin[3];
@@ -332,10 +330,9 @@ namespace BSPLumps
 		}
 
 		// Parse the sprp game lump (static props) from the open BSP file.
-		// Layout at the sprp blob:
-		//    int dictCount, char[128] names[dictCount], int leafCount, uint16 leafs[leafCount], int propCount, StaticPropLump_t[propCount].
-		// The prop struct size varies by version, we derive the stride from the blob size and read only the version-stable prefix.
-		// Best-effort: silently leaves the prop list empty on any structural mismatch.
+		// Blob layout: int dictCount, char[128] names[dictCount], int leafCount, uint16 leafs[leafCount], int propCount, StaticPropLump_t[propCount].
+		// Prop struct size varies by version, so derive the stride from the blob size and read only the version-stable prefix.
+		// Empties the list on any mismatch.
 		void ParseStaticProps(FILE *f)
 		{
 			const LumpEntry &gl = g.lumps[LUMP_GAME_LUMP];
@@ -359,9 +356,8 @@ namespace BSPLumps
 			for (int i = 0; i < count; ++i)
 			{
 				int base = 4 + i * kSizeofGameLumpEntry;
-				// GameLumpId_t is a multichar int: 'sprp'==('s'<<24)|('p'<<16)|('r'<<8)|'p'
-				// On a little-endian PC BSP it is stored as the raw int, so the on-disk bytes are 'p','r','p','s'.
-				// Compare the int the way the engine does (id == GAMELUMP_STATIC_PROPS), not the bytes in name order.
+				// GameLumpId_t is a multichar int.
+				// Compare it the way the engine does (id == GAMELUMP_STATIC_PROPS), not the on-disk bytes in name order.
 				int id = ReadI32(dir.data(), base + kGameLump_Id);
 				if (id == kGameLumpSprp)
 				{
@@ -418,8 +414,7 @@ namespace BSPLumps
 
 			int propCount = ReadI32(b.data(), p);
 			p += 4;
-			// Upper bound guards a corrupt count from a huge reserve().
-			// A real map's prop array also can't exceed the remaining blob at the minimum struct size.
+			// Guards a corrupt count: a real prop array can't exceed the remaining blob at the minimum struct size.
 			if (propCount <= 0 || (size_t)propCount * kSP_PrefixBytes > b.size() - p)
 			{
 				g.staticPropNames.clear();
@@ -428,8 +423,7 @@ namespace BSPLumps
 			}
 
 			// Derive per-prop stride from the remaining bytes.
-			// If the exact division fails, retry skipping a leading 4-byte field
-			// (some CSGO versions prepend an unknown int before the prop array).
+			// If the exact division fails, retry skipping a leading 4-byte field (some CSGO versions prepend an unknown int before the prop array).
 			size_t poolStart = p;
 			size_t poolBytes = b.size() - poolStart;
 			int stride = (int)(poolBytes / (size_t)propCount);
@@ -624,7 +618,7 @@ namespace BSPLumps
 		// LeafFaces
 		ReadFile(f, g.lumps[LUMP_LEAFFACES].fileofs, g.lumps[LUMP_LEAFFACES].filelen, g.leafFacesLump);
 
-		// Worldlights: prefer LDR (most maps); fall back to HDR if no LDR.
+		// Worldlights: prefer LDR (most maps), fall back to HDR if no LDR.
 		if (g.lumps[LUMP_WORLDLIGHTS_LDR].filelen > 0)
 		{
 			ReadFile(f, g.lumps[LUMP_WORLDLIGHTS_LDR].fileofs, g.lumps[LUMP_WORLDLIGHTS_LDR].filelen, g.worldlightsLump);
@@ -911,8 +905,7 @@ namespace BSPLumps
 			return false;
 		}
 		// Decompress RLE up to the byte covering 'other'.
-		// byte==0: next byte = count of zero bytes to skip (each = 8 invisible clusters)
-		// otherwise: literal byte covering 8 clusters
+		// byte==0: next byte = count of zero bytes to skip. Else: literal byte covering 8 clusters.
 		const uint8_t *p = g.visLump.data() + pvs_ofs;
 		const uint8_t *end = g.visLump.data() + g.visLump.size();
 		int target_byte = other >> 3;
@@ -969,9 +962,9 @@ namespace BSPLumps
 
 	float WaterSurfaceZAt(const float pos[3])
 	{
-		// No XY bounds in the lump, so this is a Z-band heuristic:
-		// among water bodies whose [minZ, surfaceZ] span contains pos.z, return the lowest surface at or above pos.z.
-		// Returns kWaterNoSurface if none qualifies.
+		// Z-band heuristic (the lump has no XY bounds):
+		// of the water bodies whose [minZ, surfaceZ] contains pos.z, return the lowest surface.
+		// kWaterNoSurface if none.
 		int n = LeafWaterCount();
 		float best = kWaterNoSurface;
 		for (int i = 0; i < n; ++i)
@@ -1613,8 +1606,7 @@ namespace BSPLumps
 		return n;
 	}
 
-	// Index of the static prop whose origin is nearest to pos within maxDist (<= 0 = unlimited).
-	// -1 if none.
+	// Index of the static prop whose origin is nearest to pos within maxDist (<= 0 = unlimited). -1 if none.
 	int NearestStaticProp(const float pos[3], float maxDist)
 	{
 		int best = -1;

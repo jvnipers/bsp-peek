@@ -8,7 +8,7 @@ cell_t N_MapPathName(IPluginContext *pCtx, const cell_t *params);
 cell_t N_EmptyLeaf(IPluginContext *pCtx, const cell_t *params);
 cell_t N_SolidLeaf(IPluginContext *pCtx, const cell_t *params);
 
-// Debug helpers (no SP wrappers in stable header; informational logs)
+// Debug helpers (no SP wrappers in stable header, informational logs)
 cell_t N_DebugDumpCBSP(IPluginContext *pCtx, const cell_t *params);
 cell_t N_DebugDumpCBSPPtr(IPluginContext *pCtx, const cell_t *params);
 

@@ -235,8 +235,7 @@ cell_t N_SolidLeaf(IPluginContext *, const cell_t *)
 }
 
 // Aggregate health check across all subsystems.
-// Lets us distinguish "map has no data" from "a signature broke after a update"
-// (every native silently returns safe defaults in both cases otherwise).
+// Distinguishes "map has no data" from "a signature broke after an update".
 //   bits 0..3 : BSPData (see BSPData::SelfTest)
 //   bit 4 (0x10): displacement engine reader ready
 //   bit 5 (0x20): static-prop engine interfaces resolved
@@ -335,9 +334,9 @@ cell_t N_BrushSidePlaneIndex(IPluginContext *, const cell_t *params)
 	return BSPData::BrushSidePlaneIndex(params[1], params[2]);
 }
 
-// Material name for a brush side. Chains engine cbrushside_t.texinfo -> disk LUMP_TEXINFO.texdata -> texdata material string.
-// Assumes the engine's runtime texinfo index equals the disk LUMP_TEXINFO index
-// (true in CSGO: the engine loads texinfo straight from the lump without reordering).
+// Material name for a brush side.
+// Chains engine cbrushside_t.texinfo -> disk LUMP_TEXINFO.texdata -> material string.
+// Assumes the engine's texinfo index  equals the disk LUMP_TEXINFO index (true in CSGO, no reordering).
 cell_t N_BrushSideMaterial(IPluginContext *pCtx, const cell_t *params)
 {
 	EnsureLumpsLoaded();
@@ -455,9 +454,9 @@ cell_t N_BrushSideOrder(IPluginContext *pCtx, const cell_t *params)
 	return n;
 }
 
-// Engine build / patch version, parsed from the game dir's steam.inf.
-// No engine interface needed. The file is plain text and updates every patch.
-// Returns ServerVersion (0 if unreadable), writes a summary line into buf.
+// Engine build / patch version from the game dir's steam.inf (plain text, no engine interface).
+// The datum for diagnosing gamedata sig drift after an update.
+// Returns ServerVersion (0 if unreadable), writes a summary into buf.
 cell_t N_EngineBuild(IPluginContext *pCtx, const cell_t *params)
 {
 	int maxlen = params[2];

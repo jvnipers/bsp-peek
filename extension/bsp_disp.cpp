@@ -24,9 +24,8 @@ namespace BSPDisp
 	{
 
 		// Address-of-globals.
-		// The engine writes the actual pointer values into these slots each map load (CMod_LoadDispInfo).
-		// We must dereference at access time, NOT cache the value at init,
-		// old map's tree arrays get freed and caching the stale pointer = use-after-free on map change.
+		// The engine rewrites these slots each map load (CMod_LoadDispInfo), so deref at access time.
+		// Caching the value at init is a use-after-free once the old map's tree arrays are freed.
 		static int *g_pTreeCount = nullptr;
 		static uint8_t **g_ppTreeArrayBase = nullptr;
 		static uint8_t **g_ppBoundsArrayBase = nullptr;
@@ -69,8 +68,7 @@ namespace BSPDisp
 			return base + (size_t)idx * SZ_DISPCOLL_TREE;
 		}
 
-		// Returns true if the tree at idx has plausible struct fields.
-		// Defends against garbage reads when engine globals resolve to stale memory.
+		// True if the tree has plausible struct fields. Guards against stale memory.
 		inline bool IsTreeSane(const uint8_t *tree)
 		{
 			if (!tree)
@@ -118,8 +116,7 @@ namespace BSPDisp
 			mx[2] = ReadF32(tree, OFF_TREE_MAXS + 8);
 		}
 
-		// Decode a tree's vert/tri tables and invoke fn(triRec, v0, v1, v2) for every triangle whose indices are in range.
-		// Centralizes the per-tri unpack that every engine query loop repeats.
+		// Invoke fn(triRec, v0, v1, v2) for every triangle whose indices are in range.
 		template<typename F>
 		inline void ForEachTreeTriangle(const uint8_t *tree, F &&fn)
 		{
@@ -756,9 +753,7 @@ namespace BSPDisp
 		return found ? std::sqrt(bestSq) : kNoHit;
 	}
 
-	// Like EngineDistToSurface, but also returns the nearest triangle's stored plane normal
-	// (CDispCollTri::m_vecNormal) and its 3 world-space verts.
-	// Lets the caller inspect the actual collision-mesh orientation at a seam.
+	// EngineDistToSurface + the nearest tri's stored normal (CDispCollTri::m_vecNormal) and 3 world-space verts.
 	// kNoHit if none in range.
 	float EngineNearestTri(const float pos[3], float maxDist, float outNormal[3], float outV0[3], float outV1[3], float outV2[3])
 	{

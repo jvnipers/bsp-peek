@@ -128,22 +128,20 @@ namespace BSPData
 
 	static bool g_leafCacheBuilt = false; // gates both leaf + node caches
 
-	// Mutex guards both caches against the async worker that builds a fresh brush cache on a side thread.
-	// Reads (FindBrushPairAtSeam, LeafBounds) take the lock, the worker swaps under exclusive lock when done.
+	// Guards both caches against the async worker.
+	// Reads take the lock, the worker swaps under exclusive lock when done.
 	static std::mutex g_brushCacheMutex;
 	static std::atomic<bool> g_asyncBuildInProgress {false};
-	// Detached worker handle; kept around so a second OnMapStart can't race with an in-flight build.
-	// Joined explicitly by Shutdown() so the .so can unload cleanly without the worker outliving the engine module.
+	// Joined by Shutdown() so the .so unloads without the worker outliving it.
 	static std::thread g_asyncBuildThread;
 
-	// Authoritative box-brush membership: bit set per brush index that is the originalBrush of some cboxbrush_t entry.
-	// Built lazily on first BrushIsBoxAuth call and invalidated when the box-brush count changes (map switch).
-	// Natives run on the main thread, so no locking is needed (the async worker never touches this).
+	// Bit set per brush index that is the originalBrush of some cboxbrush_t entry.
+	// Built lazily on first BrushIsBoxAuth, rebuilt when the box count changes.
+	// Main-thread only, no locking.
 	static std::vector<bool> g_boxBrushAuth;
-	// Parallel map: brush index -> its cboxbrush_t index (-1 if not a box brush).
-	// Built alongside g_boxBrushAuth.
-	// Lets the plane-accurate accessors fall back to the authoritative box AABB for box-optimized brushes
-	// (whose cbrush_t sides are stripped / bevel-padded, so their planes are not usable).
+	// brush index -> its cboxbrush_t index (-1 if not a box brush).
+	// Lets the plane-accurate accessors fall back to the box AABB for box-optimized brushes,
+	// whose cbrush_t sides are stripped / bevel-padded.
 	static std::vector<int> g_brushToBoxIdx;
 	static int g_boxBrushAuthBuiltFor = -1; // box count this set was built for
 
@@ -361,9 +359,7 @@ namespace BSPData
 								"%02X %02X %02X %02X %02X %02X %02X %02X "
 								"%02X %02X %02X %02X %02X %02X %02X %02X",
 								i, p[32], p[33], p[34], p[35], p[36], p[37], p[38], p[39], p[40], p[41], p[42], p[43], p[44], p[45], p[46], p[47]);
-			// Decoded interpretations as floats at common offsets:
-			// assuming layout might mirror cmodel_t (mins[3] @0, maxs[3] @12) or
-			// SIMD-aligned VectorAligned (16B mins, 16B maxs, 16B meta).
+			// Float interpretations at common offsets (cmodel_t-like or VectorAligned).
 			float f00 = ReadF32(p, 0), f04 = ReadF32(p, 4), f08 = ReadF32(p, 8);
 			float f12 = ReadF32(p, 12), f16 = ReadF32(p, 16), f20 = ReadF32(p, 20);
 			float f24 = ReadF32(p, 24), f28 = ReadF32(p, 28), f32 = ReadF32(p, 32);
@@ -454,10 +450,8 @@ namespace BSPData
 		}
 	}
 
-	// Internal helpers - table-relative pointer resolution.
 	// Resolve element `idx` of an array whose base pointer lives at tableOff inside g_BSPData.
-	// Gates on a null base, an unconfigured (0) offset, a bad stride and a [0,count) range,
-	// so every accessor below collapses to one call.
+	// Gates null base, unconfigured offset, bad stride, and [0,count).
 	static const uint8_t *TableEntry(int tableOff, int idx, int count, int stride)
 	{
 		if (!g_pBSPData || tableOff == 0 || stride <= 0 || idx < 0 || idx >= count)
@@ -501,12 +495,11 @@ namespace BSPData
 		return TableEntry(OFF_MAP_NODES, idx, GetNumNodes(), SZ_CNODE);
 	}
 
-	// CSGO marks box-optimized brushes with cbrush_t.numsides == 0xFFFF and strips/pads their planar sides
-	// (the real solid lives in the cboxbrush_t SIMD table).
-	// Reading that count verbatim makes every side loop iterate 65535 times across the shared brushside array,
-	// producing map-spanning garbage bounds, empty windings, and a 65535-side "SideOrder".
-	// Treat the sentinel (or any count past the global side table) as "no usable planar sides"
-	// so callers fall back to the box table / brush AABB cache instead.
+	// CSGO marks box-optimized brushes with numsides == 0xFFFF and strips their planar sides
+	// (the real solid is in the cboxbrush_t table).
+	// Reading that count verbatim would loop 65535 times over the shared brushside array.
+	// Treat the sentinel (or any count past the global side table) as "no usable sides"
+	// so callers fall back to the box table / brush AABB cache.
 	static uint16_t BrushSideCount(const uint8_t *b)
 	{
 		uint16_t numsides = ReadU16(b, OFF_CBRUSH_NUMSIDES);
@@ -689,8 +682,7 @@ namespace BSPData
 		}
 		const uint8_t *in = vis + rowOff;
 		int outIdx = 0;
-		// Standard Source RLE: nonzero byte verbatim;
-		// zero byte followed by N (count of zero bytes to emit).
+		// Standard Source RLE: nonzero byte verbatim, zero byte followed by N (count of zero bytes to emit).
 		while (outIdx < rowBytes)
 		{
 			uint8_t b = *in++;
@@ -807,10 +799,8 @@ namespace BSPData
 	// Point queries
 	int LeafAtPoint(const float pos[3])
 	{
-		// Start at root (node[0]), each step:
-		// signed distance to plane -> descend children[0] if d>=0 else children[1].
+		// Walk from root: descend children[0] if dist-to-plane >= 0 else children[1].
 		// Negative child = leaf via Source convention: leafIdx = -1 - child.
-		// O(log N).
 		if (!g_pBSPData || OFF_MAP_NODES == 0 || SZ_CNODE == 0)
 		{
 			return -1;
@@ -1414,8 +1404,7 @@ namespace BSPData
 		return GetBrushContents(orig);
 	}
 
-	// Build (once per map) the brush-index ->
-	// isBoxBrush bit set from the cboxbrush_t table's originalBrush column.
+	// Build the brush -> isBoxBrush bit set from the cboxbrush_t originalBrush column.
 	static void EnsureBoxBrushAuthSet()
 	{
 		int nbox = GetNumBoxBrushes();
@@ -1497,8 +1486,7 @@ namespace BSPData
 			}
 		}
 
-		// Resolve a brush's side count / first side plus the brush header pointer.
-		// Returns nullptr (and leaves out-params untouched) when brushIdx is invalid.
+		// Resolve a brush's side count / first side + header pointer. nullptr if invalid.
 		const uint8_t *brush_sides(int brushIdx, uint16_t &numsides, uint16_t &first)
 		{
 			const uint8_t *b = brush_at(brushIdx);
@@ -1793,10 +1781,8 @@ namespace BSPData
 		normal[0] = normal[1] = normal[2] = 0.0f;
 		startSolid = false;
 
-		// Gather this brush's clipping planes.
-		// Box-optimized brushes have stripped / bevel-padded sides,
-		// so synthesize the 6 axis planes from the SIMD box AABB (the box is exactly that AABB).
-		// Other brushes use their cbrush_t sides.
+		// Gather clipping planes. Box-optimized brushes have stripped sides,
+		// so synthesize 6 axis planes from the box AABB. Others use their cbrush_t sides.
 		float planeN[256][3];
 		float planeD[256];
 		int nplanes = 0;
@@ -2006,8 +1992,7 @@ namespace BSPData
 		}
 
 		int n = GetNumBrushes();
-		// Sanity: a valid map has hundreds-to-tens-of-thousands of brushes.
-		// Anything outside [1, 1_000_000] means g_BSPData is pointing at garbage, bail before dereferencing.
+		// Sanity: outside [1, 1_000_000] means g_BSPData is garbage, bail.
 		if (n <= 0 || n > 1000000)
 		{
 			static bool warned = false;
@@ -2071,15 +2056,9 @@ namespace BSPData
 		return (outLower >= 0 && outUpper >= 0);
 	}
 
-	// Box-table analog of FindBrushPairAtSeam for CSGO box-optimized walls.
-	// The leafbrush lump and the cbrush-indexed brush cache both miss these:
-	// box brushes are absent from the per-leaf leafbrush list, and several cboxbrush_t entries can share one originalBrush index,
-	// so they collapse into a single cache slot (only one survives -> no pair).
-	// Scan the cboxbrush_t table directly instead.
-	//   lower box: maxs.z ~= seamZ AND XY AABB contains samplePos
-	//   upper box: mins.z ~= seamZ AND XY AABB contains samplePos
-	// Returns BOX-TABLE indices (NOT cbrush indices). false if no flush pair.
-	// Caller applies contents + visit-order policy (lower box index < upper).
+	// Box-table analog of FindBrushPairAtSeam (see header).
+	// Scans cboxbrush_t directly since box brushes are absent from the leafbrush lump
+	// and several entries can share one originalBrush index (collapsing in the cbrush cache).
 	bool FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower, int &outUpper)
 	{
 		outLower = -1;
@@ -2127,15 +2106,7 @@ namespace BSPData
 		return (outLower >= 0 && outUpper >= 0);
 	}
 
-	// Texturebug overhang.
-	// Scans the cboxbrush_t table for a SOLID box brush whose XY AABB contains samplePos,
-	// whose underside (mins.z) is open to air, and which has >=1 exposed vertical wall face.
-	// Returns the BOX-TABLE index plus the hugged wall (face axis+sign, world coord), the underside z, and the brush height.
-	// Among exposed lateral faces, picks the one whose outward normal points toward samplePos.
-	// false if none.
-	// A column usually pierces several qualifying boxes,
-	// the winner is the one whose bottom edge is nearest BELOW samplePos.z (the next edge a falling player crosses).
-	// If none lie below, nearest above is returned instead.
+	// Texturebug overhang. See header for the full contract.
 	bool FindBoxBrushOverhang(const float samplePos[3], int &outBoxIdx, int &outFace, float &outWallCoord, float &outBottomZ, float &outHeight)
 	{
 		outBoxIdx = -1;
@@ -2193,9 +2164,9 @@ namespace BSPData
 
 			float midZ = (mn[2] + mx[2]) * 0.5f;
 
-			// Pick an exposed lateral wall. Two passes: first prefer the face whose
-			// outward normal points toward samplePos (the side the player approaches);
-			// if none of those are exposed, take the first exposed lateral face.
+			// Pick an exposed lateral wall. Two passes:
+			// first prefer the face whose outward normal points toward samplePos (the side the player approaches).
+			// If none of those are exposed, take the first exposed lateral face.
 			int bestFace = -1;
 			float bestCoord = 0.f;
 			for (int pass = 0; pass < 2 && bestFace < 0; ++pass)
@@ -2337,7 +2308,7 @@ namespace BSPData
 		}
 
 		// Find each brush's position in the leaf's ordered brush list.
-		// 1024 mirrors the natives-layer LeafBrushes clamp; leaves never approach it.
+		// 1024 mirrors the natives-layer LeafBrushes clamp. Leaves never approach it.
 		int brushes[1024];
 		int n = LeafBrushes(outLeaf, brushes, (int)(sizeof(brushes) / sizeof(int)));
 		if (n < 0)
@@ -2359,11 +2330,9 @@ namespace BSPData
 		return (outLowerPos >= 0 && outUpperPos >= 0 && outLowerPos < outUpperPos);
 	}
 
-	// Brush AABB cache
-	// Populate a brush AABB cache vector: plane-derived bounds + contents per brush,
-	// then fill any box-optimized brushes from the cboxbrush_t table.
-	// Shared by the synchronous and async builders so both produce identical caches.
-	// Leaves `out` empty (=> caller treats cache as unbuilt) on bad counts.
+	// Populate a brush AABB cache: plane-derived bounds + contents per brush,
+	// then fill box-optimized brushes from the cboxbrush_t table.
+	// Shared by the sync and async builders. Leaves `out` empty (= cache unbuilt) on bad counts.
 	static void PopulateBrushCache(std::vector<BrushCacheEntry> &out)
 	{
 		out.clear();
@@ -2380,11 +2349,8 @@ namespace BSPData
 			e.contents = e.valid ? GetBrushContents(i) : 0;
 		}
 
-		// CSGO moves axis-aligned box brushes into a parallel cboxbrush_t SIMD table.
-		// Those brushes can have their planar cbrush_t sides stripped or padded with bevels,
-		// so GetBrushBounds above yields an invalid AABB for them and they drop out of the cache.
-		// That is exactly the bottom brush of a pixelsurf, so FindBrushPairAtSeam would never find the pair.
-		// Fill any such gaps from the authoritative box-table bounds so box-brush seams become findable.
+		// Box-optimized brushes have stripped sides, so GetBrushBounds yields an invalid AABB and they drop out of the cache.
+		// That is exactly a pixelsurf's bottom brush, so fill those gaps from the box-table bounds.
 		int nb = GetNumBoxBrushes();
 		for (int i = 0; i < nb; ++i)
 		{
@@ -2416,10 +2382,9 @@ namespace BSPData
 	}
 
 	// Per-map leaf AABB cache via BSP tree descent.
-	// Engine doesn't preserve per-leaf bounds (cleaf_t has no mins/maxs), and unioning leafbrush AABBs is wrong:
-	// Source maps reference huge world-hull SOLID brushes from most leaves, so the union always collapses to that filler's AABB.
-	// Walk from root carrying current AABB, split by axis-aligned node planes, write final box on leaf hit.
-	// Oblique planes don't tighten (leaf bounds remain a superset of the true cell, but bounded by every axis-aligned split along the path).
+	// cleaf_t has no bounds, and unioning leafbrush AABBs collapses to the huge world-hull filler brush most leaves reference.
+	// Instead walk from root carrying the current AABB, split on axis-aligned node planes, write the box on leaf hit.
+	// Oblique planes don't tighten, so leaf bounds are a superset of the true cell.
 	static void BuildLeafCache()
 	{
 		g_leafCache.clear();
@@ -2564,9 +2529,9 @@ namespace BSPData
 		BuildBrushCache();
 	}
 
-	// Off-main-thread cache build. Returns immediately.
-	// Readers see g_brushCacheBuilt=false until the worker swaps the fresh vector in under lock.
-	// A second call while a build is in flight is a no-op.
+	// Off-main-thread cache build.
+	// Readers see g_brushCacheBuilt=false until the worker swaps the fresh vector in.
+	// A second call mid-build is a no-op.
 	void RebuildCacheAsync()
 	{
 		if (g_asyncBuildInProgress.exchange(true))

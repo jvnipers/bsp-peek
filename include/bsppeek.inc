@@ -7,7 +7,7 @@
 // (leaf membership, ordered brush lists, brush type, AABB, BSP node-walk).
 // Plus displacement surface queries via engine memory reader (primary) with BSP file-parse fallback when engine reader unavailable.
 // Requires bsppeek.ext loaded.
-// All natives return safe defaults if the ext isn't loaded, check BSPPeek_Available() first if you need certainty.
+// All natives return safe defaults if the ext isn't loaded. Check BSPPeek_Available() first if you need certainty.
 
 // Source-engine CONTENTS_* constants commonly checked:
 #define BSPP_CONTENTS_SOLID       0x1
@@ -26,8 +26,7 @@
 native int  BSP_MapPathName(char[] buf, int maxlen);
 
 // Health check: bitmask of subsystems that resolved + sanity-checked OK.
-// Lets you tell "map has no such data" apart from "a signature broke after a update"
-// (otherwise every native silently returns safe defaults in both).
+// Distinguishes "map has no such data" from "a signature broke after an update".
 //   0x01 BSPData base + brush table sane    0x10 displacement engine reader
 //   0x02 leaf + node tables present         0x20 static-prop interfaces
 //   0x04 cboxbrush_t SIMD table present     0x40 disk BSP lumps loaded
@@ -35,10 +34,9 @@ native int  BSP_MapPathName(char[] buf, int maxlen);
 // Returns 0 when g_BSPData is unresolved or pointing at garbage.
 native int  BSP_SelfTest();
 
-// Engine build / patch version parsed from the game dir's steam.inf.
-// Returns ServerVersion (0 if unreadable) + writes a summary line ("ServerVersion=N PatchVersion=X ProductName=Y") into buf.
-// steam.inf bumps every game update, so it's the datum to diff against when a signature breaks
-// (pair with BSP_SelfTest to see WHAT broke and WHEN).
+// Engine build / patch version from the game dir's steam.inf.
+// Returns ServerVersion (0 if unreadable), writes "ServerVersion=N PatchVersion=X ProductName=Y" into buf.
+// steam.inf bumps every update, so diff it against known-good build (with BSP_SelfTest) when a signature breaks.
 native int  BSP_EngineBuild(char[] buf, int maxlen);
 
 // Debug: hex-dump CCollisionBSPData bytes from [startOff, endOff) to SourceMod log.
@@ -82,7 +80,7 @@ native bool BSP_AreaPortalInfo(int portalIdx, int &portalKey, int &otherArea,
                                int &firstClipVert, int &clipVerts, int &planenum);
 
 // Point queries
-// O(log N) BSP node-walk; -1 on failure.
+// O(log N) BSP node-walk. -1 on failure.
 native int  BSP_LeafAtPoint(const float pos[3]);
 
 // One-call "what's at this point?" (in solid? water? playerclip?).
@@ -111,16 +109,13 @@ native int  BSP_BrushSidePlaneIndex(int brushIdx, int sideIdx);
 // Assumes engine texinfo index == disk LUMP_TEXINFO index (true on CSGO).
 native int  BSP_BrushSideMaterial(int brushIdx, int sideIdx, char[] buf, int maxlen);
 
-// Authoritative box-brush test:
-// true if brushIdx is the originalBrush of a cboxbrush_t entry (CSGO's SIMD axis-aligned box table).
-// Unlike BSP_IsBoxBrush (a numsides==6 heuristic that false-negatives on bevel-padded boxes), this is exact.
-// O(1) - backed by a per-map set the ext builds on first call.
+// Exact box-brush test: true iff brushIdx is the originalBrush of a cboxbrush_t entry.
+// Unlike BSP_IsBoxBrush (a numsides==6 heuristic), this can't false-negative. O(1), backed by a per-map set built on first call.
 native bool BSP_BrushIsBoxAuth(int brushIdx);
 
 // Exact brush geometry / collision (plane-accurate).
 // A cbrush_t is a convex polytope = intersection of its sides' half-spaces.
-// These solve that polytope directly, so they avoid the derived-AABB blind spot
-// that makes BSP_FindBrushPairAtSeam miss box-optimized / bevel-padded brushes.
+// Solving it directly avoids the derived-AABB blind spot in BSP_FindBrushPairAtSeam.
 
 // True if pos is inside (or on) brushIdx (every side: normal·pos <= dist).
 native bool BSP_PointInBrush(int brushIdx, const float pos[3]);
@@ -130,17 +125,16 @@ native bool BSP_PointInBrush(int brushIdx, const float pos[3]);
 // 0 if outside the map / no brush contains pos.
 native int  BSP_PointContentsBrushes(const float pos[3]);
 
-// Vertical extent of brushIdx at column (x, y), by clipping the line (x,y,t) against every brush plane.
-// Fills zMin/zMax. false if the column misses the brush footprint.
+// Vertical extent of brushIdx at column (x, y), by clipping the line (x,y,t) against every brush plane. Fills zMin/zMax.
+// false if the column misses the brush footprint.
 // Exact brush top/bottom Z at an XY point (the seam candidate).
 native bool BSP_BrushColumnSpan(int brushIdx, float x, float y, float &zMin, float &zMax);
 // BSP_BrushColumnSpan returning only the top (zMax). false if no span at (x,y).
 native bool BSP_BrushTopZAt(int brushIdx, float x, float y, float &z);
 
-// World-space polygon of brush side sideIdx, built by clipping the side's plane against all other sides (canonical brush-face winding).
+// World-space polygon of brush side sideIdx (canonical brush-face winding).
 // Writes up to maxVerts verts into verts[][3]. Returns vert count (0 if degenerate / invalid).
-// NOTE: returns 0 for box-optimized brushes (their cbrush_t sides are stripped),
-// use BSP_BoxBrushBounds for those (an axis box's faces are its 6 AABB faces).
+// Returns 0 for box-optimized brushes (sides stripped), use BSP_BoxBrushBounds for those.
 native int  BSP_BrushSideWinding(int brushIdx, int sideIdx, float verts[][3], int maxVerts);
 
 // Sweep an AABB [mins,maxs] (relative to its center) from start to end against brushIdx.
@@ -152,8 +146,7 @@ native int  BSP_BrushClipBox(int brushIdx, const float start[3], const float end
                              const float mins[3], const float maxs[3],
                              float &fraction, float normal[3], bool &startSolid);
 
-// Diagnostic: dump each side of brushIdx in engine iteration order
-// (the order CM_ClipBoxToBrush processes them):
+// Diagnostic: dump each side of brushIdx in engine iteration order (the order CM_ClipBoxToBrush processes them):
 // per side, plane normal/dist, PLANE_* type, axis class, bevel/thin. Returns length.
 native int  BSP_BrushSideOrder(int brushIdx, char[] buf, int maxlen);
 
@@ -182,7 +175,7 @@ native bool BSP_LeafBounds(int leafIdx, float mins[3], float maxs[3]);
 native int  BSP_EmptyLeaf();
 native int  BSP_SolidLeaf();
 
-// Node accessors (manual BSP walking; LeafAtPoint usually suffices)
+// Node accessors (manual BSP walking, LeafAtPoint usually suffices)
 native bool BSP_NodePlane(int nodeIdx, float normal[3], float &dist);
 // Negative child encodes a leaf via `leafIdx = -1 - child`.
 native bool BSP_NodeChildren(int nodeIdx, int &leftChild, int &rightChild);
@@ -212,41 +205,34 @@ native bool BSP_CModelOrigin(int idx, float origin[3]);
 // Root BSP node for this submodel's collision tree. -1 if invalid.
 native int  BSP_CModelHeadnode(int idx);
 
-// "High-level" pixelsurf
-// Iterates all brushes for any whose XY AABB contains samplePos AND whose top/bottom equals seamZ.
-// Returns true if BOTH found. outLower = brush w/ maxs.z == seamZ, outUpper = brush w/ mins.z == seamZ.
+// "High-level" pixelsurf. Searches all brushes whose XY AABB contains samplePos.
+// outLower = brush w/ maxs.z == seamZ, outUpper = brush w/ mins.z == seamZ.
+// Returns true if both found.
 native bool BSP_FindBrushPairAtSeam(const float samplePos[3], float seamZ,
                                     int &outLowerBrush, int &outUpperBrush);
 
-// Box-table analog of BSP_FindBrushPairAtSeam for CSGO box-optimized walls.
-// Box brushes are absent from the leafbrush lump, and several cboxbrush_t entries can share one originalBrush index
-// (collapsing in the cbrush-indexed cache), so the regular pair finder misses them.
-// Scans the cboxbrush_t table directly.
-// outLower = BOX index w/ maxs.z == seamZ, outUpper = BOX index w/ mins.z == seamZ
-// (these are box-table indices, use BSP_BoxBrush* accessors). Returns true if both found.
+// Box-table analog of BSP_FindBrushPairAtSeam for CSGO box-optimized walls, which the regular pair finder misses
+// (box brushes aren't in the leafbrush lump, and several can share one originalBrush).
+// Scans cboxbrush_t directly.
+// outLower/outUpper are BOX-table indices (use BSP_BoxBrush* accessors):
+// outLower w/ maxs.z == seamZ, outUpper w/ mins.z == seamZ. true if both found.
 native bool BSP_FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
                                        int &outLowerBox, int &outUpperBox);
 
 // Texturebug overhang geometry.
 // Finds a player-collidable (SOLID or PLAYERCLIP) box brush at samplePos' XY column whose underside (-Z) is open
-// AND which has an exposed vertical wall the player can hug.
-// Box-table index space (use BSP_BoxBrush*).
-//
+// AND which has an exposed vertical wall the player can hug. Box-table index space.
 //   samplePos : probe location (player pos / aim point).
 //   boxIdx    : cboxbrush_t index of the overhang brush.
-//   face      : hugged wall, axis+sign of its OUTWARD normal:
-//                 0 = -X, 1 = +X, 2 = -Y, 3 = +Y
-//               (player presses in the -normal direction).
-//               If multiple lateral faces are exposed, the one facing samplePos is returned.
-//   wallCoord : world coord of that wall plane (brush mins/maxs on the face axis).
-//   bottomZ   : underside z (= brush mins.z);
-//               the plane the player crosses to trigger the bug.
-//   height    : brush vertical extent (maxs.z - mins.z); Ineq(10) numerator term.
-//
-// Returns true if an overhang was found at samplePos' XY column.
-// Among multiple qualifying boxes in the column, returns the one whose bottom edge is nearest BELOW samplePos.z
-// (the next edge a falling player crosses), if none below, nearest above.
-// Full AABB via BSP_BoxBrushBounds(boxIdx, ...); contents via BSP_BoxBrushContents.
+//   face      : hugged wall, axis+sign of its OUTWARD normal
+//               (0 = -X, 1 = +X, 2 = -Y, 3 = +Y). The player presses in the -normal direction.
+//               If several lateral faces are exposed, the one facing samplePos is returned.
+//   wallCoord : world coord of that wall plane.
+//   bottomZ   : underside z (brush mins.z), the plane the player crosses.
+//   height    : brush vertical extent (maxs.z - mins.z), Ineq(10) numerator.
+// Returns true if an overhang was found.
+// Among qualifying boxes in the column, returns the one whose bottom edge is nearest BELOW samplePos.z
+// (the next edge a falling player crosses), else nearest above.
 native bool BSP_FindBoxBrushOverhang(const float samplePos[3], int &boxIdx,
                                      int &face, float &wallCoord, float &bottomZ,
                                      float &height);
@@ -261,20 +247,17 @@ native bool BSP_FindBoxBrushOverhang(const float samplePos[3], int &boxIdx,
 // Tests whether vel satisfies the topside-misreport window (cmodel.cpp IntersectRayWithBoxBrush Ineq 7/10):
 //   |v_perp| < (|v_z| * DIST_EPSILON) / (H_brush + hullHeight)
 // where v_perp is the velocity component along the hugged wall's normal axis.
-//
 //   playerPos  : player origin (trace start).
 //   vel        : player velocity at the trace tick.
-//   hullHeight : player hull height — 72.0 standing, 54.0 ducked (CSGO).
+//   hullHeight : player hull height. 72.0 standing, 54.0 ducked (CSGO).
 //   boxIdx     : cboxbrush_t index of the overhang brush.
 //   face       : hugged wall (0=-X, 1=+X, 2=-Y, 3=+Y).
 //   wallCoord  : world coord of that wall plane.
-//   bottomZ    : brush underside z (= brush mins.z); the crossing plane.
+//   bottomZ    : brush underside z (brush mins.z), the crossing plane.
 //   height     : brush vertical extent (maxs.z - mins.z).
-//   maxVPerp   : window width — max |v_perp| that triggers the bug.
+//   maxVPerp   : window width, max |v_perp| that triggers the bug.
 //   vPerp      : actual |v_perp| from vel (compare to maxVPerp for margin).
-//
 // Returns true iff overhang found AND v_z < 0 AND |v_perp| < maxVPerp.
-// Full AABB via BSP_BoxBrushBounds(boxIdx, ...); contents via BSP_BoxBrushContents.
 native bool BSP_BoxBrushOverhangWindow(const float playerPos[3], const float vel[3],
                                        float hullHeight, int &boxIdx, int &face,
                                        float &wallCoord, float &bottomZ, float &height,
@@ -291,7 +274,7 @@ native bool BSP_LeafBrushPairAtSeam(const float samplePos[3], float seamZ,
                                     int &outLeaf, int &outLowerPos, int &outUpperPos);
 
 // Brush AABB cache
-// Force a fresh build of the per-map brush AABB cache (synchronous; blocks).
+// Force a fresh build of the per-map brush AABB cache (synchronous, blocks).
 // Returns the brush count after rebuild (0 = ext unable to read BSP data).
 native int  BSP_RebuildCache();
 
@@ -305,11 +288,9 @@ native int  BSP_RebuildCacheAsync();
 native bool BSP_CacheIsBuilding();
 
 // Displacements
-// Primary path: reads CDispCollTree array directly from engine memory.
-//   (canonical post-stitching verts; matches what TR_TraceRay would hit).
-// Fallback: parses BSP file lumps (DISPINFO/DISP_VERTS/FACES) at map load and builds triangle meshes from scratch.
-// Check BSP_DispReady() to know if the engine reader is initialized;
-// if not, unified queries fall back to disk-parsed data automatically.
+// Primary path: reads the CDispCollTree array from engine memory (canonical post-stitching verts).
+// Fallback: parses BSP lumps (DISPINFO/DISP_VERTS/FACES) at map load.
+// Unified queries use the engine reader when BSP_DispReady(), else fall back to disk automatically
 
 #define BSP_DISP_NO_HIT -1.0e30    // sentinel returned by BSP_DispHeightAt for no XY match
 
@@ -329,13 +310,12 @@ native float BSP_DispSurfaceNormalAt(float x, float y, float normal[3]);
 // True if any disp tri actually contains (x,y).
 native bool  BSP_DispIsPointOnDisp(float x, float y);
 
-// Returns ALL Z values at (x,y) (not just max).
-// Useful for stacked disps (e.g., underground shell + ground surface). Returns count written.
+// Returns ALL Z values at (x,y) (not just max). Useful for stacked disps (e.g., underground shell + ground surface).
+// Returns count written.
 native int   BSP_DispHeightAtMulti(float x, float y, float[] results, int maxResults);
 
 // Min 3D distance from pos to any displacement collision surface, searching up to maxDist units.
-// Returns BSP_DISP_NO_HIT if no disp data / nothing in range.
-// Works on near-vertical disp WALLS.
+// Returns BSP_DISP_NO_HIT if no disp data / nothing in range. Works on near-vertical disp WALLS.
 native float BSP_DispDistToSurface(const float pos[3], float maxDist = 64.0);
 
 // Nearest disp triangle to pos within maxDist.
@@ -344,10 +324,10 @@ native float BSP_DispDistToSurface(const float pos[3], float maxDist = 64.0);
 native float BSP_DispNearestTri(const float pos[3], float maxDist,
                                 float normal[3], float v0[3], float v1[3], float v2[3]);
 
-// Nearest disp tree/face index (per displacement) within maxDist; -1 if none.
+// Nearest disp tree/face index (per displacement) within maxDist. -1 if none.
 native int   BSP_DispTreeIndexAt(const float pos[3], float maxDist);
 
-// - Engine accessors (no fallback; check BSP_DispReady first) -
+// - Engine accessors (no fallback, check BSP_DispReady first) -
 
 // True once engine globals have been resolved AND tree count > 0.
 native bool  BSP_DispReady();
@@ -391,7 +371,7 @@ native bool  BSP_DispDiskBounds(int idx, float mins[3], float maxs[3]);
 native int   BSP_DispDiskDebugInfo(int idx, char[] buf, int maxlen);
 
 // BSP file lump readers
-// Disk-parsed. Loaded at map start, cached per-map.
+// Disk-parsed (not live engine memory). Loaded at map start, cached per-map.
 
 // BSP file header
 native int   BSP_BSPVersion();
@@ -416,10 +396,9 @@ native int   BSP_EntityClassname(int idx, char[] buf, int maxlen);
 native bool  BSP_EntityOrigin(int idx, float origin[3]);
 // Lookup arbitrary key on entity[idx]. Returns value length, 0 if missing.
 native int   BSP_EntityKeyValue(int idx, const char[] key, char[] buf, int maxlen);
-// Brush-model index for entity[idx]: if its "model" key is a "*N" brush-model reference,
-// returns N (usable as the cmodel/submodel index for BSP_CModel*).
+// Brush-model index for entity[idx]: if its "model" key is "*N", returns N (usable as the cmodel/submodel index for BSP_CModel*).
+// Ties a moving brush ent (func_door, func_brush, triggers) to its collision submodel.
 // -1 if no "model" key, a studio (.mdl) model, or idx out of range.
-// Lets you tie a moving brush ent (func_door, func_movelinear, func_brush, trigger volumes) to its collision submodel.
 native int   BSP_EntityModelIndex(int idx);
 
 // Texinfo / Texdata (LUMP_TEXINFO + LUMP_TEXDATA)
@@ -438,7 +417,7 @@ native bool  BSP_TexDataReflectivity(int texdataIdx, float refl[3]);
 native int   BSP_FindEntityByKeyValue(const char[] key, const char[] value, int startIdx = 0);
 
 // Face vertex at polygon slot [0, BSP_FaceNumEdges(faceIdx)).
-// Shorthand for FirstEdge -> SurfedgeVertex -> VertexPos. false if OOB.
+// Shorthand for FirstEdge→SurfedgeVertex→VertexPos. false if OOB.
 native bool  BSP_FaceVertex(int faceIdx, int slot, float pos[3]);
 // Average world-space position of all face vertices. false if face invalid.
 native bool  BSP_FaceCentroid(int faceIdx, float centroid[3]);
@@ -458,7 +437,7 @@ native bool  BSP_LeafVisible(int leafA, int leafB);
 
 // Cubemaps (env_cubemap placements)
 native int   BSP_CubemapCount();
-// World-space origin (stored as int[3] in BSP; returned as float[3]). false if OOB.
+// World-space origin (stored as int[3] in BSP, returned as float[3]). false if OOB.
 native bool  BSP_CubemapOrigin(int idx, float origin[3]);
 // Raw size value. Resolution = 2^(size-1) px per face. 0 = default (engine uses 6 -> 32px). -1 if OOB.
 native int   BSP_CubemapSize(int idx);
@@ -471,7 +450,7 @@ native int   BSP_EdgeCount();
 native bool  BSP_EdgeVertices(int idx, int &v0, int &v1);
 
 // Surfedges (LUMP_SURFEDGES = 13, signed int32 array)
-// Positive = edge forward (v[0] -> v[1]); negative = edge backward.
+// Positive = edge forward (v[0] -> v[1]), negative = edge backward.
 native int   BSP_SurfedgeCount();
 // Raw signed surfedge value at index idx. 0 if OOB.
 native int   BSP_Surfedge(int idx);
@@ -506,9 +485,9 @@ native int   BSP_FaceDispInfo(int idx);
 native float BSP_FaceArea(int idx);
 // Fills styles[4] with lightstyle indices (255 = unused slot). false if OOB.
 native bool  BSP_FaceLightStyles(int idx, int styles[4]);
-// Original (pre-split) face index; -1 if this face was never split.
+// Original (pre-split) face index. -1 if this face was never split.
 native int   BSP_FaceOrigFace(int idx);
-// Byte offset into the lighting lump for this face's lightmap samples; -1 if none.
+// Byte offset into the lighting lump for this face's lightmap samples. -1 if none.
 native int   BSP_FaceLightOfs(int idx);
 
 // LeafFaces (LUMP_LEAFFACES, uint16 face index table)
@@ -518,7 +497,7 @@ native int   BSP_LeafFacesCount();
 // Returns count written. Convenience over LeafFirstFace + LeafNumFaces + table.
 native int   BSP_LeafFaces(int leafIdx, int[] buf, int max);
 
-// Worldlights (LUMP_WORLDLIGHTS_LDR; falls back to LDR if no HDR; LDR-only if both absent)
+// Worldlights (LDR preferred, HDR fallback)
 native int   BSP_WorldlightCount();
 native bool  BSP_WorldlightOrigin(int idx, float origin[3]);
 native bool  BSP_WorldlightIntensity(int idx, float intensity[3]);
@@ -541,6 +520,7 @@ native int   BSP_WorldlightOwner(int idx);            // entity index owning thi
 // Static props (sprp game lump in LUMP_GAME_LUMP)
 // Parsed at map load from the BSP file's version-stable StaticPropLump_t prefix.
 // NOTE: this is the prop PLACEMENT (origin/angles/model), NOT its collision mesh.
+// Static props collide via VPhysics (the model's .phy), which is not in the BSP.
 
 // Number of static props. 0 if none / ext absent.
 native int   BSP_NumStaticProps();
@@ -556,8 +536,8 @@ native int   BSP_StaticPropSolid(int idx);
 native int   BSP_StaticPropFlags(int idx);
 // Model path (e.g. "models/props/foo.mdl"). Returns string length.
 native int   BSP_StaticPropModelName(int idx, char[] buf, int maxlen);
-// Fields past the version-stable prefix.
-// 0 / false when the sprp version predates the field (skin/fades v4, lighting origin v4-6, forced fade scale v5, flagsEx v10).
+// Fields past the version-stable prefix. 0 / false when the sprp version predates the field
+// (skin/fades v4, lighting origin v4-6, forced fade scale v5, flagsEx v10).
 native int   BSP_StaticPropSkin(int idx);
 native bool  BSP_StaticPropFadeDist(int idx, float &fadeMin, float &fadeMax);
 native float BSP_StaticPropForcedFadeScale(int idx);
@@ -568,10 +548,9 @@ native int   BSP_StaticPropLeaves(int idx, int[] buf, int max);
 // Index of the prop whose origin is nearest pos within maxDist (<=0 = unlimited). -1 if none.
 native int   BSP_NearestStaticProp(const float pos[3], float maxDist = 0.0);
 
-// Runtime (post-combine) static props, via the engine's IStaticPropMgr, the actual props the engine collides,
-//  unlike the sprp-lump accessors above (pre-combine data).
-// Indexed by static-prop-manager index (the same index BSP_StaticPropAtRay returns).
-// All return 0 / false / -1 when the engine interface is unavailable or idx is out of range.
+// Runtime (post-combine) static props via IStaticPropMgr, the actual props the engine collides (the sprp-lump accessors above are pre-combine).
+// Indexed by static-prop-manager index (same as BSP_StaticPropAtRay returns).
+// All return 0 / false / -1 when unavailable or idx is out of range.
 native int   BSP_RtStaticPropCount();
 native bool  BSP_RtStaticPropBounds(int idx, float mins[3], float maxs[3]);    // world AABB
 native bool  BSP_RtStaticPropOrigin(int idx, float origin[3]);
@@ -599,24 +578,21 @@ native bool  BSP_StaticPropTri(int idx, int triIdx, float v0[3], float v1[3], fl
 native float BSP_StaticPropNearestTri(const float pos[3], float maxDist, int &propIdx,
                                       float normal[3], float v0[3], float v1[3], float v2[3]);
 
-// Sweep an AABB [mins,maxs] from start to end against static prop `idx` (at the prop's origin/angles) via VPhysics.
-// The exact engine collision, isolated to this one prop by its model's vcollide.
-// Fills fraction (1.0 = no hit), endpos, surface, normal, startSolid.
-// Returns: -1 = unavailable (IVModelInfo/IPhysicsCollision not resolved, or the prop has no collision model), 0 = no hit, 1 = hit.
-// NOTE: resolves the prop's collision by model name, does NOT work for prop-combine (autocombine) models.
+// Sweep an AABB [mins,maxs] from start to end against static prop `idx` (at its origin/angles) via VPhysics,
+// isolated to this prop by its model's vcollide.
+// Fills fraction (1.0 = no hit), endpos, normal, startSolid.
+// Returns: -1 = unavailable (interfaces unresolved or no collision model), 0 = no hit, 1 = hit.
+// NOTE: by-name resolution, does NOT work for prop-combine (autocombine) models.
 // Prefer BSP_StaticPropHullSweep, which uses the runtime props.
 native int   BSP_StaticPropTraceHull(int idx, const float start[3], const float end[3],
                                      const float mins[3], const float maxs[3],
                                      float &fraction, float endpos[3], float normal[3],
                                      bool &startSolid);
 
-// Sweep an AABB [mins,maxs] from start to end against the static props in the swept volume,
-// via the engine's runtime collideables (IEngineTrace::ClipRayToCollideable).
-// Works for prop-combine (autocombine) maps. No prop index or model loading needed.
-// Each prop is clipped independently, so the swept box can contact several stacked or adjacent props,
-// the contact whose surface (endpos.z + maxs.z) is nearest refZ wins.
-// Fills fraction (1.0 = no hit), endpos, surface normal, startSolid.
-// Returns: -1 = unavailable (IEngineTrace/IStaticPropMgr not resolved), 0 = no hit, 1 = hit.
+// Sweep an AABB [mins,maxs] from start to end against the runtime static props in the swept volume (IEngineTrace::ClipRayToCollideable).
+// Works on prop-combine maps.
+// Each prop is clipped independently, so the box can contact several, the contact whose surface (endpos.z + maxs.z) is nearest refZ wins.
+// Fills fraction (1.0 = no hit), endpos, normal, startSolid. Returns: -1 = unavailable, 0 = no hit, 1 = hit.
 native int   BSP_StaticPropHullSweep(const float start[3], const float end[3],
                                      const float mins[3], const float maxs[3], float refZ,
                                      float &fraction, float endpos[3], float normal[3],
@@ -626,14 +602,11 @@ native int   BSP_StaticPropHullSweep(const float start[3], const float end[3],
 // Confirms the gamedata-resolved globals are real. Returns length.
 native int   BSP_StaticPropDebug(char[] buf, int maxlen);
 
-// Unified world hull trace
-// Sweep an AABB [mins,maxs] from start to end against the WHOLE collision world via the engine's IEngineTrace::TraceRay
-// - the same path the player collides on.
+// Unified world hull trace.
+// Sweeps an AABB [mins,maxs] against the WHOLE collision world via IEngineTrace::TraceRay (the player's collision path).
 // World brushes, displacements, and static props always participate.
-// brush-model entities (func_door, func_brush, movers, trigger volumes...)
-// participate only when hitEntities is true.
+// Brush-model entities (func_*) participate only when hitEntities is true.
 // Dynamic point entities (players/NPCs) are never hit.
-//
 //   mask         contents mask (e.g. BSPP_MASK_PLAYERCOLLIDE / MASK_PLAYERSOLID)
 //   fraction     1.0 = no contact, else fraction of the sweep completed
 //   endpos       hull center at the contact (or `end` if no hit)
@@ -658,12 +631,10 @@ native int   BSP_TraceHull(const float start[3], const float end[3],
                            int &surfaceProps = 0, int &surfaceFlags = 0,
                            int &hitType = 0, char[] surfaceName = "", int nameLen = 0);
 
-// Surface physics properties (friction / surfaceprop)
-// Resolved from the live IPhysicsSurfaceProps singleton in the loaded vphysics module.
-// The `idx` is a PHYSICS surfaceprop-database index - the kind returned by BSP_TraceHull's surfaceProps out-param,
-// BSP_DispGetSurfaceProps, and BSP_BoxBrushSurfaceIndex.
-// It is NOT a texdata index:
-// (BSP_BrushSideMaterial / BSP_TexDataMaterialName use a different namespace).
+// Surface physics properties (friction / surfaceprop).
+// Resolved from the live IPhysicsSurfaceProps singleton in loaded vphysics.
+// `idx` is a PHYSICS surfaceprop-database index (as returned by BSP_TraceHull's surfaceProps, BSP_DispGetSurfaceProps, BSP_BoxBrushSurfaceIndex).
+// NOT a texdata index (BSP_BrushSideMaterial / BSP_TexDataMaterialName differ).
 
 // True once the IPhysicsSurfaceProps interface resolved (vphysics mapped).
 native bool  BSP_SurfacePropsReady();
@@ -677,7 +648,7 @@ native int   BSP_SurfacePropIndex(const char[] name);
 //   friction      Coulomb friction coefficient (the headline movement value)
 //   elasticity    collision restitution
 //   density       kg/m^3
-//   thickness     sheet-material thickness (inches; 0 = solid)
+//   thickness     sheet-material thickness (inches, 0 = solid)
 //   dampening     velocity dampening
 //   maxSpeedFactor player max-speed multiplier on this surface (1.0 = normal)
 //   jumpFactor    player jump-height multiplier on this surface (1.0 = normal)
@@ -701,19 +672,16 @@ native int   BSP_SurfacePropDump(int idx, char[] buf, int maxlen);
 native int   BSP_LeafWaterCount();
 // surfaceZ = water top, minZ = bottom, surfaceTexInfo = texinfo index. false if OOB.
 native bool  BSP_LeafWaterData(int idx, float &surfaceZ, float &minZ, int &surfaceTexInfo);
-// Z-band heuristic:
-// surface Z of the water body whose [minZ,surfaceZ] contains pos.z (lowest qualifying).
-// Returns BSP_WATER_NO_SURFACE if pos is in no band.
-// No XY test (the lump has no XY bounds), so it can false-match separate pools at the same height,
-// confirm with BSP_PointContents when precision matters.
+// Z-band heuristic: surface Z of the water body whose [minZ,surfaceZ] contains pos.z (lowest qualifying).
+// BSP_WATER_NO_SURFACE if none. No XY test (the lump has no XY bounds), so it can false-match separate pools at the same height.
+// Confirm with BSP_PointContents when precision matters.
 native float BSP_WaterSurfaceZAt(const float pos[3]);
 
 // Brush-entity / trigger / ladder helpers
 // Convenience over the entity + cmodel accessors for the common routing cases (trigger volumes, movers, ladders).
 
 // World AABB of a brush entity (any "model" == "*N" ent: triggers, func_door, func_brush, func_ladder...).
-// Chains EntityModelIndex -> CModelBounds + origin.
-// false if entIdx isn't a brush-model entity.
+// Chains EntityModelIndex -> CModelBounds + origin. false if entIdx isn't a brush-model entity.
 native bool  BSP_EntityBrushBounds(int entIdx, float mins[3], float maxs[3]);
 // Applied push velocity of a trigger_push: AngleVectors(pushdir) * speed (speed defaults to 40).
 // Returns false (and zero vel) if entIdx isn't a trigger_push.

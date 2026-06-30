@@ -41,13 +41,10 @@ namespace BSPProps
 		IStaticPropMgrServer *g_staticpropmgr = nullptr;
 		IPhysicsSurfaceProps *g_physprops = nullptr;
 
-		// Byte offsets of surfacedata_t::game.* within the live struct GetSurfaceData returns.
-		// The hl2sdk-csgo header mislocates `game` (=+0x44):
-		// CSGO's audio block is larger than the header's and surfacegameprops_t carries two extra floats
-		// (penetration/damage modifiers) before `material`, so reading via the SDK struct yields maxSpeedFactor/jumpFactor == 0.
-		// Overridable via gamedata (decimal).
-		// The physics block at +0x00 is correct, so it still uses the SDK struct.
-		//   defaults: maxSpeedFactor 0x50, jumpFactor 0x54, material(u16) 0x60, climbable(u8) 0x62
+		// Byte offsets of surfacedata_t::game.* in the live struct.
+		// The hl2sdk-csgo header mislocates `game` (CSGO's audio block is larger and surfacegameprops_t has two extra floats before `material`),
+		// so the SDK struct reads maxSpeedFactor/jumpFactor as 0.
+		// The physics block at +0x00 is correct. Overridable via gamedata (decimal).
 		int OFF_SD_MAXSPEED = 0x50;
 		int OFF_SD_JUMP = 0x54;
 		int OFF_SD_MATERIAL = 0x60;
@@ -55,8 +52,8 @@ namespace BSPProps
 
 		typedef void *(*CreateInterfaceFn)(const char *name, int *returnCode);
 
-		// Pull the live IPhysicsSurfaceProps singleton straight from the already-loaded vphysics module's CreateInterface export.
-		// vphysics interfaces are process singletons, so this returns the same instance the engine/server use.
+		// Pull the live IPhysicsSurfaceProps singleton from the loaded vphysics module's CreateInterface export.
+		// These are process singletons, so it's the same instance the engine/server use.
 		IPhysicsSurfaceProps *ResolveSurfaceProps()
 		{
 			CreateInterfaceFn fn = nullptr;
@@ -67,8 +64,8 @@ namespace BSPProps
 				fn = reinterpret_cast<CreateInterfaceFn>(GetProcAddress(mod, "CreateInterface"));
 			}
 #else
-			// RTLD_NOLOAD: only succeed if vphysics is already mapped (it always is on a running server);
-			// balances the implicit refcount bump with dlclose.
+			// RTLD_NOLOAD: only succeed if vphysics is already mapped (always, on a running server).
+			// dlclose balances the implicit refcount bump.
 			void *mod = dlopen("vphysics.so", RTLD_NOW | RTLD_NOLOAD);
 			if (mod)
 			{
@@ -99,9 +96,8 @@ namespace BSPProps
 		// World-space collision triangles per prop idx (9 floats per tri), built lazily.
 		std::unordered_map<int, std::vector<float>> g_meshCache;
 
-		// Trace filter for "what static prop is along this ray": world + static props only.
-		// Under TRACE_EVERYTHING static props always hit and are not passed to ShouldHitEntity,
-		// so returning false there just drops dynamic entities.
+		// World + static props only.
+		// Under TRACE_EVERYTHING props always hit without going through ShouldHitEntity, so returning false there drops dynamic ents.
 		class WorldPropsFilter : public ITraceFilter
 		{
 		public:
@@ -116,9 +112,8 @@ namespace BSPProps
 			}
 		};
 
-		// Hits everything: world, static props, AND brush-model entities.
-		// Under TRACE_EVERYTHING the world + static props always participate;
-		// returning true here additionally keeps server entities (func_* brush models).
+		// World, static props, AND brush-model entities.
+		// Returning true keeps server entities (func_* brush models) on top of the always-on world + props.
 		class AllFilter : public ITraceFilter
 		{
 		public:
@@ -147,17 +142,15 @@ namespace BSPProps
 			}
 			vcollide_t *vc = nullptr;
 			const model_t *m = g_modelinfo->FindOrLoadModel(name);
-			// FindOrLoadModel returns null or (model_t*)-1 when the model can't be loaded by name,
-			// e.g. prop-combine placeholders ("models/props/.../...").
-			// Calling GetVCollide on that sentinel crashes.
+			// FindOrLoadModel returns null or (model_t*)-1 for unloadable names (e.g. prop-combine placeholders).
+			// GetVCollide on that sentinel crashes.
 			if (m == nullptr || m == reinterpret_cast<const model_t *>(~uintptr_t(0)))
 			{
 				g_vcollideCache[name] = nullptr;
 				return nullptr;
 			}
 			vc = g_modelinfo->GetVCollide(m);
-			// Sanity: solidCount is a 15-bit field, reject absurd values / null array
-			// so a bogus vcollide can't drive the trace loop off into garbage.
+			// solidCount is a 15-bit field, reject absurd values / null array so a bogus vcollide can't drive the trace loop off into garbage.
 			if (vc && (vc->solidCount == 0 || vc->solidCount > 64 || !vc->solids))
 			{
 				vc = nullptr;
@@ -196,8 +189,7 @@ namespace BSPProps
 		g_physcollision = ResolveGlobal<IPhysicsCollision>(gc, "physcollision");
 		g_enginetrace = ResolveGlobal<IEngineTrace>(gc, "enginetrace");
 		g_staticpropmgr = ResolveGlobal<IStaticPropMgrServer>(gc, "staticpropmgr");
-		// Surface props: pulled from the vphysics module export.
-		// Stays null (friction natives disabled) if vphysics isn't mapped yet; SurfaceProps() retries lazily.
+		// Stays null (friction natives disabled) if vphysics isn't mapped yet. SurfaceProps() retries lazily.
 		g_physprops = ResolveSurfaceProps();
 
 		// surfacedata_t::game.* offsets (see decl). Decimal in gamedata.
@@ -206,9 +198,8 @@ namespace BSPProps
 		OFF_SD_MATERIAL = BSPUtil::GetKeyInt(gc, "surfacedata_material", 0x60);
 		OFF_SD_CLIMBABLE = BSPUtil::GetKeyInt(gc, "surfacedata_climbable", 0x62);
 
-		// The runtime prop-hull path (enginetrace + staticpropmgr) is what handles autocombine maps.
-		// The vcollide path (modelinfo + physcollision) is the by-name fallback.
-		// Succeed if either pair resolved.
+		// Runtime prop-hull path (enginetrace + staticpropmgr) handles autocombine maps.
+		// Vcollide path (modelinfo + physcollision) is the by-name fallback. Succeed if either pair resolved.
 		bool sweepReady = g_enginetrace && g_staticpropmgr;
 		bool vcollReady = g_modelinfo && g_physcollision;
 		if (!sweepReady && !vcollReady)
@@ -238,8 +229,7 @@ namespace BSPProps
 		{
 			return 0;
 		}
-		// One deref each: a valid interface ptr -> vtable ptr.
-		// Garbage here = bad sig.
+		// One deref each: a valid interface ptr -> vtable ptr. Garbage here = bad sig.
 		uintptr_t mi = reinterpret_cast<uintptr_t>(g_modelinfo);
 		uintptr_t pc = reinterpret_cast<uintptr_t>(g_physcollision);
 		uintptr_t et = reinterpret_cast<uintptr_t>(g_enginetrace);
@@ -436,8 +426,8 @@ namespace BSPProps
 		Ray_t ray;
 		ray.Init(vstart, vend, vmins, vmaxs);
 
-		// Each prop is clipped independently, so the swept box can contact several (stacked / adjacent props).
-		// Pick the contact whose surface (endpos.z + maxs.z) is NEAREST refZ, rather than the lowest.
+		// Each prop is clipped independently, so the box can contact several.
+		// Pick the contact whose surface (endpos.z + maxs.z) is NEAREST refZ, not the lowest.
 		float bestDelta = 1.0e30f;
 		bool haveHit = false;
 		for (int i = 0; i < props.Count(); ++i)
@@ -803,9 +793,8 @@ namespace BSPProps
 			return -1; // hit a brush or nothing
 		}
 
-		// Identify which prop:
-		// gather the props around the hit point and clip the same ray against each (trace.hitbox is NOT the staticpropmgr index).
-		// The earliest contact is the aimed prop.
+		// Identify the prop: clip the same ray against each prop near the hit point (trace.hitbox is NOT the staticpropmgr index).
+		// Earliest contact wins.
 		Vector hp(tr.endpos.x, tr.endpos.y, tr.endpos.z);
 		Vector bmin(hp.x - 8.0f, hp.y - 8.0f, hp.z - 8.0f);
 		Vector bmax(hp.x + 8.0f, hp.y + 8.0f, hp.z + 8.0f);

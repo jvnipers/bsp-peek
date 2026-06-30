@@ -33,8 +33,8 @@ namespace BSPLumps
 	int EntityClassname(int idx, char *buf, int maxlen);
 	bool EntityOrigin(int idx, float out[3]); // false if "origin" missing
 	int EntityKeyValue(int idx, const char *key, char *buf, int maxlen);
-	// Brush-model index for entity[idx]: parses its "model" key, and if it is a "*N" brush-model reference returns N
-	// (the cmodel/submodel index usable with BSPData::CModel*).
+	// Brush-model index for entity[idx]:
+	// parses its "model" key, and if it is a "*N" brush-model reference returns N (the cmodel/submodel index usable with BSPData::CModel*).
 	// Returns -1 if the entity has no "model" key, the value is a studio/.mdl path rather than a "*N" reference, or idx is OOB.
 	int EntityModelIndex(int idx);
 
@@ -49,8 +49,8 @@ namespace BSPLumps
 	// Visibility (LUMP_VISIBILITY = 4)
 	// Number of PVS clusters in this map (= numclusters in the vis header).
 	int VisClusterCount();
-	// PVS test: is cluster 'other' visible from cluster 'cluster'? Decompresses RLE on-the-fly.
-	// false on invalid input or no vis data.
+	// PVS test: is cluster 'other' visible from cluster 'cluster'?
+	// Decompresses RLE on-the-fly. false on invalid input or no vis data.
 	bool ClusterVisible(int cluster, int other);
 
 	// Leaf water data (LUMP_LEAFWATERDATA = 36, dleafwaterdata_t) One entry per distinct body of water.
@@ -109,7 +109,7 @@ namespace BSPLumps
 	int FaceTexInfo(int idx);   // texinfo index (-1 = skip face)
 	int FaceDispInfo(int idx);  // dispinfo index; -1 if not a displacement
 	float FaceArea(int idx);    // precomputed face area
-	// 4 lightstyle indices; 255 = unused
+	// 4 lightstyle indices. 255 = unused
 	bool FaceLightStyles(int idx, uint8_t out[4]);
 	int FaceOrigFace(int idx); // original (pre-split) face; -1 if top-level
 	int FaceLightOfs(int idx); // byte offset into lighting lump; -1 = no samples
@@ -121,7 +121,7 @@ namespace BSPLumps
 	// Uses caller-supplied first/num so this is a pure lookup against the leaffaces table.
 	int LeafFacesRange(int firstFace, int numFaces, int *outBuf, int maxOut);
 
-	// Worldlights (LUMP_WORLDLIGHTS = 15, LDR; LUMP_WORLDLIGHTS_HDR = 54)
+	// Worldlights (LUMP_WORLDLIGHTS = 15 LDR, LUMP_WORLDLIGHTS_HDR = 54)
 	int WorldlightCount(); // total across both LDR + HDR if present (LDR first)
 	// Fills basic fields. Returns false if invalid.
 	bool WorldlightOrigin(int idx, float out[3]);
@@ -131,7 +131,7 @@ namespace BSPLumps
 								  // 4=quake 5=skyambient
 	int WorldlightStyle(int idx); // light style index
 	int WorldlightCluster(int idx);
-	// Extended fields (per dworldlight_t in CSGO; offsets beyond cluster+style)
+	// Extended fields (per dworldlight_t in CSGO, offsets beyond cluster+style)
 	bool WorldlightShadowCastOffset(int idx, float out[3]); // +36
 	float WorldlightStopDot(int idx);                       // +60 (spotlight cone inner)
 	float WorldlightStopDot2(int idx);                      // +64 (spotlight cone outer)
