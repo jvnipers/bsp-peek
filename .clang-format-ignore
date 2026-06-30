@@ -1,0 +1,7 @@
+./sourcemod/**
+./metamod-source/**
+./hl2sdk*/**
+./build*/**
+./.git*/**
+./script*/**
+./gamedata/**
