@@ -302,6 +302,20 @@ cell_t N_BrushNumSides(IPluginContext *pCtx, const cell_t *params)
 	return BSPData::BrushNumSides(params[1]);
 }
 
+cell_t N_BrushRaw(IPluginContext *pCtx, const cell_t *params)
+{
+	int rawNumSides = 0, firstSide = 0, contents = 0;
+	bool ok = BSPData::BrushRaw(params[1], rawNumSides, firstSide, contents);
+	cell_t *outNum = nullptr, *outFirst = nullptr, *outContents = nullptr;
+	pCtx->LocalToPhysAddr(params[2], &outNum);
+	pCtx->LocalToPhysAddr(params[3], &outFirst);
+	pCtx->LocalToPhysAddr(params[4], &outContents);
+	*outNum = ok ? rawNumSides : -1;
+	*outFirst = ok ? firstSide : -1;
+	*outContents = ok ? contents : 0;
+	return ok ? 1 : 0;
+}
+
 cell_t N_BrushSidePlane(IPluginContext *pCtx, const cell_t *params)
 {
 	float normal[3] = {0, 0, 0};
@@ -2089,6 +2103,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 	{"BSP_BrushBounds", N_BrushBounds},
 	{"BSP_IsBoxBrush", N_IsBoxBrush},
 	{"BSP_BrushNumSides", N_BrushNumSides},
+	{"BSP_BrushRaw", N_BrushRaw},
 	{"BSP_BrushSidePlane", N_BrushSidePlane},
 	{"BSP_BrushSideBevel", N_BrushSideBevel},
 	{"BSP_BrushSideThin", N_BrushSideThin},

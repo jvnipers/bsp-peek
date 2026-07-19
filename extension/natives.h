@@ -42,6 +42,7 @@ cell_t N_BrushContents(IPluginContext *pCtx, const cell_t *params);
 cell_t N_BrushBounds(IPluginContext *pCtx, const cell_t *params);
 cell_t N_IsBoxBrush(IPluginContext *pCtx, const cell_t *params);
 cell_t N_BrushNumSides(IPluginContext *pCtx, const cell_t *params);
+cell_t N_BrushRaw(IPluginContext *pCtx, const cell_t *params);
 cell_t N_BrushSidePlane(IPluginContext *pCtx, const cell_t *params);
 cell_t N_BrushSideBevel(IPluginContext *pCtx, const cell_t *params);
 cell_t N_BrushSideThin(IPluginContext *pCtx, const cell_t *params);

@@ -79,6 +79,8 @@ namespace BSPData
 	// so this can false-negative on box-optimized brushes. Treat as informational.
 	bool IsBoxBrush(int brushIdx);
 	int BrushNumSides(int brushIdx);
+	// Raw cbrush_t header (unclamped). rawNumSides==0xFFFF marks a box-optimized brush.
+	bool BrushRaw(int brushIdx, int &rawNumSides, int &firstSide, int &contents);
 	// Read one side's plane normal + signed distance.
 	bool BrushSidePlane(int brushIdx, int sideIdx, float normal[3], float &dist);
 	// Bevel plane? (0=no, 1=yes, -1=invalid).

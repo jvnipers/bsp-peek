@@ -93,6 +93,10 @@ native void BSP_BrushBounds(int brushIdx, float mins[3], float maxs[3]);
 // Heuristic only - CSGO splits box brushes into a parallel `cboxbrush_t` table so the result can false-negative.
 native bool BSP_IsBoxBrush(int brushIdx);
 native int  BSP_BrushNumSides(int brushIdx);
+// Raw cbrush_t header, UNCLAMPED (diagnostic). rawNumSides==0xFFFF (65535) => box-optimized brush (solid in cboxbrush_t).
+// A small count that overruns the side table => wrong offsets.
+// Fills rawNumSides/firstSide/contents. Returns false (and -1/-1/0) if brushIdx invalid.
+native bool BSP_BrushRaw(int brushIdx, int &rawNumSides, int &firstSide, int &contents);
 // Read one side's plane normal + signed distance. sideIdx in [0, BSP_BrushNumSides(brushIdx)).
 native bool BSP_BrushSidePlane(int brushIdx, int sideIdx, float normal[3], float &dist);
 // Is this side a bevel plane? (0=no, 1=yes, -1=invalid).

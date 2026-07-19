@@ -1028,6 +1028,23 @@ namespace BSPData
 		return (int)BrushSideCount(b);
 	}
 
+	// Raw cbrush_t header, UNCLAMPED. Diagnostic for brushes that read as sideless.
+	// rawNumSides == 0xFFFF (65535) marks a CSGO box-optimized brush (real solid in the cboxbrush_t table).
+	// A small count whose firstSide+count overruns GetNumBrushSides() means the cbrush offsets are wrong for this map.
+	// Returns false if brushIdx invalid.
+	bool BrushRaw(int brushIdx, int &rawNumSides, int &firstSide, int &contents)
+	{
+		const uint8_t *b = brush_at(brushIdx);
+		if (!b)
+		{
+			return false;
+		}
+		rawNumSides = (int)ReadU16(b, OFF_CBRUSH_NUMSIDES);
+		firstSide = (int)ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
+		contents = ReadI32(b, OFF_CBRUSH_CONTENTS);
+		return true;
+	}
+
 	bool BrushSidePlane(int brushIdx, int sideIdx, float normal[3], float &dist)
 	{
 		const uint8_t *side = brushside_for(brushIdx, sideIdx);
