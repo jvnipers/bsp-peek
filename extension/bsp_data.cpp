@@ -1421,7 +1421,10 @@ namespace BSPData
 		return GetBrushContents(orig);
 	}
 
-	// Build the brush -> isBoxBrush bit set from the cboxbrush_t originalBrush column.
+	// Build the cbrush -> isBoxBrush / cboxbrush-index maps from the CBRUSH side.
+	// A box-optimized cbrush is marked numsides == 0xFFFF and its firstbrushside field is repurposed as the cboxbrush_t index
+	// (NOT a brushside index), that is the cbrush -> box link.
+	// The cboxbrush 'brushnum' column is a SEPARATE index space that does not equal the cbrush index.
 	static void EnsureBoxBrushAuthSet()
 	{
 		int nbox = GetNumBoxBrushes();
@@ -1436,13 +1439,22 @@ namespace BSPData
 		int nbrush = GetNumBrushes();
 		g_boxBrushAuth.assign(nbrush > 0 ? nbrush : 0, false);
 		g_brushToBoxIdx.assign(nbrush > 0 ? nbrush : 0, -1);
-		for (int i = 0; i < nbox; ++i)
+		for (int i = 0; i < nbrush; ++i)
 		{
-			int orig = BoxBrushOriginalBrush(i);
-			if (orig >= 0 && orig < nbrush)
+			const uint8_t *b = brush_at(i);
+			if (!b)
 			{
-				g_boxBrushAuth[orig] = true;
-				g_brushToBoxIdx[orig] = i;
+				continue;
+			}
+			if (ReadU16(b, OFF_CBRUSH_NUMSIDES) != 0xFFFF)
+			{
+				continue; // not box-optimized
+			}
+			int boxIdx = (int)ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
+			if (boxIdx >= 0 && boxIdx < nbox)
+			{
+				g_boxBrushAuth[i] = true;
+				g_brushToBoxIdx[i] = boxIdx;
 			}
 		}
 		g_boxBrushAuthBuiltFor = nbox;

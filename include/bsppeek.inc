@@ -113,7 +113,8 @@ native int  BSP_BrushSidePlaneIndex(int brushIdx, int sideIdx);
 // Assumes engine texinfo index == disk LUMP_TEXINFO index (true on CSGO).
 native int  BSP_BrushSideMaterial(int brushIdx, int sideIdx, char[] buf, int maxlen);
 
-// Exact box-brush test: true iff brushIdx is the originalBrush of a cboxbrush_t entry.
+// Exact box-brush test: true iff brushIdx is a box-optimized cbrush
+// (numsides == 0xFFFF, its solid living in the cboxbrush_t table. its firstbrushside field holds the cboxbrush index).
 // Unlike BSP_IsBoxBrush (a numsides==6 heuristic), this can't false-negative. O(1), backed by a per-map set built on first call.
 native bool BSP_BrushIsBoxAuth(int brushIdx);
 
