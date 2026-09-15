@@ -40,7 +40,7 @@ jobs:
     runs-on: ${{ matrix.platform.os }}
     name: ${{ matrix.platform.os_short }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           path: project
 
@@ -49,7 +49,7 @@ jobs:
         run: git submodule update --init hl2sdk-csgo
 
       - name: Checkout SourceMod
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: alliedmodders/sourcemod
           ref: ${{ matrix.version.sm_ver }}
@@ -57,7 +57,7 @@ jobs:
           path: sourcemod
 
       - name: Checkout Metamod:Source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: alliedmodders/metamod-source
           submodules: recursive
@@ -82,8 +82,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get update -o Acquire::Check-Valid-Until=false -y
+          sudo apt-get install -o Acquire::Check-Valid-Until=false-y --no-install-recommends \
             gcc-multilib g++-multilib libstdc++6 lib32stdc++6 \
             libc6-dev-i386 linux-libc-dev:i386
 
@@ -129,7 +129,7 @@ jobs:
     runs-on: ubuntu-latest
     name: linux-${{ matrix.runtime.name }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           path: project
 
@@ -138,7 +138,7 @@ jobs:
         run: git submodule update --init hl2sdk-csgo
 
       - name: Checkout SourceMod
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: alliedmodders/sourcemod
           ref: ${{ matrix.version.sm_ver }}
@@ -146,7 +146,7 @@ jobs:
           path: sourcemod
 
       - name: Checkout Metamod:Source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: alliedmodders/metamod-source
           submodules: recursive
@@ -164,8 +164,8 @@ jobs:
             ${{ matrix.runtime.image }} \
             bash -ec '
               dpkg --add-architecture i386 || true
-              apt-get update
-              apt-get install -y --no-install-recommends \
+              apt-get update -o Acquire::Check-Valid-Until=false -y
+              apt-get install -o Acquire::Check-Valid-Until=false -y --no-install-recommends \
                   python3-pip python3-venv git ca-certificates \
                   gcc-multilib g++-multilib libstdc++6:i386
               python3 -m venv /opt/ambuild-venv
