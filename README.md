@@ -32,7 +32,7 @@ Currently only supports CS:GO (x86)
 
 MM:S 1.12+ SM 1.12+
 
-For **Natives** see: [bsppeek.inc](/include/bsppeek.inc)
+For **Natives** see: [bsppeek.inc](/include/bsppeek.inc).
 
 ## Build
 
