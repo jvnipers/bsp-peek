@@ -166,12 +166,9 @@ jobs:
               dpkg --add-architecture i386 || true
               apt-get update -o Acquire::Check-Valid-Until=false -y
               apt-get install -o Acquire::Check-Valid-Until=false -y --no-install-recommends \
-                  python3-pip python3-venv git ca-certificates \
-                  gcc-multilib g++-multilib libstdc++6:i386
-              python3 -m venv /opt/ambuild-venv
-              /opt/ambuild-venv/bin/pip install --upgrade pip
-              /opt/ambuild-venv/bin/pip install git+https://github.com/alliedmodders/ambuild.git@master
-              export PATH=/opt/ambuild-venv/bin:$PATH
+                  ca-certificates gcc-multilib g++-multilib libstdc++6:i386
+              git clone https://github.com/alliedmodders/ambuild.git
+              cd ambuild && python3 setup.py install && cd ..
               mkdir -p build && cd build
               python3 ../configure.py \
                 --sm-path=/work/sourcemod \
