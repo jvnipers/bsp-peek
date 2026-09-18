@@ -1,16 +1,7 @@
 FROM registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
 
-RUN dpkg --add-architecture i386 \
-	&& apt-get update \
-	&& apt-get install -y --no-install-recommends \
-	python3-pip python3-venv git ca-certificates \
-	gcc-multilib g++-multilib libstdc++6:i386 \
-	&& rm -rf /var/lib/apt/lists/*
-
-RUN python3 -m venv /opt/ambuild-venv \
-	&& /opt/ambuild-venv/bin/pip install --upgrade pip \
-	&& /opt/ambuild-venv/bin/pip install git+https://github.com/alliedmodders/ambuild.git@master
-ENV PATH=/opt/ambuild-venv/bin:$PATH
+RUN git clone https://github.com/alliedmodders/ambuild.git /opt/ambuild \
+	&& cd /opt/ambuild && python3 setup.py install
 
 WORKDIR /work
 
