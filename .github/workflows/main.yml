@@ -33,7 +33,6 @@ jobs:
     strategy:
       matrix:
         platform:
-          - { os: ubuntu-latest, os_short: linux, ext: .so }
           - { os: windows-latest, os_short: windows, ext: .dll }
         version: ${{ fromJSON(needs.config.outputs.versions) }}
       fail-fast: false
@@ -78,15 +77,6 @@ jobs:
           cd ambuild
           python setup.py install --user
 
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update -o Acquire::Check-Valid-Until=false -y
-          sudo apt-get install -o Acquire::Check-Valid-Until=false-y --no-install-recommends \
-            gcc-multilib g++-multilib libstdc++6 lib32stdc++6 \
-            libc6-dev-i386 linux-libc-dev:i386
-
       - name: Build
         working-directory: project
         shell: bash
@@ -127,7 +117,7 @@ jobs:
         version: ${{ fromJSON(needs.config.outputs.versions) }}
       fail-fast: false
     runs-on: ubuntu-latest
-    name: linux-${{ matrix.runtime.name }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
+    name: ${{ matrix.runtime.name }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -184,7 +174,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: bsp-peek-linux-${{ matrix.runtime.name }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
+          name: bsp-peek-${{ matrix.runtime.name }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
           path: staging/*
 
   release:
