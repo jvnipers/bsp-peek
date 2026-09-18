@@ -78,6 +78,15 @@ jobs:
           cd ambuild
           python setup.py install --user
 
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -o Acquire::Check-Valid-Until=false -y
+          sudo apt-get install -o Acquire::Check-Valid-Until=false-y --no-install-recommends \
+            gcc-multilib g++-multilib libstdc++6 lib32stdc++6 \
+            libc6-dev-i386 linux-libc-dev:i386
+
       - name: Build
         working-directory: project
         shell: bash
@@ -156,8 +165,6 @@ jobs:
             bash -ec '
               dpkg --add-architecture i386 || true
               apt-get update -o Acquire::Check-Valid-Until=false -y
-              apt-get install -o Acquire::Check-Valid-Until=false -y --no-install-recommends \
-                  ca-certificates gcc-multilib g++-multilib libstdc++6:i386
               git clone https://github.com/alliedmodders/ambuild.git
               cd ambuild && python3 setup.py install && cd ..
               mkdir -p build && cd build
