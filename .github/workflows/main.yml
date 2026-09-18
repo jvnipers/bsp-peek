@@ -15,8 +15,8 @@ jobs:
           python3 - << 'PYEOF'
           import json, os
           VERSIONS = [
-              ("master", "1.12-dev"),
-              ("master", "1.12-dev"),
+              ("1.12-dev", "1.12-dev"),
+              ("master", "master"),
           ]
           versions = [
               {"sm_ver": s, "mm_ver": m,
