@@ -1,7 +1,7 @@
 FROM registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
 
-RUN git clone https://github.com/alliedmodders/ambuild.git /opt/ambuild \
-	&& cd /opt/ambuild && python3 setup.py install
+RUN git clone https://github.com/alliedmodders/ambuild.git \
+	&& cd ambuild && python3 setup.py install
 
 WORKDIR /work
 
