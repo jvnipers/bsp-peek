@@ -68,14 +68,10 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install Python dependencies
-        run: python -m pip install --upgrade pip setuptools wheel
-
       - name: Install AMBuild
         run: |
           git clone https://github.com/alliedmodders/ambuild.git
-          cd ambuild
-          python setup.py install --user
+          pip install ./ambuild
 
       - name: Build
         working-directory: project
@@ -85,8 +81,7 @@ jobs:
           python ../configure.py \
             --sm-path="${{ github.workspace }}/sourcemod" \
             --mms-path="${{ github.workspace }}/metamod-source" \
-            --enable-optimize \
-            --targets=x86
+            --enable-optimize
           ambuild
 
       - name: Stage release files
@@ -109,11 +104,9 @@ jobs:
       matrix:
         runtime:
           - name: steamrt4
-            image: registry.gitlab.steamos.cloud/steamrt/steamrt4/sdk:latest
+            image: ghcr.io/femboykz/build-containers:steamrt4
           - name: steamrt3
-            image: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
-          #- name: steamrt2
-          #  image: registry.gitlab.steamos.cloud/steamrt/scout/sdk:latest
+            image: ghcr.io/femboykz/build-containers:steamrt3
         version: ${{ fromJSON(needs.config.outputs.versions) }}
       fail-fast: false
     runs-on: ubuntu-latest
@@ -148,19 +141,13 @@ jobs:
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/work" \
             -w /work/project \
-            -e HL2SDKCSGO=/work/project/hl2sdk-csgo \
-            -e MMSOURCE=/work/metamod-source \
-            -e SOURCEMOD=/work/sourcemod \
             ${{ matrix.runtime.image }} \
             bash -ec '
-              git clone https://github.com/alliedmodders/ambuild.git
-              cd ambuild && python3 setup.py install && cd ..
               mkdir -p build && cd build
               python3 ../configure.py \
                 --sm-path=/work/sourcemod \
                 --mms-path=/work/metamod-source \
-                --enable-optimize \
-                --targets=x86
+                --enable-optimize
               ambuild
             '
 
