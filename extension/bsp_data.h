@@ -11,6 +11,7 @@ namespace BSPData
 	bool Init(IGameConfig *gameconf, char *error, size_t maxlen);
 	void Shutdown();
 	void OnMapStart();
+	void OnMapEnd();
 
 	void *DebugGetBase();
 	int DebugGetOff(const char *name);
@@ -227,7 +228,7 @@ namespace BSPData
 	// Prefer async to avoid stalling map load.
 	void RebuildCache();
 
-	// Builds on worker thread, returns immediately. Reads block until swap-in.
+	// Builds on worker thread, returns immediately. A read before swap-in builds the cache itself.
 	// Calling while a build is in flight is a no-op.
 	void RebuildCacheAsync();
 

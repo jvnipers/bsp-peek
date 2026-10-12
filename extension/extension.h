@@ -13,6 +13,7 @@ public:
 
 	// Notified when a new map's BSP collision data is ready to query.
 	void OnCoreMapStart(edict_t *pEdictList, int edictCount, int clientMax) override;
+	void OnCoreMapEnd() override;
 };
 
 extern BSPPeek g_BSPPeek;
