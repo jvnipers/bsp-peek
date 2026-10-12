@@ -9,16 +9,22 @@
 // Natives are optional. Calling one while the ext isn't loaded throws, so check BSPPeek_Available() first.
 
 // Source-engine CONTENTS_* constants commonly checked:
-#define BSPP_CONTENTS_SOLID       0x1
-#define BSPP_CONTENTS_WINDOW      0x2
-#define BSPP_CONTENTS_GRATE       0x8
-#define BSPP_CONTENTS_WATER       0x20
-#define BSPP_CONTENTS_MOVEABLE    0x4000
-#define BSPP_CONTENTS_PLAYERCLIP  0x10000
-#define BSPP_CONTENTS_MONSTERCLIP 0x20000
-#define BSPP_CONTENTS_LADDER      0x20000000
-// Player-collidable mask: contents a player hull stops against.
-#define BSPP_MASK_PLAYERCOLLIDE   (BSPP_CONTENTS_SOLID | BSPP_CONTENTS_PLAYERCLIP)
+#define BSPP_CONTENTS_SOLID        0x1
+#define BSPP_CONTENTS_WINDOW       0x2
+#define BSPP_CONTENTS_GRATE        0x8
+#define BSPP_CONTENTS_WATER        0x20
+#define BSPP_CONTENTS_TEAM1        0x800
+#define BSPP_CONTENTS_TEAM2        0x1000
+#define BSPP_CONTENTS_MOVEABLE     0x4000
+#define BSPP_CONTENTS_PLAYERCLIP   0x10000
+#define BSPP_CONTENTS_MONSTERCLIP  0x20000
+#define BSPP_CONTENTS_MONSTER      0x2000000
+#define BSPP_CONTENTS_LADDER       0x20000000
+// Player-collidable mask (= engine MASK_PLAYERSOLID).
+#define BSPP_MASK_PLAYERCOLLIDE    (BSPP_CONTENTS_SOLID | BSPP_CONTENTS_WINDOW | BSPP_CONTENTS_GRATE | BSPP_CONTENTS_MOVEABLE | BSPP_CONTENTS_PLAYERCLIP | BSPP_CONTENTS_MONSTER)
+// Per-team variants: the player mask can also carry TEAM1 (Terrorists) or TEAM2 (CTs).
+#define BSPP_MASK_PLAYERCOLLIDE_T  (BSPP_MASK_PLAYERCOLLIDE | BSPP_CONTENTS_TEAM1)
+#define BSPP_MASK_PLAYERCOLLIDE_CT (BSPP_MASK_PLAYERCOLLIDE | BSPP_CONTENTS_TEAM2)
 
 // Misc
 // Engine's internal map path string. Returns string length.
@@ -222,8 +228,9 @@ native bool BSP_FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
                                        int &outLowerBox, int &outUpperBox);
 
 // Texturebug overhang geometry.
-// Finds a player-collidable (SOLID or PLAYERCLIP) box brush at samplePos' XY column whose underside (-Z) is open
+// Finds a player-collidable (BSPP_MASK_PLAYERCOLLIDE) box brush at samplePos' XY column whose underside (-Z) is open
 // AND which has an exposed vertical wall the player can hug. Box-table index space.
+// Open/exposed are tested against brushes only, not displacements or props.
 //   samplePos : probe location (player pos / aim point).
 //   boxIdx    : cboxbrush_t index of the overhang brush.
 //   face      : hugged wall, axis+sign of its OUTWARD normal

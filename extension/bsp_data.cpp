@@ -2230,7 +2230,8 @@ namespace BSPData
 		{
 			return false;
 		}
-		const int CONTENTS_PLAYERCOLLIDE = 0x1 | 0x10000;
+		// MASK_PLAYERSOLID
+		const int CONTENTS_PLAYERCOLLIDE = 0x1 | 0x2 | 0x8 | 0x4000 | 0x10000 | 0x2000000;
 		const float PROBE = 1.0f; // clear the eps-bevel padding box brushes carry
 		int nb = GetNumBoxBrushes();
 		if (nb <= 0)
@@ -2262,7 +2263,7 @@ namespace BSPData
 			}
 			if ((BoxBrushContents(i) & CONTENTS_PLAYERCOLLIDE) == 0)
 			{
-				continue; // player-collidable box brushes only (solid or playerclip)
+				continue; // player-collidable box brushes only
 			}
 
 			// Underside must be open: the player has to fall past the bottom face.
