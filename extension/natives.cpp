@@ -69,6 +69,13 @@ static void EnsureDispLoaded()
 	}
 }
 
+// Caps plugin-supplied buffer sizes so a bogus value can't throw bad_alloc.
+static inline int out_len(cell_t n)
+{
+	const int kMax = 1 << 24;
+	return n > kMax ? kMax : n;
+}
+
 static inline void cell_to_float3(IPluginContext *pCtx, cell_t addr, float out[3])
 {
 	cell_t *src = nullptr;
@@ -83,6 +90,10 @@ static inline void float3_to_cell(IPluginContext *pCtx, cell_t addr, const float
 {
 	cell_t *out = nullptr;
 	pCtx->LocalToPhysAddr(addr, &out);
+	if (out == pCtx->GetNullRef(SP_NULL_VECTOR))
+	{
+		return; // NULL_VECTOR
+	}
 	for (int i = 0; i < 3; ++i)
 	{
 		out[i] = sp_ftoc(v[i]);
@@ -94,10 +105,22 @@ static inline void float3_to_cell_ok(IPluginContext *pCtx, cell_t addr, const fl
 {
 	cell_t *out = nullptr;
 	pCtx->LocalToPhysAddr(addr, &out);
+	if (out == pCtx->GetNullRef(SP_NULL_VECTOR))
+	{
+		return;
+	}
 	for (int i = 0; i < 3; ++i)
 	{
 		out[i] = sp_ftoc(ok ? v[i] : 0.0f);
 	}
+}
+
+// Returns bytes actually written. The producers' snprintf lengths overshoot on truncation.
+static cell_t string_to_cell(IPluginContext *pCtx, cell_t addr, int maxlen, const char *src)
+{
+	size_t written = 0;
+	pCtx->StringToLocalUTF8(addr, maxlen, src, &written);
+	return (cell_t)written;
 }
 
 // Debug
@@ -363,7 +386,7 @@ cell_t N_BrushSidePlaneIndex(IPluginContext *, const cell_t *params)
 cell_t N_BrushSideMaterial(IPluginContext *pCtx, const cell_t *params)
 {
 	EnsureLumpsLoaded();
-	int maxlen = params[4];
+	int maxlen = out_len(params[4]);
 	if (maxlen <= 0)
 	{
 		return 0;
@@ -479,7 +502,7 @@ cell_t N_BrushClipBox(IPluginContext *pCtx, const cell_t *params)
 
 cell_t N_BrushSideOrder(IPluginContext *pCtx, const cell_t *params)
 {
-	int maxlen = params[3];
+	int maxlen = out_len(params[3]);
 	if (maxlen <= 0)
 	{
 		return 0;
@@ -496,7 +519,7 @@ cell_t N_BrushSideOrder(IPluginContext *pCtx, const cell_t *params)
 // Returns ServerVersion (0 if unreadable), writes a summary into buf.
 cell_t N_EngineBuild(IPluginContext *pCtx, const cell_t *params)
 {
-	int maxlen = params[2];
+	int maxlen = out_len(params[2]);
 	char path[300];
 	smutils->BuildPath(Path_Game, path, sizeof(path), "steam.inf");
 	int serverVersion = 0;
@@ -540,7 +563,7 @@ cell_t N_LeafBrushes(IPluginContext *pCtx, const cell_t *params)
 	int leafIdx = params[1];
 	cell_t *buf = nullptr;
 	pCtx->LocalToPhysAddr(params[2], &buf);
-	int maxOut = params[3];
+	int maxOut = out_len(params[3]);
 	if (maxOut <= 0)
 	{
 		return -1;
@@ -983,28 +1006,26 @@ cell_t N_DispGetVert(IPluginContext *pCtx, const cell_t *params)
 
 cell_t N_DispDebugInfo(IPluginContext *pCtx, const cell_t *params)
 {
-	int maxlen = params[3];
+	int maxlen = out_len(params[3]);
 	if (maxlen <= 0)
 	{
 		return 0;
 	}
 	char tmp[1024];
-	int n = BSPDisp::EngineDebugTreeInfo(params[1], tmp, sizeof(tmp));
-	pCtx->StringToLocal(params[2], maxlen, tmp);
-	return n;
+	BSPDisp::EngineDebugTreeInfo(params[1], tmp, sizeof(tmp));
+	return string_to_cell(pCtx, params[2], maxlen, tmp);
 }
 
 cell_t N_DispDiagnoseQuery(IPluginContext *pCtx, const cell_t *params)
 {
-	int maxlen = params[4];
+	int maxlen = out_len(params[4]);
 	if (maxlen <= 0)
 	{
 		return 0;
 	}
 	char tmp[512];
-	int n = BSPDisp::EngineDiagnoseQuery(sp_ctof(params[1]), sp_ctof(params[2]), tmp, sizeof(tmp));
-	pCtx->StringToLocal(params[3], maxlen, tmp);
-	return n;
+	BSPDisp::EngineDiagnoseQuery(sp_ctof(params[1]), sp_ctof(params[2]), tmp, sizeof(tmp));
+	return string_to_cell(pCtx, params[3], maxlen, tmp);
 }
 
 // Displacement - disk-only (explicit fallback access)
@@ -1028,15 +1049,14 @@ cell_t N_DispDiskBounds(IPluginContext *pCtx, const cell_t *params)
 cell_t N_DispDiskDebugInfo(IPluginContext *pCtx, const cell_t *params)
 {
 	EnsureDispLoaded();
-	int maxlen = params[3];
+	int maxlen = out_len(params[3]);
 	if (maxlen <= 0)
 	{
 		return 0;
 	}
 	char tmp[512];
-	int n = BSPDisp::DiskDebugDispInfo(params[1], tmp, sizeof(tmp));
-	pCtx->StringToLocal(params[2], maxlen, tmp);
-	return n;
+	BSPDisp::DiskDebugDispInfo(params[1], tmp, sizeof(tmp));
+	return string_to_cell(pCtx, params[2], maxlen, tmp);
 }
 
 // BSP file lump natives
@@ -1082,7 +1102,7 @@ cell_t N_EntityRawLen(IPluginContext *, const cell_t *)
 cell_t N_EntityRawCopy(IPluginContext *pCtx, const cell_t *params)
 {
 	EnsureLumpsLoaded();
-	int maxlen = params[2];
+	int maxlen = out_len(params[2]);
 	if (maxlen <= 0)
 	{
 		return 0;
@@ -1102,7 +1122,7 @@ cell_t N_EntityCount(IPluginContext *, const cell_t *)
 cell_t N_EntityClassname(IPluginContext *pCtx, const cell_t *params)
 {
 	EnsureLumpsLoaded();
-	int maxlen = params[3];
+	int maxlen = out_len(params[3]);
 	if (maxlen <= 0)
 	{
 		return 0;
@@ -1125,7 +1145,7 @@ cell_t N_EntityOrigin(IPluginContext *pCtx, const cell_t *params)
 cell_t N_EntityKeyValue(IPluginContext *pCtx, const cell_t *params)
 {
 	EnsureLumpsLoaded();
-	int maxlen = params[4];
+	int maxlen = out_len(params[4]);
 	if (maxlen <= 0)
 	{
 		return 0;
@@ -1172,7 +1192,7 @@ cell_t N_TexDataCount(IPluginContext *, const cell_t *)
 cell_t N_TexDataMaterialName(IPluginContext *pCtx, const cell_t *params)
 {
 	EnsureLumpsLoaded();
-	int maxlen = params[3];
+	int maxlen = out_len(params[3]);
 	if (maxlen <= 0)
 	{
 		return 0;
@@ -1213,7 +1233,7 @@ cell_t N_FaceCentroid(IPluginContext *pCtx, const cell_t *params)
 cell_t N_FaceMaterialName(IPluginContext *pCtx, const cell_t *params)
 {
 	EnsureLumpsLoaded();
-	int maxlen = params[3];
+	int maxlen = out_len(params[3]);
 	if (maxlen <= 0)
 	{
 		return 0;
@@ -1417,7 +1437,7 @@ cell_t N_LeafFaces(IPluginContext *pCtx, const cell_t *params)
 	EnsureLumpsLoaded();
 	cell_t *buf;
 	pCtx->LocalToPhysAddr(params[2], &buf);
-	int maxOut = params[3];
+	int maxOut = out_len(params[3]);
 	if (maxOut <= 0)
 	{
 		return 0;
@@ -1597,7 +1617,7 @@ cell_t N_StaticPropFlags(IPluginContext *, const cell_t *params)
 cell_t N_StaticPropModelName(IPluginContext *pCtx, const cell_t *params)
 {
 	EnsureLumpsLoaded();
-	int maxlen = params[3];
+	int maxlen = out_len(params[3]);
 	if (maxlen <= 0)
 	{
 		return 0;
@@ -1691,7 +1711,7 @@ cell_t N_RtStaticPropSolidFlags(IPluginContext *, const cell_t *params)
 
 cell_t N_RtStaticPropModelName(IPluginContext *pCtx, const cell_t *params)
 {
-	int maxlen = params[3];
+	int maxlen = out_len(params[3]);
 	if (maxlen <= 0)
 	{
 		return 0;
@@ -1712,7 +1732,7 @@ cell_t N_StaticPropAtRay(IPluginContext *pCtx, const cell_t *params)
 
 cell_t N_StaticPropProbe(IPluginContext *pCtx, const cell_t *params)
 {
-	int maxlen = params[3];
+	int maxlen = out_len(params[3]);
 	if (maxlen <= 0)
 	{
 		return 0;
@@ -1758,7 +1778,7 @@ cell_t N_StaticPropNearestTri(IPluginContext *pCtx, const cell_t *params)
 cell_t N_StaticPropLeaves(IPluginContext *pCtx, const cell_t *params)
 {
 	EnsureLumpsLoaded();
-	int maxOut = params[3];
+	int maxOut = out_len(params[3]);
 	if (maxOut <= 0)
 	{
 		return 0;
@@ -1807,15 +1827,14 @@ cell_t N_StaticPropHullSweep(IPluginContext *pCtx, const cell_t *params)
 cell_t N_StaticPropDebug(IPluginContext *pCtx, const cell_t *params)
 {
 	EnsureLumpsLoaded();
-	int maxlen = params[2];
+	int maxlen = out_len(params[2]);
 	if (maxlen <= 0)
 	{
 		return 0;
 	}
 	std::vector<char> tmp(maxlen);
-	int n = BSPProps::Debug(tmp.data(), maxlen);
-	pCtx->StringToLocal(params[1], maxlen, tmp.data());
-	return n;
+	BSPProps::Debug(tmp.data(), maxlen);
+	return string_to_cell(pCtx, params[1], maxlen, tmp.data());
 }
 
 cell_t N_StaticPropTraceHull(IPluginContext *pCtx, const cell_t *params)
@@ -1854,7 +1873,7 @@ cell_t N_WorldTraceHull(IPluginContext *pCtx, const cell_t *params)
 	bool startSolid = false, allSolid = false;
 	int contents = 0, dispFlags = 0, surfProps = 0, surfFlags = 0, hitType = 0;
 
-	int nameLen = params[19];
+	int nameLen = out_len(params[19]);
 	std::vector<char> nameBuf(nameLen > 0 ? nameLen : 1);
 	nameBuf[0] = '\0';
 
@@ -1903,7 +1922,7 @@ cell_t N_SurfacePropCount(IPluginContext *pCtx, const cell_t *params)
 
 cell_t N_SurfacePropName(IPluginContext *pCtx, const cell_t *params)
 {
-	int maxlen = params[3];
+	int maxlen = out_len(params[3]);
 	if (maxlen <= 0)
 	{
 		return 0;
@@ -1951,15 +1970,14 @@ cell_t N_SurfacePropData(IPluginContext *pCtx, const cell_t *params)
 
 cell_t N_SurfacePropDump(IPluginContext *pCtx, const cell_t *params)
 {
-	int maxlen = params[3];
+	int maxlen = out_len(params[3]);
 	if (maxlen <= 0)
 	{
 		return 0;
 	}
 	std::vector<char> tmp(maxlen);
-	int n = BSPProps::SurfacePropDump(params[1], tmp.data(), maxlen);
-	pCtx->StringToLocal(params[2], maxlen, tmp.data());
-	return n;
+	BSPProps::SurfacePropDump(params[1], tmp.data(), maxlen);
+	return string_to_cell(pCtx, params[2], maxlen, tmp.data());
 }
 
 // Leaf water data
