@@ -103,7 +103,7 @@ namespace BSPData
 	static int OFF_CMODEL_MAXS = 12;
 	static int OFF_CMODEL_ORIGIN = 24;
 	static int OFF_CMODEL_HEADNODE = 36;
-	static int SZ_CMODEL = 40;
+	static int SZ_CMODEL = 56;
 
 	// Cache state (brush AABB + leaf AABB)
 	struct BrushCacheEntry
@@ -246,7 +246,7 @@ namespace BSPData
 		OFF_CMODEL_MAXS = GetKeyInt(gameconf, "cmodel_maxs", 12);
 		OFF_CMODEL_ORIGIN = GetKeyInt(gameconf, "cmodel_origin", 24);
 		OFF_CMODEL_HEADNODE = GetKeyInt(gameconf, "cmodel_headnode", 36);
-		SZ_CMODEL = GetKeyInt(gameconf, "cmodel_sizeof", 40);
+		SZ_CMODEL = GetKeyInt(gameconf, "cmodel_sizeof", 56);
 
 		// Sanity.
 		if (OFF_NUMBRUSHES < 0 || OFF_MAP_BRUSHES < 0 || OFF_NUMBRUSHSIDES < 0 || OFF_MAP_BRUSHSIDES < 0 || OFF_NUMPLANES < 0 || OFF_MAP_PLANES < 0)

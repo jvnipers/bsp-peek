@@ -1987,8 +1987,9 @@ cell_t N_EntityBrushBounds(IPluginContext *pCtx, const cell_t *params)
 		BSPLumps::EntityOrigin(params[1], org); // 0 if no "origin" key
 		for (int i = 0; i < 3; ++i)
 		{
-			mins[i] += org[i];
-			maxs[i] += org[i];
+			// Undo the engine's 1-unit cmodel padding.
+			mins[i] += org[i] + 1.0f;
+			maxs[i] += org[i] - 1.0f;
 		}
 	}
 	float3_to_cell(pCtx, params[2], mins);
