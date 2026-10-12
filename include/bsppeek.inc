@@ -308,6 +308,7 @@ native float BSP_DispHeightAt(float x, float y);
 native float BSP_DispHeightAtDebug(float x, float y, int &outIdx);
 
 // Returns surface Z + populates normal[3] with the tri's plane normal at (x,y).
+// The normal points out of the surface (down on a ceiling displacement).
 // Returns BSP_DISP_NO_HIT if no match.
 native float BSP_DispSurfaceNormalAt(float x, float y, float normal[3]);
 
