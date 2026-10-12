@@ -99,7 +99,7 @@ namespace BSPData
 	// Exact brush geometry / collision (plane-accurate).
 	// A cbrush_t is a convex polytope:
 	// the intersection of its sides' half-spaces (p is inside when normal.p <= dist for every side).
-	// These solve that polytope directly, so they avoid FindBrushPairAtSeam's derived-AABB blind spot for box-optimized / bevel-padded brushes.
+	// These solve that polytope directly (box-optimized brushes: their cboxbrush_t AABB).
 
 	// True if pos lies inside (or on) brush brushIdx.
 	bool PointInBrush(int brushIdx, const float pos[3]);
@@ -186,9 +186,7 @@ namespace BSPData
 	// Returns true and fills outLower/outUpper on success.
 	bool FindBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower, int &outUpper);
 
-	// Box-table analog of FindBrushPairAtSeam for CSGO box-optimized walls.
-	// Box brushes are absent from the leafbrush lump, and multiple cboxbrush_t entries can share one originalBrush index
-	// (collapsing in the cbrush-idx cache), so the regular pair finder misses them. Scans cboxbrush_t directly.
+	// Box-table analog of FindBrushPairAtSeam for CSGO box-optimized walls. Scans cboxbrush_t directly.
 	// Returns BOX-TABLE indices (NOT cbrush indices).
 	// Caller applies the contents/order policy.
 	bool FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower, int &outUpper);

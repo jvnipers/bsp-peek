@@ -37,7 +37,6 @@ namespace BSPData
 	static int OFF_CBOXBRUSH_MINS = 0;
 	static int OFF_CBOXBRUSH_MAXS = 16;
 	static int OFF_CBOXBRUSH_SURFIDX = 32;
-	static int OFF_CBOXBRUSH_BRUSHNUM = 44;
 	static int OFF_NUMCMODELS = 0;
 	static int OFF_MAP_CMODELS = 0;
 	static int OFF_MAP_PATHNAME = 4;
@@ -143,9 +142,12 @@ namespace BSPData
 	// Lets the plane-accurate accessors fall back to the box AABB for box-optimized brushes,
 	// whose cbrush_t sides are stripped / bevel-padded.
 	static std::vector<int> g_brushToBoxIdx;
+	// cboxbrush_t index -> owning cbrush index (-1 if none).
+	static std::vector<int> g_boxToBrushIdx;
 	static int g_boxBrushAuthBuiltFor = -1; // box count this set was built for
 
 	// Forward decls - built lazily by various accessors below.
+	static void EnsureBoxBrushAuthSet();
 	static void BuildBrushCache();
 	static void BuildLeafCache();
 	static void PopulateBrushCache(std::vector<BrushCacheEntry> &out);
@@ -180,7 +182,6 @@ namespace BSPData
 		OFF_CBOXBRUSH_MINS = GetKeyInt(gameconf, "cboxbrush_mins", 0);
 		OFF_CBOXBRUSH_MAXS = GetKeyInt(gameconf, "cboxbrush_maxs", 16);
 		OFF_CBOXBRUSH_SURFIDX = GetKeyInt(gameconf, "cboxbrush_surfidx", 32);
-		OFF_CBOXBRUSH_BRUSHNUM = GetKeyInt(gameconf, "cboxbrush_brushnum", 44);
 		OFF_NUMCMODELS = GetKeyInt(gameconf, "off_numcmodels", 0);
 		OFF_MAP_CMODELS = GetKeyInt(gameconf, "off_map_cmodels", 0);
 		OFF_MAP_PATHNAME = GetKeyInt(gameconf, "off_map_pathname", 4);
@@ -269,6 +270,7 @@ namespace BSPData
 		g_leafCacheBuilt = false;
 		g_boxBrushAuth.clear();
 		g_brushToBoxIdx.clear();
+		g_boxToBrushIdx.clear();
 		g_boxBrushAuthBuiltFor = -1;
 	}
 
@@ -282,6 +284,7 @@ namespace BSPData
 		g_leafCacheBuilt = false;
 		g_boxBrushAuth.clear();
 		g_brushToBoxIdx.clear();
+		g_boxToBrushIdx.clear();
 		g_boxBrushAuthBuiltFor = -1;
 	}
 
@@ -871,8 +874,13 @@ namespace BSPData
 		{
 			return false;
 		}
-		uint16_t numsides = BrushSideCount(b);
 		uint16_t first = ReadU16(b, OFF_CBRUSH_FIRSTBRUSHSIDE);
+		// Box brush: firstbrushside is the cboxbrush_t index. Read directly, this also runs on the async worker.
+		if (ReadU16(b, OFF_CBRUSH_NUMSIDES) == 0xFFFF)
+		{
+			return BoxBrushBounds((int)first, mins, maxs);
+		}
+		uint16_t numsides = BrushSideCount(b);
 		if (numsides == 0)
 		{
 			return false;
@@ -1389,12 +1397,16 @@ namespace BSPData
 
 	int BoxBrushOriginalBrush(int idx)
 	{
-		const uint8_t *b = boxbrush_at(idx);
-		if (!b)
+		if (idx < 0)
 		{
 			return -1;
 		}
-		return ReadI32(b, OFF_CBOXBRUSH_BRUSHNUM);
+		EnsureBoxBrushAuthSet();
+		if (idx >= (int)g_boxToBrushIdx.size())
+		{
+			return -1;
+		}
+		return g_boxToBrushIdx[idx];
 	}
 
 	bool BoxBrushSurfaceIndex(int idx, int outSurf[6])
@@ -1424,7 +1436,7 @@ namespace BSPData
 	// Build the cbrush -> isBoxBrush / cboxbrush-index maps from the CBRUSH side.
 	// A box-optimized cbrush is marked numsides == 0xFFFF and its firstbrushside field is repurposed as the cboxbrush_t index
 	// (NOT a brushside index), that is the cbrush -> box link.
-	// The cboxbrush 'brushnum' column is a SEPARATE index space that does not equal the cbrush index.
+	// cboxbrush_t has no link back, so the box -> cbrush map is inverted here.
 	static void EnsureBoxBrushAuthSet()
 	{
 		int nbox = GetNumBoxBrushes();
@@ -1439,6 +1451,7 @@ namespace BSPData
 		int nbrush = GetNumBrushes();
 		g_boxBrushAuth.assign(nbrush > 0 ? nbrush : 0, false);
 		g_brushToBoxIdx.assign(nbrush > 0 ? nbrush : 0, -1);
+		g_boxToBrushIdx.assign(nbox > 0 ? nbox : 0, -1);
 		for (int i = 0; i < nbrush; ++i)
 		{
 			const uint8_t *b = brush_at(i);
@@ -1455,6 +1468,7 @@ namespace BSPData
 			{
 				g_boxBrushAuth[i] = true;
 				g_brushToBoxIdx[i] = boxIdx;
+				g_boxToBrushIdx[boxIdx] = i;
 			}
 		}
 		g_boxBrushAuthBuiltFor = nbox;
@@ -2086,8 +2100,7 @@ namespace BSPData
 	}
 
 	// Box-table analog of FindBrushPairAtSeam (see header).
-	// Scans cboxbrush_t directly since box brushes are absent from the leafbrush lump
-	// and several entries can share one originalBrush index (collapsing in the cbrush cache).
+	// Scans cboxbrush_t directly and reports BOX-table indices.
 	bool FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower, int &outUpper)
 	{
 		outLower = -1;
@@ -2359,8 +2372,7 @@ namespace BSPData
 		return (outLowerPos >= 0 && outUpperPos >= 0 && outLowerPos < outUpperPos);
 	}
 
-	// Populate a brush AABB cache: plane-derived bounds + contents per brush,
-	// then fill box-optimized brushes from the cboxbrush_t table.
+	// Populate a brush AABB cache: bounds + contents per brush.
 	// Shared by the sync and async builders. Leaves `out` empty (= cache unbuilt) on bad counts.
 	static void PopulateBrushCache(std::vector<BrushCacheEntry> &out)
 	{
@@ -2376,31 +2388,6 @@ namespace BSPData
 			BrushCacheEntry &e = out[i];
 			e.valid = GetBrushBounds(i, e.mins, e.maxs);
 			e.contents = e.valid ? GetBrushContents(i) : 0;
-		}
-
-		// Box-optimized brushes have stripped sides, so GetBrushBounds yields an invalid AABB and they drop out of the cache.
-		// That is exactly a pixelsurf's bottom brush, so fill those gaps from the box-table bounds.
-		int nb = GetNumBoxBrushes();
-		for (int i = 0; i < nb; ++i)
-		{
-			int orig = BoxBrushOriginalBrush(i);
-			if (orig < 0 || orig >= n)
-			{
-				continue;
-			}
-			BrushCacheEntry &e = out[orig];
-			if (e.valid)
-			{
-				continue; // keep plane-derived bounds when we already have them
-			}
-			float bmins[3], bmaxs[3];
-			if (BoxBrushBounds(i, bmins, bmaxs))
-			{
-				memcpy(e.mins, bmins, sizeof(bmins));
-				memcpy(e.maxs, bmaxs, sizeof(bmaxs));
-				e.contents = BoxBrushContents(i);
-				e.valid = true;
-			}
 		}
 	}
 
