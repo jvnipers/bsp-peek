@@ -252,6 +252,7 @@ namespace BSPData
 		if (OFF_NUMBRUSHES < 0 || OFF_MAP_BRUSHES < 0 || OFF_NUMBRUSHSIDES < 0 || OFF_MAP_BRUSHSIDES < 0 || OFF_NUMPLANES < 0 || OFF_MAP_PLANES < 0)
 		{
 			snprintf(error, maxlen, "gamedata Keys missing required field offsets.");
+			g_pBSPData = nullptr;
 			return false;
 		}
 		return true;

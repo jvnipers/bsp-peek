@@ -16,10 +16,11 @@ bool BSPPeek::SDK_OnLoad(char *error, size_t maxlen, bool late)
 		return false;
 	}
 
-	if (!BSPData::Init(gameconf, error, maxlen))
+	// Non-fatal: disk lumps, displacements and props work without g_BSPData.
+	char dataErr[256] = {0};
+	if (!BSPData::Init(gameconf, dataErr, sizeof(dataErr)))
 	{
-		gameconfs->CloseGameConfigFile(gameconf);
-		return false;
+		smutils->LogError(myself, "Engine BSP data (brushes/leaves/nodes) disabled: %s", dataErr);
 	}
 
 	char dispEngErr[256] = {0};
