@@ -174,14 +174,15 @@ namespace BSPDisp
 			float minX, maxX, minY, maxY;
 		};
 
+		// Defaults = unparsed entry: no tris, inverted bbox.
 		struct Displacement
 		{
-			float bboxMins[3];
-			float bboxMaxs[3];
+			float bboxMins[3] = {1e30f, 1e30f, 1e30f};
+			float bboxMaxs[3] = {-1e30f, -1e30f, -1e30f};
 			std::vector<Triangle> tris;
-			float corner0[3], corner1[3], corner2[3], corner3[3];
-			int sourcePower;
-			int sourceMapFace;
+			float corner0[3] = {0, 0, 0}, corner1[3] = {0, 0, 0}, corner2[3] = {0, 0, 0}, corner3[3] = {0, 0, 0};
+			int sourcePower = 0;
+			int sourceMapFace = -1;
 		};
 
 		static std::vector<Displacement> g_disps;
@@ -530,8 +531,9 @@ namespace BSPDisp
 		const int32_t *surfedges = reinterpret_cast<const int32_t *>(surfedgesLump.data());
 		size_t numSurfedges = surfedgesLump.size() / disk::kSizeofSurfedge;
 
+		// One slot per dispinfo, so disk index == engine tree index.
 		size_t numDisps = dispInfoLump.size() / disk::kSizeofDispInfo;
-		disk::g_disps.reserve(numDisps);
+		disk::g_disps.resize(numDisps);
 
 		for (size_t i = 0; i < numDisps; i++)
 		{
@@ -554,18 +556,14 @@ namespace BSPDisp
 				continue;
 			}
 
-			disk::Displacement d;
+			disk::Displacement &d = disk::g_disps[i];
 			disk::BuildDispMesh(corners, (int)power, dispVertsLump.data(), dispVertsLump.size(), dispVertStart, d);
-			if (!d.tris.empty())
-			{
-				d.sourcePower = (int)power;
-				d.sourceMapFace = (int)mapFace;
-				std::memcpy(d.corner0, &corners[0], 12);
-				std::memcpy(d.corner1, &corners[1], 12);
-				std::memcpy(d.corner2, &corners[2], 12);
-				std::memcpy(d.corner3, &corners[3], 12);
-				disk::g_disps.push_back(std::move(d));
-			}
+			d.sourcePower = (int)power;
+			d.sourceMapFace = (int)mapFace;
+			std::memcpy(d.corner0, &corners[0], 12);
+			std::memcpy(d.corner1, &corners[1], 12);
+			std::memcpy(d.corner2, &corners[2], 12);
+			std::memcpy(d.corner3, &corners[3], 12);
 		}
 		return true;
 	}
@@ -1013,7 +1011,7 @@ namespace BSPDisp
 
 	bool DiskGetBounds(int idx, float mins[3], float maxs[3])
 	{
-		if (idx < 0 || (size_t)idx >= disk::g_disps.size())
+		if (idx < 0 || (size_t)idx >= disk::g_disps.size() || disk::g_disps[idx].tris.empty())
 		{
 			return false;
 		}

@@ -988,7 +988,7 @@ cell_t N_DispDiagnoseQuery(IPluginContext *pCtx, const cell_t *params)
 }
 
 // Displacement - disk-only (explicit fallback access)
-// Disk indices != engine indices.
+// Disk index == engine tree index.
 cell_t N_DispDiskCount(IPluginContext *, const cell_t *)
 {
 	EnsureDispLoaded();
