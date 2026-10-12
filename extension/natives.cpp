@@ -416,13 +416,31 @@ cell_t N_BrushSideWinding(IPluginContext *pCtx, const cell_t *params)
 	{
 		return 0;
 	}
-	std::vector<float> verts((size_t)maxVerts * 3, 0.0f);
-	int n = BSPData::BrushSideWinding(params[1], params[2], verts.data(), maxVerts);
+	if (maxVerts > 256) // BrushSideWinding never produces more
+	{
+		maxVerts = 256;
+	}
+	float verts[256 * 3];
+	int n = BSPData::BrushSideWinding(params[1], params[2], verts, maxVerts);
 	cell_t *out = nullptr;
 	pCtx->LocalToPhysAddr(params[3], &out);
-	for (int i = 0; i < n * 3; ++i)
+	// float[][3] starts with one indirection cell per row (absolute address since SM 1.11, relative before).
+	bool direct = pCtx->GetRuntime()->UsesDirectArrays();
+	for (int i = 0; i < n; ++i)
 	{
-		out[i] = sp_ftoc(verts[i]);
+		cell_t *row = nullptr;
+		if (direct)
+		{
+			pCtx->LocalToPhysAddr(out[i], &row);
+		}
+		else
+		{
+			row = reinterpret_cast<cell_t *>(reinterpret_cast<char *>(&out[i]) + out[i]);
+		}
+		for (int k = 0; k < 3; ++k)
+		{
+			row[k] = sp_ftoc(verts[i * 3 + k]);
+		}
 	}
 	return n;
 }

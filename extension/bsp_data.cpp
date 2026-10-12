@@ -1521,17 +1521,22 @@ namespace BSPData
 			return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 		}
 
-		inline void CrossV(const float a[3], const float b[3], float o[3])
+		inline double DotD(const double a[3], const double b[3])
+		{
+			return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+		}
+
+		inline void CrossD(const double a[3], const double b[3], double o[3])
 		{
 			o[0] = a[1] * b[2] - a[2] * b[1];
 			o[1] = a[2] * b[0] - a[0] * b[2];
 			o[2] = a[0] * b[1] - a[1] * b[0];
 		}
 
-		inline void NormV(float a[3])
+		inline void NormD(double a[3])
 		{
-			float l = std::sqrt(DotV(a, a));
-			if (l > 1e-9f)
+			double l = std::sqrt(DotD(a, a));
+			if (l > 1e-12)
 			{
 				a[0] /= l;
 				a[1] /= l;
@@ -1735,7 +1740,8 @@ namespace BSPData
 
 		// Seed a huge quad on the side's plane, oriented by an axis least parallel to the normal,
 		// then clip it down by every other side's half-space.
-		float seed[3] = {0, 0, 0};
+		// In double: a float resolves only ~1/64 unit at this radius.
+		double seed[3] = {0, 0, 0};
 		int least = 0;
 		for (int k = 1; k < 3; ++k)
 		{
@@ -1744,19 +1750,20 @@ namespace BSPData
 				least = k;
 			}
 		}
-		seed[least] = 1.0f;
-		float right[3], up[3];
-		CrossV(seed, n, right);
-		NormV(right);
-		CrossV(n, right, up);
-		NormV(up);
+		seed[least] = 1.0;
+		const double nd[3] = {n[0], n[1], n[2]};
+		double right[3], up[3];
+		CrossD(seed, nd, right);
+		NormD(right);
+		CrossD(nd, right, up);
+		NormD(up);
 
-		const float R = 131072.0f; // > 4 * MAX_COORD (32768) to span any CSGO map
-		float center[3] = {n[0] * d, n[1] * d, n[2] * d};
+		const double R = 131072.0; // > 4 * MAX_COORD (32768) to span any CSGO map
+		double center[3] = {nd[0] * d, nd[1] * d, nd[2] * d};
 
 		struct V3
 		{
-			float v[3];
+			double v[3];
 		};
 
 		std::vector<V3> poly;
@@ -1764,8 +1771,8 @@ namespace BSPData
 		for (int s = 0; s < 4; ++s)
 		{
 			// corners: (-,-), (+,-), (+,+), (-,+) about center in (right, up)
-			float sr = (s == 1 || s == 2) ? R : -R;
-			float su = (s >= 2) ? R : -R;
+			double sr = (s == 1 || s == 2) ? R : -R;
+			double su = (s >= 2) ? R : -R;
 			V3 p;
 			for (int k = 0; k < 3; ++k)
 			{
@@ -1786,6 +1793,7 @@ namespace BSPData
 			{
 				continue;
 			}
+			const double njd[3] = {nj[0], nj[1], nj[2]};
 			std::vector<V3> out;
 			out.reserve(poly.size() + 1);
 			size_t cnt = poly.size();
@@ -1793,15 +1801,15 @@ namespace BSPData
 			{
 				const V3 &A = poly[a];
 				const V3 &B = poly[(a + 1) % cnt];
-				float da = DotV(nj, A.v) - dj;
-				float db = DotV(nj, B.v) - dj;
-				if (da <= 0.0f)
+				double da = DotD(njd, A.v) - dj;
+				double db = DotD(njd, B.v) - dj;
+				if (da <= 0.0)
 				{
 					out.push_back(A);
 				}
-				if ((da <= 0.0f) != (db <= 0.0f))
+				if ((da <= 0.0) != (db <= 0.0))
 				{
-					float t = da / (da - db);
+					double t = da / (da - db);
 					V3 p;
 					for (int k = 0; k < 3; ++k)
 					{
@@ -1820,9 +1828,9 @@ namespace BSPData
 		int wrote = 0;
 		for (size_t i = 0; i < poly.size() && wrote < maxVerts; ++i, ++wrote)
 		{
-			outVerts[wrote * 3 + 0] = poly[i].v[0];
-			outVerts[wrote * 3 + 1] = poly[i].v[1];
-			outVerts[wrote * 3 + 2] = poly[i].v[2];
+			outVerts[wrote * 3 + 0] = (float)poly[i].v[0];
+			outVerts[wrote * 3 + 1] = (float)poly[i].v[1];
+			outVerts[wrote * 3 + 2] = (float)poly[i].v[2];
 		}
 		return wrote;
 	}

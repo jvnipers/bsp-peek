@@ -464,6 +464,9 @@ void Section_Brush(int b)
         float verts[32][3];
         int   nv = BSP_BrushSideWinding(b, 0, verts, sizeof verts);
         P("Side0 winding      : %d verts%s", nv, nv > 0 ? "" : " (box-optimized? use BoxBrushBounds)");
+        if (nv > 0)
+            P("Side0 vert0/last   : (%.2f %.2f %.2f) (%.2f %.2f %.2f)", verts[0][0], verts[0][1], verts[0][2],
+              verts[nv - 1][0], verts[nv - 1][1], verts[nv - 1][2]);
     }
 
     // Geometry / collision
