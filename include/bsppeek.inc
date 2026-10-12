@@ -526,8 +526,8 @@ native float BSP_WorldlightConstantAttn(int idx);     // attenuation: constant t
 native float BSP_WorldlightLinearAttn(int idx);       // attenuation: linear term
 native float BSP_WorldlightQuadraticAttn(int idx);    // attenuation: quadratic term
 native int   BSP_WorldlightFlags(int idx);            // DWL_FLAGS_* bitmask
-native int   BSP_WorldlightTexInfo(int idx);          // associated texinfo index for surface lights, -1 if none
-native int   BSP_WorldlightOwner(int idx);            // entity index owning this light, -1 if none
+native int   BSP_WorldlightTexInfo(int idx);          // associated texinfo index for surface lights (0 otherwise), -1 if OOB
+native int   BSP_WorldlightOwner(int idx);            // entity index owning this light (0 otherwise), -1 if OOB
 
 // Static props (sprp game lump in LUMP_GAME_LUMP)
 // Parsed at map load from the BSP file's version-stable StaticPropLump_t prefix.

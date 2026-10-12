@@ -110,10 +110,10 @@ namespace BSPLumps
 		// Sentinel returned by WaterSurfaceZAt when no water body contains pos.z.
 		constexpr float kWaterNoSurface = -1.0e30f;
 
-		// dcubemapsample_t = 16B: int origin[3] + int size
+		// dcubemapsample_t = 16B: int origin[3] + unsigned char size + 3B padding
 		constexpr int kSizeofCubemap = 16;
 		constexpr int kCubemap_Origin = 0; // int32[3]
-		constexpr int kCubemap_Size = 12;  // int32
+		constexpr int kCubemap_Size = 12;  // uint8
 
 		// dedge_t = 4B: uint16 v[2]
 		constexpr int kSizeofEdge = 4;
@@ -137,6 +137,7 @@ namespace BSPLumps
 		//   + linear_attn=4 + quadratic_attn=4 + flags=4 + texinfo=4 + owner=4
 		//   = 100 bytes. Actual size varies by SDK. CSGO is 100.
 		constexpr int kSizeofWorldlight = 100;
+		constexpr int kSizeofWorldlightV0 = 88; // lump version 0: no shadow_cast_offset
 		constexpr int kWL_Origin = 0;
 		constexpr int kWL_Intensity = 12;
 		constexpr int kWL_Normal = 24;
@@ -668,13 +669,20 @@ namespace BSPLumps
 		ReadFile(f, g.lumps[LUMP_LEAFFACES].fileofs, g.lumps[LUMP_LEAFFACES].filelen, g.leafFacesLump);
 
 		// Worldlights: prefer LDR (most maps), fall back to HDR if no LDR.
-		if (g.lumps[LUMP_WORLDLIGHTS_LDR].filelen > 0)
+		int wlLump = g.lumps[LUMP_WORLDLIGHTS_LDR].filelen > 0 ? LUMP_WORLDLIGHTS_LDR : LUMP_WORLDLIGHTS_HDR;
+		ReadFile(f, g.lumps[wlLump].fileofs, g.lumps[wlLump].filelen, g.worldlightsLump);
+		if (g.lumps[wlLump].version == 0)
 		{
-			ReadFile(f, g.lumps[LUMP_WORLDLIGHTS_LDR].fileofs, g.lumps[LUMP_WORLDLIGHTS_LDR].filelen, g.worldlightsLump);
-		}
-		else if (g.lumps[LUMP_WORLDLIGHTS_HDR].filelen > 0)
-		{
-			ReadFile(f, g.lumps[LUMP_WORLDLIGHTS_HDR].fileofs, g.lumps[LUMP_WORLDLIGHTS_HDR].filelen, g.worldlightsLump);
+			// v0 lacks shadow_cast_offset (88B). Widen with that field zeroed, as the engine does.
+			std::vector<uint8_t> wide(g.worldlightsLump.size() / kSizeofWorldlightV0 * kSizeofWorldlight, 0);
+			for (size_t i = 0; i < wide.size() / kSizeofWorldlight; ++i)
+			{
+				const uint8_t *src = g.worldlightsLump.data() + i * kSizeofWorldlightV0;
+				uint8_t *dst = wide.data() + i * kSizeofWorldlight;
+				std::memcpy(dst, src, kWL_ShadowOffset);
+				std::memcpy(dst + kWL_Cluster, src + kWL_ShadowOffset, kSizeofWorldlightV0 - kWL_ShadowOffset);
+			}
+			g.worldlightsLump.swap(wide);
 		}
 
 		// Static props (sprp game lump).
@@ -1060,7 +1068,7 @@ namespace BSPLumps
 		{
 			return -1;
 		}
-		return ReadI32(g.cubemapsLump.data() + (size_t)idx * kSizeofCubemap, kCubemap_Size);
+		return ReadU8(g.cubemapsLump.data() + (size_t)idx * kSizeofCubemap, kCubemap_Size);
 	}
 
 	// Edges
