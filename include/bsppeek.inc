@@ -616,8 +616,8 @@ native int   BSP_StaticPropDebug(char[] buf, int maxlen);
 // Sweeps an AABB [mins,maxs] against the WHOLE collision world via IEngineTrace::TraceRay (the player's collision path).
 // World brushes, displacements, and static props always participate.
 // Brush-model entities (func_*) participate only when hitEntities is true.
-// Dynamic point entities (players/NPCs) are never hit.
-//   mask         contents mask (e.g. BSPP_MASK_PLAYERCOLLIDE / MASK_PLAYERSOLID)
+// Studio-model entities (players, NPCs, prop_*) are never hit.
+//   mask         contents mask (e.g. BSPP_MASK_PLAYERCOLLIDE)
 //   fraction     1.0 = no contact, else fraction of the sweep completed
 //   endpos       hull center at the contact (or `end` if no hit)
 //   normal       impact plane normal

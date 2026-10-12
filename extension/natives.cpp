@@ -247,7 +247,7 @@ cell_t N_SelfTest(IPluginContext *, const cell_t *)
 	{
 		mask |= 0x10;
 	}
-	if (BSPProps::Ready())
+	if (BSPProps::Ready() || BSPProps::SweepReady())
 	{
 		mask |= 0x20;
 	}
