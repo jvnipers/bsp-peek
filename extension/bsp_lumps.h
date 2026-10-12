@@ -67,7 +67,7 @@ namespace BSPLumps
 	int CubemapCount();
 	// World-space origin (stored as int[3] in BSP, returned as float[3]). false if OOB.
 	bool CubemapOrigin(int idx, float out[3]);
-	// Resolution power: actual size = 2^size. 0 = default. -1 if OOB.
+	// Resolution power: actual size = 2^(size-1). 0 = default. -1 if OOB.
 	int CubemapSize(int idx);
 
 	// Edges (LUMP_EDGES = 12, dedge_t = 4B: uint16 v[2])
@@ -123,7 +123,7 @@ namespace BSPLumps
 	int LeafFaces(int leafIdx, int *outBuf, int maxOut);
 
 	// Worldlights (LUMP_WORLDLIGHTS = 15 LDR, LUMP_WORLDLIGHTS_HDR = 54)
-	int WorldlightCount(); // total across both LDR + HDR if present (LDR first)
+	int WorldlightCount(); // LDR lump if present, else HDR (never both)
 	// Fills basic fields. Returns false if invalid.
 	bool WorldlightOrigin(int idx, float out[3]);
 	bool WorldlightIntensity(int idx, float out[3]);
