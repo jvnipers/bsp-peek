@@ -1,6 +1,8 @@
 #include "bsp_data.h"
 #include "bsp_util.h"
 #include <atomic>
+#include <cfloat>
+#include <climits>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -1842,110 +1844,164 @@ namespace BSPData
 		normal[0] = normal[1] = normal[2] = 0.0f;
 		startSolid = false;
 
-		// Gather clipping planes. Box-optimized brushes have stripped sides,
-		// so synthesize 6 axis planes from the box AABB. Others use their cbrush_t sides.
-		float planeN[256][3];
-		float planeD[256];
-		int nplanes = 0;
+		const float DIST_EPSILON = 0.03125f; // 1/32, engine constant
+
+		// As Ray_t::Init: a ray through the hull center plus half-extents.
+		float p1[3], p2[3], delta[3], extents[3];
+		for (int k = 0; k < 3; ++k)
+		{
+			delta[k] = end[k] - start[k];
+			extents[k] = (maxs[k] - mins[k]) * 0.5f;
+			p1[k] = start[k] + (mins[k] + maxs[k]) * 0.5f;
+			p2[k] = p1[k] + delta[k];
+		}
+
 		int bi = BoxIndexForBrush(brushIdx);
 		if (bi >= 0)
 		{
+			// Port of IntersectRayWithBoxBrush.
 			float mn[3], mx[3];
 			if (!BoxBrushBounds(bi, mn, mx))
 			{
 				return -1;
 			}
-			const float axes[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-			const float dists[6] = {mx[0], -mn[0], mx[1], -mn[1], mx[2], -mn[2]};
-			for (int i = 0; i < 6; ++i)
-			{
-				planeN[i][0] = axes[i][0];
-				planeN[i][1] = axes[i][1];
-				planeN[i][2] = axes[i][2];
-				planeD[i] = dists[i];
-			}
-			nplanes = 6;
-		}
-		else
-		{
-			uint16_t numsides, first;
-			if (!brush_sides(brushIdx, numsides, first) || numsides == 0)
-			{
-				return -1;
-			}
-			for (uint16_t i = 0; i < numsides && nplanes < 256; ++i)
-			{
-				float n[3], d;
-				if (!side_plane(first, i, n, d))
-				{
-					return -1;
-				}
-				planeN[nplanes][0] = n[0];
-				planeN[nplanes][1] = n[1];
-				planeN[nplanes][2] = n[2];
-				planeD[nplanes] = d;
-				++nplanes;
-			}
-		}
-
-		const float DIST_EPSILON = 0.03125f; // 1/32, engine constant
-		float enterfrac = -1.0f, leavefrac = 1.0f;
-		float clipN[3] = {0, 0, 0};
-		bool gotClip = false, getout = false, startout = false;
-
-		for (int i = 0; i < nplanes; ++i)
-		{
-			const float *n = planeN[i];
-			float d = planeD[i];
-			// Push the plane out by the box extents (support point in -normal dir).
-			float offset[3];
+			float oMin[3], oMax[3], invDelta[3];
+			bool cross[3];
+			bool startOut = false;
 			for (int k = 0; k < 3; ++k)
 			{
-				offset[k] = (n[k] < 0.0f) ? maxs[k] : mins[k];
+				// Operand order as in engine.so, so rounding matches.
+				oMin[k] = (mn[k] - p1[k]) - extents[k];
+				oMax[k] = (extents[k] + mx[k]) - p1[k];
+				bool startOutMin = 0.0f < oMin[k], endOutMin = delta[k] < oMin[k];
+				bool startOutMax = 0.0f > oMax[k], endOutMax = delta[k] > oMax[k];
+				if ((startOutMin && endOutMin) || (startOutMax && endOutMax))
+				{
+					return 0;
+				}
+				cross[k] = (startOutMin != endOutMin) || (startOutMax != endOutMax);
+				startOut = startOut || startOutMin || startOutMax;
+				invDelta[k] = (delta[k] != 0.0f) ? 1.0f / delta[k] : FLT_MAX;
 			}
-			float dist = d - DotV(offset, n);
-			float d1 = DotV(start, n) - dist;
-			float d2 = DotV(end, n) - dist;
-			if (d2 > 0.0f)
+
+			// face: 0..2 = mins face of that axis, 3..5 = maxs face.
+			auto interval = [&](float eps, float &lastIn, float &firstOut, int &face)
 			{
-				getout = true; // endpoint outside this side
-			}
-			if (d1 > 0.0f)
-			{
-				startout = true; // startpoint outside this side
-			}
-			// Completely in front of a side and not crossing inward -> never hits.
-			if (d1 > 0.0f && (d2 >= DIST_EPSILON || d2 >= d1))
+				float mint[3], maxt[3];
+				int faceId[3];
+				for (int k = 0; k < 3; ++k)
+				{
+					float tmin = (oMin[k] - eps) * invDelta[k];
+					float tmax = (oMax[k] + eps) * invDelta[k];
+					faceId[k] = (tmin <= tmax) ? k : k + 3;
+					mint[k] = cross[k] ? std::fmin(tmin, tmax) : -FLT_MAX;
+					maxt[k] = cross[k] ? std::fmax(tmin, tmax) : FLT_MAX;
+				}
+				firstOut = std::fmin(std::fmin(maxt[0], std::fmin(maxt[1], maxt[2])), 1.0f);
+				// Tie order of the engine's SIMD max: y beats x, z beats both.
+				int hi = (mint[0] > mint[1]) ? 0 : 1;
+				if (!(mint[hi] > mint[2]))
+				{
+					hi = 2;
+				}
+				face = faceId[hi];
+				lastIn = std::fmax(mint[hi], 0.0f);
+			};
+
+			float lastIn, firstOut;
+			int face;
+			interval(0.0f, lastIn, firstOut, face);
+			if (lastIn > firstOut)
 			{
 				return 0;
 			}
-			if (d1 <= 0.0f && d2 <= 0.0f)
+			interval(DIST_EPSILON, lastIn, firstOut, face);
+			if (lastIn > firstOut)
 			{
-				continue;
+				return 0;
+			}
+			if (!startOut)
+			{
+				startSolid = true;
+				fraction = (firstOut >= 1.0f) ? 0.0f : 1.0f; // allsolid (never exits) -> blocked at 0
+				return 1;
+			}
+			if (lastIn < 1.0f)
+			{
+				fraction = lastIn;
+				normal[face % 3] = (face >= 3) ? 1.0f : -1.0f;
+				return 1;
+			}
+			return 0;
+		}
+
+		// Port of CM_ClipBoxToBrush.
+		uint16_t numsides, first;
+		if (!brush_sides(brushIdx, numsides, first) || numsides == 0)
+		{
+			return -1;
+		}
+		bool isPoint = DotV(extents, extents) < 1e-6f; // Ray_t::m_IsRay
+
+		const float NEVER_UPDATED = -99999.0f;
+		float enterfrac = NEVER_UPDATED, leavefrac = 1.0f;
+		float clipN[3] = {0, 0, 0};
+		bool getout = false, startout = false;
+
+		for (uint16_t i = 0; i < numsides; ++i)
+		{
+			float n[3], d;
+			if (!side_plane(first, i, n, d))
+			{
+				return -1;
+			}
+			float dist = d;
+			if (!isPoint)
+			{
+				// Summed in engine.so's order, so rounding matches.
+				dist = std::fabs(extents[2] * n[2]) + ((std::fabs(extents[1] * n[1]) + std::fabs(extents[0] * n[0])) + d);
+			}
+			else if (BrushSideBevel(brushIdx, i) == 1)
+			{
+				continue; // engine skips bevels on point traces
+			}
+			float d1 = DotV(p1, n) - dist;
+			float d2 = DotV(p2, n) - dist;
+			if (d1 > 0.0f)
+			{
+				startout = true;
+				if (d2 > 0.0f)
+				{
+					return 0; // completely in front of this side
+				}
+			}
+			else
+			{
+				if (d2 <= 0.0f)
+				{
+					continue;
+				}
+				getout = true; // endpoint is not in solid
 			}
 			if (d1 > d2)
 			{ // entering the brush across this side
-				float f = (d1 - DIST_EPSILON) / (d1 - d2);
+				float f = d1 - DIST_EPSILON;
 				if (f < 0.0f)
 				{
 					f = 0.0f;
 				}
+				f = f / (d1 - d2);
 				if (f > enterfrac)
 				{
 					enterfrac = f;
 					clipN[0] = n[0];
 					clipN[1] = n[1];
 					clipN[2] = n[2];
-					gotClip = true;
 				}
 			}
 			else
 			{ // leaving
 				float f = (d1 + DIST_EPSILON) / (d1 - d2);
-				if (f > 1.0f)
-				{
-					f = 1.0f;
-				}
 				if (f < leavefrac)
 				{
 					leavefrac = f;
@@ -1960,12 +2016,8 @@ namespace BSPData
 			fraction = getout ? 1.0f : 0.0f; // allsolid (never exits) -> blocked at 0
 			return 1;
 		}
-		if (enterfrac < leavefrac && enterfrac > -1.0f && gotClip)
+		if (enterfrac < leavefrac && enterfrac > NEVER_UPDATED && enterfrac < 1.0f)
 		{
-			if (enterfrac < 0.0f)
-			{
-				enterfrac = 0.0f;
-			}
 			fraction = enterfrac;
 			normal[0] = clipN[0];
 			normal[1] = clipN[1];
