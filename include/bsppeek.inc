@@ -169,10 +169,10 @@ native int  BSP_LeafContents(int leafIdx);
 native int  BSP_LeafCluster(int leafIdx);    // PVS cluster index
 native int  BSP_LeafArea(int leafIdx);       // area portal grouping (low 9 bits)
 native int  BSP_LeafFlags(int leafIdx);      // misc flags (high 7 bits of the same short)
-// First leaf-face index in the engine's leaf-face table. -1 if invalid.
-native int  BSP_LeafFirstFace(int leafIdx);
-// Number of faces belonging to this leaf. -1 if invalid.
-native int  BSP_LeafNumFaces(int leafIdx);
+// First entry of this leaf's run in the engine's displacement list. -1 if invalid.
+native int  BSP_LeafDispListStart(int leafIdx);
+// Number of displacements touching this leaf. -1 if invalid.
+native int  BSP_LeafDispCount(int leafIdx);
 // Leaf AABB via BSP tree-walk (splits parent box on axis-aligned planes). Lazy-built.
 native bool BSP_LeafBounds(int leafIdx, float mins[3], float maxs[3]);
 
@@ -497,8 +497,7 @@ native int   BSP_FaceLightOfs(int idx);
 // LeafFaces (LUMP_LEAFFACES, uint16 face index table)
 // Total leaf-face entries (sum across all leaves).
 native int   BSP_LeafFacesCount();
-// Read this leaf's face indices via cleaf_t.firstleafface/numleaffaces.
-// Returns count written. Convenience over LeafFirstFace + LeafNumFaces + table.
+// This leaf's face indices, from the on-disk leaf lump. leafIdx as from BSP_LeafAtPoint. Returns count written.
 native int   BSP_LeafFaces(int leafIdx, int[] buf, int max);
 
 // Worldlights (LDR preferred, HDR fallback)
@@ -759,8 +758,8 @@ public void __ext_bsppeek_SetNTVOptional()
     MarkNativeAsOptional("BSP_LeafCluster");
     MarkNativeAsOptional("BSP_LeafArea");
     MarkNativeAsOptional("BSP_LeafFlags");
-    MarkNativeAsOptional("BSP_LeafFirstFace");
-    MarkNativeAsOptional("BSP_LeafNumFaces");
+    MarkNativeAsOptional("BSP_LeafDispListStart");
+    MarkNativeAsOptional("BSP_LeafDispCount");
     MarkNativeAsOptional("BSP_LeafBounds");
     MarkNativeAsOptional("BSP_EmptyLeaf");
     MarkNativeAsOptional("BSP_SolidLeaf");

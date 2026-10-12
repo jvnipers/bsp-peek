@@ -34,6 +34,7 @@ namespace BSPLumps
 		constexpr int LUMP_EDGES = 12;
 		constexpr int LUMP_SURFEDGES = 13;
 		constexpr int LUMP_LIGHTING = 8;
+		constexpr int LUMP_LEAFS = 10;
 		constexpr int LUMP_WORLDLIGHTS_LDR = 15;
 		constexpr int LUMP_LEAFFACES = 16;
 		constexpr int LUMP_TEXINFO = 6;
@@ -90,6 +91,12 @@ namespace BSPLumps
 		constexpr int kFace_LightOfs = 20; // int32
 		constexpr int kFace_Area = 24;     // float
 		constexpr int kFace_OrigFace = 44; // int32
+
+		// dleaf_t = 32B (lump v1) or 56B (v0). The fields read here share offsets.
+		constexpr int kSizeofLeaf = 32;
+		constexpr int kSizeofLeafV0 = 56;
+		constexpr int kLeaf_FirstLeafFace = 20; // uint16
+		constexpr int kLeaf_NumLeafFaces = 22;  // uint16
 
 		// dleafwaterdata_t: float surfaceZ + float minZ + short surfaceTexInfoID.
 		// Natural size 10, but 4-byte alignment pads sizeof to 12 (the stride vbsp wrote).
@@ -207,6 +214,7 @@ namespace BSPLumps
 			std::vector<uint8_t> texdataStringTable; // array of int32 offsets
 			std::vector<uint8_t> texdataStringData;  // packed null-terminated names
 
+			std::vector<uint8_t> leafsLump;     // array of dleaf_t
 			std::vector<uint8_t> leafFacesLump; // array of uint16
 
 			std::vector<uint8_t> worldlightsLump; // LDR or HDR (LDR preferred)
@@ -517,6 +525,7 @@ namespace BSPLumps
 		g.texdataLump.clear();
 		g.texdataStringTable.clear();
 		g.texdataStringData.clear();
+		g.leafsLump.clear();
 		g.leafFacesLump.clear();
 		g.worldlightsLump.clear();
 		g.staticPropVersion = 0;
@@ -615,7 +624,8 @@ namespace BSPLumps
 		ReadFile(f, g.lumps[LUMP_TEXDATA_STRING_TABLE].fileofs, g.lumps[LUMP_TEXDATA_STRING_TABLE].filelen, g.texdataStringTable);
 		ReadFile(f, g.lumps[LUMP_TEXDATA_STRING_DATA].fileofs, g.lumps[LUMP_TEXDATA_STRING_DATA].filelen, g.texdataStringData);
 
-		// LeafFaces
+		// Leafs + LeafFaces
+		ReadFile(f, g.lumps[LUMP_LEAFS].fileofs, g.lumps[LUMP_LEAFS].filelen, g.leafsLump);
 		ReadFile(f, g.lumps[LUMP_LEAFFACES].fileofs, g.lumps[LUMP_LEAFFACES].filelen, g.leafFacesLump);
 
 		// Worldlights: prefer LDR (most maps), fall back to HDR if no LDR.
@@ -1282,26 +1292,32 @@ namespace BSPLumps
 		return g.loaded ? (int)(g.leafFacesLump.size() / 2) : 0;
 	}
 
-	int LeafFacesRange(int firstFace, int numFaces, int *outBuf, int maxOut)
+	int LeafFaces(int leafIdx, int *outBuf, int maxOut)
 	{
-		if (!outBuf || maxOut <= 0)
+		size_t stride = (g.lumps[LUMP_LEAFS].version == 0) ? kSizeofLeafV0 : kSizeofLeaf;
+		if (!g.loaded || !outBuf || maxOut <= 0 || leafIdx < 0 || (size_t)(leafIdx + 1) * stride > g.leafsLump.size())
 		{
 			return 0;
 		}
+		const uint8_t *leaf = g.leafsLump.data() + (size_t)leafIdx * stride;
+		int first = ReadU16(leaf, kLeaf_FirstLeafFace);
+		int n = ReadU16(leaf, kLeaf_NumLeafFaces);
 		int total = LeafFacesCount();
-		if (firstFace < 0 || numFaces <= 0 || firstFace >= total)
+		if (first >= total)
 		{
 			return 0;
 		}
-		if (firstFace + numFaces > total)
+		if (first + n > total)
 		{
-			numFaces = total - firstFace;
+			n = total - first;
 		}
-		int n = numFaces > maxOut ? maxOut : numFaces;
-		const uint16_t *table = (const uint16_t *)g.leafFacesLump.data();
+		if (n > maxOut)
+		{
+			n = maxOut;
+		}
 		for (int i = 0; i < n; ++i)
 		{
-			outBuf[i] = (int)table[firstFace + i];
+			outBuf[i] = (int)ReadU16(g.leafFacesLump.data(), (first + i) * 2);
 		}
 		return n;
 	}

@@ -556,14 +556,14 @@ cell_t N_LeafFlags(IPluginContext *pCtx, const cell_t *params)
 	return BSPData::LeafFlags(params[1]);
 }
 
-cell_t N_LeafFirstFace(IPluginContext *, const cell_t *params)
+cell_t N_LeafDispListStart(IPluginContext *, const cell_t *params)
 {
-	return BSPData::LeafFirstFace(params[1]);
+	return BSPData::LeafDispListStart(params[1]);
 }
 
-cell_t N_LeafNumFaces(IPluginContext *, const cell_t *params)
+cell_t N_LeafDispCount(IPluginContext *, const cell_t *params)
 {
-	return BSPData::LeafNumFaces(params[1]);
+	return BSPData::LeafDispCount(params[1]);
 }
 
 cell_t N_LeafBounds(IPluginContext *pCtx, const cell_t *params)
@@ -1381,13 +1381,6 @@ cell_t N_LeafFacesCount(IPluginContext *, const cell_t *)
 cell_t N_LeafFaces(IPluginContext *pCtx, const cell_t *params)
 {
 	EnsureLumpsLoaded();
-	int leafIdx = params[1];
-	int firstFace = BSPData::LeafFirstFace(leafIdx);
-	int numFaces = BSPData::LeafNumFaces(leafIdx);
-	if (firstFace < 0 || numFaces <= 0)
-	{
-		return 0;
-	}
 	cell_t *buf;
 	pCtx->LocalToPhysAddr(params[2], &buf);
 	int maxOut = params[3];
@@ -1396,7 +1389,7 @@ cell_t N_LeafFaces(IPluginContext *pCtx, const cell_t *params)
 		return 0;
 	}
 	std::vector<int> tmp(maxOut);
-	int n = BSPLumps::LeafFacesRange(firstFace, numFaces, tmp.data(), maxOut);
+	int n = BSPLumps::LeafFaces(params[1], tmp.data(), maxOut);
 	for (int i = 0; i < n; ++i)
 	{
 		buf[i] = tmp[i];
@@ -2124,8 +2117,8 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 	{"BSP_LeafCluster", N_LeafCluster},
 	{"BSP_LeafArea", N_LeafArea},
 	{"BSP_LeafFlags", N_LeafFlags},
-	{"BSP_LeafFirstFace", N_LeafFirstFace},
-	{"BSP_LeafNumFaces", N_LeafNumFaces},
+	{"BSP_LeafDispListStart", N_LeafDispListStart},
+	{"BSP_LeafDispCount", N_LeafDispCount},
 	{"BSP_LeafBounds", N_LeafBounds},
 
 	// Node accessors

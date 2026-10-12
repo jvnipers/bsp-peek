@@ -352,20 +352,17 @@
             //   short   area:9 flags:7;    // 0x06
             //   ushort  firstleafbrush;    // 0x08
             //   ushort  numleafbrushes;    // 0x0A
-            //   ushort  firstleafface;     // 0x0C
-            //   ushort  numleaffaces;      // 0x0E
-            //   short   dispCount;         // 0x10
-            //   short   dispListStart;     // 0x12
-            //   sizeof(cleaf_t)            = 0x14
+            //   ushort  dispListStart;     // 0x0C
+            //   ushort  dispCount;         // 0x0E
+            //   sizeof(cleaf_t)            = 0x10
             "cleaf_contents"         "0"   // int contents (Linux fn 0x1E9340 reads at +0)
             "cleaf_cluster"          "4"   // short cluster  (Linux fn 0x1E9380 reads at +4)
             "cleaf_area_flags"       "6"   // short {area:9, flags:7} (Linux fn 0x1E93C0 reads byte at +7)
             "cleaf_firstleafbrush"   "8"
             "cleaf_numleafbrushes"   "10"
-            // +12 is firstleafface (ushort), NOT leafWaterDataID.
-            // leafWaterDataID not preserved in CSGO runtime cleaf_t.
-            "cleaf_firstleafface"    "12"
-            "cleaf_numleaffaces"     "14"
+            // Runtime cleaf_t keeps neither leaf faces nor leafWaterDataID (on-disk dleaf_t only).
+            "cleaf_displiststart"    "12"
+            "cleaf_dispcount"        "14"
             "cleaf_sizeof"           "16"  // engine does `shl idx, 4`
         }
     }

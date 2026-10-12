@@ -353,9 +353,9 @@ void Section_Point()
 
     if (leaf >= 0)
     {
-        P("Leaf %d            : contents=0x%X cluster=%d area=%d flags=0x%X firstFace=%d numFaces=%d",
+        P("Leaf %d            : contents=0x%X cluster=%d area=%d flags=0x%X dispListStart=%d dispCount=%d",
           leaf, BSP_LeafContents(leaf), BSP_LeafCluster(leaf), BSP_LeafArea(leaf),
-          BSP_LeafFlags(leaf), BSP_LeafFirstFace(leaf), BSP_LeafNumFaces(leaf));
+          BSP_LeafFlags(leaf), BSP_LeafDispListStart(leaf), BSP_LeafDispCount(leaf));
         float lmin[3], lmax[3];
         if (BSP_LeafBounds(leaf, lmin, lmax))
             P("Leaf bounds        : (%.0f %.0f %.0f)-(%.0f %.0f %.0f)", lmin[0], lmin[1], lmin[2], lmax[0], lmax[1], lmax[2]);
@@ -368,7 +368,7 @@ void Section_Point()
 
         int lf[64];
         int nf = BSP_LeafFaces(leaf, lf, sizeof lf);
-        P("LeafFaces          : %d", nf);
+        P("LeafFaces          : %d  first=%d", nf, nf > 0 ? lf[0] : -1);
     }
 
     // Node walk (root)

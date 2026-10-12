@@ -145,10 +145,10 @@ namespace BSPData
 	int LeafArea(int leafIdx);
 	// Leaf flags (high 7 bits of cleaf_t+6 short). -1 if invalid.
 	int LeafFlags(int leafIdx);
-	// First leaf face index in the leaf-face table. -1 if invalid.
-	int LeafFirstFace(int leafIdx);
-	// Number of faces in this leaf. -1 if invalid.
-	int LeafNumFaces(int leafIdx);
+	// First entry of this leaf's run in the engine's map_dispList table (cleaf_t+12). -1 if invalid.
+	int LeafDispListStart(int leafIdx);
+	// Number of displacements touching this leaf (cleaf_t+14). -1 if invalid.
+	int LeafDispCount(int leafIdx);
 	// Leaf AABB via BSP tree-walk. Builds leaf cache lazily on first call.
 	bool LeafBounds(int leafIdx, float mins[3], float maxs[3]);
 
