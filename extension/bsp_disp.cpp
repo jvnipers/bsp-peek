@@ -54,7 +54,8 @@ namespace BSPDisp
 
 		static int SZ_DISPCOLL_TRI = 24;
 		static int OFF_TRI_INDICES = 0;
-		static int OFF_TRI_NORMAL = 8; // Vector m_vecNormal within CDispCollTri
+		constexpr uint16_t TRI_VERT_MASK = 0x1FF; // index_t::uiVert is 9 bits
+		static int OFF_TRI_NORMAL = 8;            // Vector m_vecNormal within CDispCollTri
 
 		static int SZ_VERT = 12;
 
@@ -127,9 +128,9 @@ namespace BSPDisp
 			for (int t = 0; t < trisCnt; t++)
 			{
 				const uint8_t *triRec = trisPtr + (size_t)t * SZ_DISPCOLL_TRI;
-				uint16_t i0 = triRec[OFF_TRI_INDICES + 0];
-				uint16_t i1 = triRec[OFF_TRI_INDICES + 2];
-				uint16_t i2 = triRec[OFF_TRI_INDICES + 4];
+				uint16_t i0 = ReadU16(triRec, OFF_TRI_INDICES + 0) & TRI_VERT_MASK;
+				uint16_t i1 = ReadU16(triRec, OFF_TRI_INDICES + 2) & TRI_VERT_MASK;
+				uint16_t i2 = ReadU16(triRec, OFF_TRI_INDICES + 4) & TRI_VERT_MASK;
 				if (i0 >= vertsCnt || i1 >= vertsCnt || i2 >= vertsCnt)
 				{
 					continue;
@@ -945,9 +946,9 @@ namespace BSPDisp
 		for (int t = 0; t < trisCnt; t++)
 		{
 			const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;
-			uint16_t i0 = triRec[engine::OFF_TRI_INDICES + 0];
-			uint16_t i1 = triRec[engine::OFF_TRI_INDICES + 2];
-			uint16_t i2 = triRec[engine::OFF_TRI_INDICES + 4];
+			uint16_t i0 = ReadU16(triRec, engine::OFF_TRI_INDICES + 0) & engine::TRI_VERT_MASK;
+			uint16_t i1 = ReadU16(triRec, engine::OFF_TRI_INDICES + 2) & engine::TRI_VERT_MASK;
+			uint16_t i2 = ReadU16(triRec, engine::OFF_TRI_INDICES + 4) & engine::TRI_VERT_MASK;
 			if (i0 >= vertsCnt || i1 >= vertsCnt || i2 >= vertsCnt)
 			{
 				trisInvalidIdx++;
@@ -1382,9 +1383,9 @@ namespace BSPDisp
 				for (int t = 0; t < trisCnt && count < maxResults; t++)
 				{
 					const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;
-					uint16_t i0 = triRec[engine::OFF_TRI_INDICES + 0];
-					uint16_t i1 = triRec[engine::OFF_TRI_INDICES + 2];
-					uint16_t i2 = triRec[engine::OFF_TRI_INDICES + 4];
+					uint16_t i0 = ReadU16(triRec, engine::OFF_TRI_INDICES + 0) & engine::TRI_VERT_MASK;
+					uint16_t i1 = ReadU16(triRec, engine::OFF_TRI_INDICES + 2) & engine::TRI_VERT_MASK;
+					uint16_t i2 = ReadU16(triRec, engine::OFF_TRI_INDICES + 4) & engine::TRI_VERT_MASK;
 					if (i0 >= vertsCnt || i1 >= vertsCnt || i2 >= vertsCnt)
 					{
 						continue;
