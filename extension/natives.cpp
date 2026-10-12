@@ -464,14 +464,12 @@ cell_t N_BrushSideWinding(IPluginContext *pCtx, const cell_t *params)
 	bool direct = pCtx->GetRuntime()->UsesDirectArrays();
 	for (int i = 0; i < n; ++i)
 	{
+		// If maxVerts exceeds the plugin's first dimension, cells past it are vert data, not row addresses.
+		ucell_t rowAddr = direct ? (ucell_t)out[i] : (ucell_t)params[3] + i * sizeof(cell_t) + (ucell_t)out[i];
 		cell_t *row = nullptr;
-		if (direct)
+		if (pCtx->LocalToPhysAddr((cell_t)rowAddr, &row) != SP_ERROR_NONE)
 		{
-			pCtx->LocalToPhysAddr(out[i], &row);
-		}
-		else
-		{
-			row = reinterpret_cast<cell_t *>(reinterpret_cast<char *>(&out[i]) + out[i]);
+			return pCtx->ThrowNativeError("verts row %d is not a valid array row (maxVerts %d larger than verts?)", i, params[4]);
 		}
 		for (int k = 0; k < 3; ++k)
 		{
