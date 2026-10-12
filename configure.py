@@ -42,7 +42,7 @@ parser.options.add_argument(
     type=str,
     dest="hl2sdk_path",
     default="../hl2sdk-csgo",
-    help="Path to HL2SDK (CSGO). Defaults to vendored hl2sdk-csgo / $HL2SDKCSGO",
+    help="Path to HL2SDK (CSGO). Defaults to the vendored hl2sdk-csgo submodule",
 )
 parser.options.add_argument(
     "--enable-debug",
