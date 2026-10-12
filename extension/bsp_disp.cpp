@@ -93,17 +93,10 @@ namespace BSPDisp
 			{
 				return false;
 			}
+			// No upper bound: 32-bit srcds on a 64-bit kernel maps memory up to 4 GB.
 			uintptr_t vp = reinterpret_cast<uintptr_t>(ReadPtr(tree, OFF_TREE_VERTS_PTR));
 			uintptr_t tp = reinterpret_cast<uintptr_t>(ReadPtr(tree, OFF_TREE_TRIS_PTR));
-			if (vp < 0x10000 || vp >= 0xF0000000)
-			{
-				return false;
-			}
-			if (tp < 0x10000 || tp >= 0xF0000000)
-			{
-				return false;
-			}
-			return true;
+			return vp >= 0x10000 && tp >= 0x10000;
 		}
 
 		// Read a tree's AABB (mins/maxs, 3 floats each) from its struct fields.
@@ -871,6 +864,12 @@ namespace BSPDisp
 			return std::snprintf(buf, bufLen, "engine disp tree idx %d unavailable (ready=%d count=%d)", idx, EngineReady() ? 1 : 0, EngineCount());
 		}
 		const uint8_t *tree = engine::TreePtr(idx);
+		if (!tree)
+		{
+			return std::snprintf(buf, bufLen, "engine disp tree idx %d: null tree array", idx);
+		}
+		// Fields print raw even if not sane. Only the pointer derefs are guarded.
+		bool sane = engine::IsTreeSane(tree);
 		Vec3 mn = {0, 0, 0}, mx = {0, 0, 0};
 		std::memcpy(&mn, tree + engine::OFF_TREE_MINS, sizeof(Vec3));
 		std::memcpy(&mx, tree + engine::OFF_TREE_MAXS, sizeof(Vec3));
@@ -880,12 +879,11 @@ namespace BSPDisp
 		void *vp = ReadPtr(tree, engine::OFF_TREE_VERTS_PTR);
 		void *tp = ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
 
-		auto dumpHex = [](const void *p, char *out, size_t outLen, int n)
+		auto dumpHex = [sane](const void *p, char *out, size_t outLen, int n)
 		{
-			uintptr_t pi = reinterpret_cast<uintptr_t>(p);
-			if (!p || pi <= 0x10000 || pi >= 0xF0000000)
+			if (!sane)
 			{
-				std::snprintf(out, outLen, "(unmapped)");
+				std::snprintf(out, outLen, "(tree not sane, not read)");
 				return;
 			}
 			const uint8_t *b = (const uint8_t *)p;
@@ -938,6 +936,11 @@ namespace BSPDisp
 			return std::snprintf(buf, bufLen, "diag (%.3f,%.3f): 0/%d trees AABB-cover point", x, y, treeCount);
 		}
 		const uint8_t *tree = engine::TreePtr(firstTree);
+		if (!engine::IsTreeSane(tree))
+		{
+			return std::snprintf(buf, bufLen, "diag (%.3f,%.3f): AABB-trees=%d, first=%d fails the sanity check (bad signature / stale memory?)", x,
+								 y, treesAABB, firstTree);
+		}
 		const uint8_t *vertsPtr = (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_VERTS_PTR);
 		int vertsCnt = ReadI32(tree, engine::OFF_TREE_VERTS_CNT);
 		const uint8_t *trisPtr = (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
@@ -969,7 +972,7 @@ namespace BSPDisp
 			}
 			trisBboxPass++;
 			float denom = (v1.y - v2.y) * (v0.x - v2.x) + (v2.x - v1.x) * (v0.y - v2.y);
-			if (std::fabs(denom) < 2.0f)
+			if (std::fabs(denom) < BSPUtil::kTriDegenerateDenom)
 			{
 				trisDegen++;
 				continue;

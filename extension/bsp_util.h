@@ -63,13 +63,15 @@ namespace BSPUtil
 		return (s && *s) ? std::atoi(s) : defaultVal;
 	}
 
+	// denom = twice the XY area. Small power-4 tris reach ~1, so only truly vertical ones are rejected.
+	constexpr float kTriDegenerateDenom = 1e-3f;
+
 	// Barycentric Z interpolation in XY plane.
 	// Returns interpolated Z if (x,y) is inside triangle, else NaN.
-	// Rejects near-vertical tris (|denom| < 2).
 	inline float TriHeightZXY(const Vec3 &a, const Vec3 &b, const Vec3 &c, float x, float y)
 	{
 		float denom = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
-		if (std::fabs(denom) < 2.0f)
+		if (std::fabs(denom) < kTriDegenerateDenom)
 		{
 			return NAN;
 		}
