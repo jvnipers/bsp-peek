@@ -374,7 +374,7 @@ native int   BSP_DispDiagnoseQuery(float x, float y, char[] buf, int maxlen);
 
 // - Disk-only explicit access -
 // Disk-parsed disp data, separate from engine reader.
-// NOTE: disk indices do NOT correspond to engine indices.
+// Disk index == engine tree index. Unparsed entries keep their slot (BSP_DispDiskBounds returns false).
 
 native int   BSP_DispDiskCount();
 native bool  BSP_DispDiskBounds(int idx, float mins[3], float maxs[3]);
