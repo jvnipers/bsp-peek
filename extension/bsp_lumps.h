@@ -38,7 +38,7 @@ namespace BSPLumps
 	// Returns -1 if the entity has no "model" key, the value is a studio/.mdl path rather than a "*N" reference, or idx is OOB.
 	int EntityModelIndex(int idx);
 
-	// Texinfo (LUMP_TEXINFO = 18) + Texdata (LUMP_TEXDATA = 2)
+	// Texinfo (LUMP_TEXINFO = 6) + Texdata (LUMP_TEXDATA = 2)
 	int TexInfoCount();
 	int TexInfoFlags(int idx);   // SURF_* flags
 	int TexInfoTexData(int idx); // texdata index, -1 if invalid

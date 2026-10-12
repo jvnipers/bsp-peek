@@ -36,7 +36,7 @@ namespace BSPLumps
 		constexpr int LUMP_LIGHTING = 8;
 		constexpr int LUMP_WORLDLIGHTS_LDR = 15;
 		constexpr int LUMP_LEAFFACES = 16;
-		constexpr int LUMP_TEXINFO = 18;
+		constexpr int LUMP_TEXINFO = 6;
 		constexpr int LUMP_LEAFWATERDATA = 36;
 		constexpr int LUMP_CUBEMAPS = 42;
 		constexpr int LUMP_TEXDATA_STRING_DATA = 43;
@@ -111,10 +111,10 @@ namespace BSPLumps
 		// surfedges: int32 array, 4B each
 		constexpr int kSizeofSurfedge = 4;
 
-		// dtexinfo_t: textureVecs[2][4]=64B + texdata=4B + flags=4B = 72B
+		// texinfo_t: textureVecs[2][4]=32B + lightmapVecs[2][4]=32B + flags=4B + texdata=4B = 72B
 		constexpr int kSizeofTexInfo = 72;
-		constexpr int kTexInfo_TexData = 64;
-		constexpr int kTexInfo_Flags = 68;
+		constexpr int kTexInfo_Flags = 64;
+		constexpr int kTexInfo_TexData = 68;
 
 		// dtexdata_t: reflectivity[3]=12B + nameStringTableID=4 + width=4 + height=4
 		//             + view_width=4 + view_height=4 = 32B
