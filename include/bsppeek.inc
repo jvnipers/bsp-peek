@@ -355,8 +355,9 @@ native int   BSP_DispGetPower(int idx);
 // m_nContents from engine tree[idx] (CONTENTS_* flags). 0 if unavailable.
 native int   BSP_DispGetContents(int idx);
 
-// m_nSurfaceProps[4] (4 shorts) from engine tree[idx]. false if unavailable.
-native bool  BSP_DispGetSurfaceProps(int idx, int props[4]);
+// Physics surfaceprop indices of engine tree[idx]: $surfaceprop..$surfaceprop4. false if unavailable.
+// alphaProp = $surfacepropalpha: garbage unless the material sets it.
+native bool  BSP_DispGetSurfaceProps(int idx, int props[4], int &alphaProp = 0);
 
 // Vertex/triangle counts from engine tree[idx]. -1 if unavailable.
 native int   BSP_DispVertCount(int idx);

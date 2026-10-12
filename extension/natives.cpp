@@ -932,13 +932,20 @@ cell_t N_DispGetContents(IPluginContext *pCtx, const cell_t *params)
 
 cell_t N_DispGetSurfaceProps(IPluginContext *pCtx, const cell_t *params)
 {
-	int props[4] = {0, 0, 0, 0};
+	int props[5] = {0, 0, 0, 0, 0};
 	bool ok = BSPDisp::EngineGetSurfaceProps(params[1], props);
 	cell_t *outProps = nullptr;
 	pCtx->LocalToPhysAddr(params[2], &outProps);
 	for (int i = 0; i < 4; ++i)
 	{
 		outProps[i] = props[i];
+	}
+	// By-ref param, not a 5th array cell: older plugins pass a 4-cell array.
+	if (params[0] >= 3)
+	{
+		cell_t *outAlpha = nullptr;
+		pCtx->LocalToPhysAddr(params[3], &outAlpha);
+		*outAlpha = props[4];
 	}
 	return ok ? 1 : 0;
 }

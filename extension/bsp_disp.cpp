@@ -1124,7 +1124,7 @@ namespace BSPDisp
 		return ReadI32(tree, engine::OFF_TREE_CONTENTS);
 	}
 
-	bool EngineGetSurfaceProps(int idx, int props[4])
+	bool EngineGetSurfaceProps(int idx, int props[5])
 	{
 		if (!EngineReady() || idx < 0 || idx >= EngineCount())
 		{
@@ -1135,8 +1135,8 @@ namespace BSPDisp
 		{
 			return false;
 		}
-		// m_nSurfaceProps[4] is array of shorts.
-		for (int i = 0; i < 4; i++)
+		// [4] = $surfacepropalpha. The engine leaves it uninitialized unless the material sets it.
+		for (int i = 0; i < 5; i++)
 		{
 			int16_t v;
 			std::memcpy(&v, tree + engine::OFF_TREE_SURFPROPS + i * 2, 2);
