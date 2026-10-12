@@ -454,9 +454,9 @@ void Section_Brush(int b)
     {
         float n[3], d;
         if (BSP_BrushSidePlane(b, 0, n, d))
-            P("Side0 plane        : (%.2f %.2f %.2f) d=%.2f bevel=%d thin=%d texinfo=%d planeIdx=%d",
+            P("Side0 plane        : (%.2f %.2f %.2f) d=%.2f bevel=%d thin=%d texdata=%d planeIdx=%d",
               n[0], n[1], n[2], d, BSP_BrushSideBevel(b, 0), BSP_BrushSideThin(b, 0),
-              BSP_BrushSideTexInfo(b, 0), BSP_BrushSidePlaneIndex(b, 0));
+              BSP_BrushSideTexData(b, 0), BSP_BrushSidePlaneIndex(b, 0));
         char mat[128];
         BSP_BrushSideMaterial(b, 0, mat, sizeof mat);
         P("Side0 material     : %s", mat);

@@ -103,14 +103,12 @@ native bool BSP_BrushSidePlane(int brushIdx, int sideIdx, float normal[3], float
 native int  BSP_BrushSideBevel(int brushIdx, int sideIdx);
 // Is this a thin side? (0=no, 1=yes, -1=invalid).
 native int  BSP_BrushSideThin(int brushIdx, int sideIdx);
-// Texinfo table index for this side. -1 if invalid.
-native int  BSP_BrushSideTexInfo(int brushIdx, int sideIdx);
+// TEXDATA index for this side (see BSP_TexDataMaterialName). -1 if invalid or none.
+native int  BSP_BrushSideTexData(int brushIdx, int sideIdx);
 // Plane-table index for this side (see BSP_PlaneAt).
 // -1 if invalid or the side's plane pointer doesn't land on a map_planes entry.
 native int  BSP_BrushSidePlaneIndex(int brushIdx, int sideIdx);
-// Material name for this side (chains engine texinfo -> disk texdata -> string).
-// Returns length. 0 for tool/nodraw sides with no texdata, or if invalid.
-// Assumes engine texinfo index == disk LUMP_TEXINFO index (true on CSGO).
+// Material name for this side. Returns length, 0 if none or invalid.
 native int  BSP_BrushSideMaterial(int brushIdx, int sideIdx, char[] buf, int maxlen);
 
 // Exact box-brush test: true iff brushIdx is a box-optimized cbrush
@@ -198,7 +196,7 @@ native int  BSP_PlaneType(int planeIdx);
 native bool BSP_BoxBrushBounds(int idx, float mins[3], float maxs[3]);
 // Original cbrush_t index this box brush was derived from. -1 if invalid.
 native int  BSP_BoxBrushOriginalBrush(int idx);
-// Per-face surface property indices: surf[6] = {-X,+X,-Y,+Y,-Z,+Z}.
+// Per-face TEXDATA indices: surf[6] = {-X,-Y,-Z,+X,+Y,+Z}. Not a physics surfaceprop index.
 native bool BSP_BoxBrushSurfaceIndex(int idx, int surf[6]);
 // Contents flags via originalBrush lookup. 0 if invalid.
 native int  BSP_BoxBrushContents(int idx);
@@ -636,8 +634,8 @@ native int   BSP_TraceHull(const float start[3], const float end[3],
 
 // Surface physics properties (friction / surfaceprop).
 // Resolved from the live IPhysicsSurfaceProps singleton in loaded vphysics.
-// `idx` is a PHYSICS surfaceprop-database index (as returned by BSP_TraceHull's surfaceProps, BSP_DispGetSurfaceProps, BSP_BoxBrushSurfaceIndex).
-// NOT a texdata index (BSP_BrushSideMaterial / BSP_TexDataMaterialName differ).
+// `idx` is a PHYSICS surfaceprop-database index (as returned by BSP_TraceHull's surfaceProps, BSP_DispGetSurfaceProps).
+// NOT a texdata index (BSP_BrushSideTexData / BSP_BoxBrushSurfaceIndex / BSP_TexDataMaterialName differ).
 
 // True once the IPhysicsSurfaceProps interface resolved (vphysics mapped).
 native bool  BSP_SurfacePropsReady();
@@ -742,7 +740,7 @@ public void __ext_bsppeek_SetNTVOptional()
     MarkNativeAsOptional("BSP_BrushSidePlane");
     MarkNativeAsOptional("BSP_BrushSideBevel");
     MarkNativeAsOptional("BSP_BrushSideThin");
-    MarkNativeAsOptional("BSP_BrushSideTexInfo");
+    MarkNativeAsOptional("BSP_BrushSideTexData");
     MarkNativeAsOptional("BSP_BrushSidePlaneIndex");
     MarkNativeAsOptional("BSP_BrushSideMaterial");
     MarkNativeAsOptional("BSP_BrushIsBoxAuth");

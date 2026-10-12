@@ -335,9 +335,9 @@ cell_t N_BrushSideThin(IPluginContext *, const cell_t *params)
 	return BSPData::BrushSideThin(params[1], params[2]);
 }
 
-cell_t N_BrushSideTexInfo(IPluginContext *, const cell_t *params)
+cell_t N_BrushSideTexData(IPluginContext *, const cell_t *params)
 {
-	return BSPData::BrushSideTexInfo(params[1], params[2]);
+	return BSPData::BrushSideTexData(params[1], params[2]);
 }
 
 cell_t N_BrushSidePlaneIndex(IPluginContext *, const cell_t *params)
@@ -346,8 +346,7 @@ cell_t N_BrushSidePlaneIndex(IPluginContext *, const cell_t *params)
 }
 
 // Material name for a brush side.
-// Chains engine cbrushside_t.texinfo -> disk LUMP_TEXINFO.texdata -> material string.
-// Assumes the engine's texinfo index  equals the disk LUMP_TEXINFO index (true in CSGO, no reordering).
+// cbrushside_t.surfaceIndex is already a texdata index.
 cell_t N_BrushSideMaterial(IPluginContext *pCtx, const cell_t *params)
 {
 	EnsureLumpsLoaded();
@@ -359,14 +358,10 @@ cell_t N_BrushSideMaterial(IPluginContext *pCtx, const cell_t *params)
 	std::vector<char> tmp(maxlen);
 	tmp[0] = '\0';
 	int n = 0;
-	int texInfo = BSPData::BrushSideTexInfo(params[1], params[2]);
-	if (texInfo >= 0)
+	int texData = BSPData::BrushSideTexData(params[1], params[2]);
+	if (texData >= 0)
 	{
-		int texData = BSPLumps::TexInfoTexData(texInfo);
-		if (texData >= 0)
-		{
-			n = BSPLumps::TexDataMaterialName(texData, tmp.data(), maxlen);
-		}
+		n = BSPLumps::TexDataMaterialName(texData, tmp.data(), maxlen);
 	}
 	pCtx->StringToLocal(params[3], maxlen, tmp.data());
 	return n;
@@ -2097,7 +2092,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 	{"BSP_BrushSidePlane", N_BrushSidePlane},
 	{"BSP_BrushSideBevel", N_BrushSideBevel},
 	{"BSP_BrushSideThin", N_BrushSideThin},
-	{"BSP_BrushSideTexInfo", N_BrushSideTexInfo},
+	{"BSP_BrushSideTexData", N_BrushSideTexData},
 	{"BSP_BrushSidePlaneIndex", N_BrushSidePlaneIndex},
 	{"BSP_BrushSideMaterial", N_BrushSideMaterial},
 	{"BSP_BrushIsBoxAuth", N_BrushIsBoxAuth},

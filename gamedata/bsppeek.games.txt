@@ -311,11 +311,11 @@
 
             // cbrushside_t (verified via runtime dump):
             //   +0  cplane_t* plane   (4B)
-            //   +4  ushort texinfo    (2B)
+            //   +4  ushort surfaceIndex (2B, texdata index)
             //   +6  byte bBevel       (1B, 0/1)
             //   +7  byte thin         (1B, 0/1)
             "cbrushside_plane"       "0"
-            "cbrushside_texinfo"     "4"
+            "cbrushside_surfidx"     "4"
             "cbrushside_bevel"       "6"
             "cbrushside_thin"        "7"
             "cbrushside_sizeof"      "8"
