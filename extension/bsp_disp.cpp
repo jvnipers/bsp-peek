@@ -309,8 +309,9 @@ namespace BSPDisp
 			{
 				for (int col = 0; col < side; col++)
 				{
-					float u = (float)col / (float)(side - 1);
-					float v = (float)row / (float)(side - 1);
+					// builddisp.cpp GenerateDispSurf: row runs corner 0 -> 1, col runs corner 0 -> 3.
+					float u = (float)row / (float)(side - 1);
+					float v = (float)col / (float)(side - 1);
 					Vec3 base = BaseAt(corners, u, v);
 					int dvIdx = dispVertStart + row * side + col;
 					const uint8_t *dv = dispVertLump + (size_t)dvIdx * kSizeofDispVert;
@@ -1308,13 +1309,13 @@ namespace BSPDisp
 					continue;
 				}
 				best = z;
-				// Compute normal from cross product of edges.
+				// (v2-v0) x (v1-v0), as CDispCollTri::CalcPlane.
 				float ex0 = t.v1.x - t.v0.x, ey0 = t.v1.y - t.v0.y, ez0 = t.v1.z - t.v0.z;
 				float ex1 = t.v2.x - t.v0.x, ey1 = t.v2.y - t.v0.y, ez1 = t.v2.z - t.v0.z;
 				Vec3 n = {
-					ey0 * ez1 - ez0 * ey1,
-					ez0 * ex1 - ex0 * ez1,
-					ex0 * ey1 - ey0 * ex1,
+					ey1 * ez0 - ez1 * ey0,
+					ez1 * ex0 - ex1 * ez0,
+					ex1 * ey0 - ey1 * ex0,
 				};
 				float len = std::sqrt(n.x * n.x + n.y * n.y + n.z * n.z);
 				if (len > 1e-6f)
@@ -1322,13 +1323,6 @@ namespace BSPDisp
 					n.x /= len;
 					n.y /= len;
 					n.z /= len;
-				}
-				// Ensure normal points up (disp surface).
-				if (n.z < 0)
-				{
-					n.x = -n.x;
-					n.y = -n.y;
-					n.z = -n.z;
 				}
 				bestN = n;
 			}
@@ -1526,10 +1520,10 @@ namespace BSPDisp
 		{
 			return kNoHit;
 		}
-		// normal = (v1-v0) x (v2-v0), normalized.
+		// normal = (v2-v0) x (v1-v0), as CDispCollTri::CalcPlane.
 		float ax = bV1.x - bV0.x, ay = bV1.y - bV0.y, az = bV1.z - bV0.z;
 		float bx = bV2.x - bV0.x, by = bV2.y - bV0.y, bz = bV2.z - bV0.z;
-		float nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+		float nx = by * az - bz * ay, ny = bz * ax - bx * az, nz = bx * ay - by * ax;
 		float len = std::sqrt(nx * nx + ny * ny + nz * nz);
 		if (len > 1e-6f)
 		{
