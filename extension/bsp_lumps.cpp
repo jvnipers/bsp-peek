@@ -606,8 +606,27 @@ namespace BSPLumps
 		}
 		std::memcpy(&g.revision, hdr + 1032, 4);
 
-		// LZMA-compressed lumps would parse as garbage.
-		for (int i = 0; i < kNumLumps; ++i)
+		// LZMA-compressed lumps would parse as garbage. Only the lumps read below matter, keep this list in sync with them.
+		static const int kReadLumps[] = {
+			LUMP_ENTITIES,
+			LUMP_VISIBILITY,
+			LUMP_LEAFWATERDATA,
+			LUMP_CUBEMAPS,
+			LUMP_VERTEXES,
+			LUMP_EDGES,
+			LUMP_SURFEDGES,
+			LUMP_FACES,
+			LUMP_TEXINFO,
+			LUMP_TEXDATA,
+			LUMP_TEXDATA_STRING_TABLE,
+			LUMP_TEXDATA_STRING_DATA,
+			LUMP_LEAFS,
+			LUMP_LEAFFACES,
+			LUMP_WORLDLIGHTS_LDR,
+			LUMP_WORLDLIGHTS_HDR,
+			LUMP_GAME_LUMP,
+		};
+		for (int i : kReadLumps)
 		{
 			if (g.lumps[i].uncompressedLen != 0)
 			{
