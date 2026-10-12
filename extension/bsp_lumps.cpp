@@ -1,12 +1,13 @@
 #include "bsp_lumps.h"
 #include "bsp_util.h"
 
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 using BSPUtil::ReadF32;
@@ -163,7 +164,8 @@ namespace BSPLumps
 
 		struct Entity
 		{
-			std::unordered_map<std::string, std::string> kv;
+			// File order, duplicates kept (outputs repeat their key).
+			std::vector<std::pair<std::string, std::string>> kv;
 			std::string classname;
 			bool hasOrigin;
 			float origin[3];
@@ -247,6 +249,16 @@ namespace BSPLumps
 			return true;
 		}
 
+		bool IEquals(const char *a, const char *b)
+		{
+			while (*a && *b && std::tolower((unsigned char)*a) == std::tolower((unsigned char)*b))
+			{
+				++a;
+				++b;
+			}
+			return *a == '\0' && *b == '\0';
+		}
+
 		void ParseEntities(const std::string &src, std::vector<Entity> &out)
 		{
 			out.clear();
@@ -312,12 +324,11 @@ namespace BSPLumps
 					}
 					std::string val(src, vStart, i - vStart);
 					++i;
-					e.kv[key] = val;
-					if (key == "classname")
+					if (IEquals(key.c_str(), "classname"))
 					{
 						e.classname = val;
 					}
-					else if (key == "origin")
+					else if (IEquals(key.c_str(), "origin"))
 					{
 						float x = 0, y = 0, z = 0;
 						if (std::sscanf(val.c_str(), "%f %f %f", &x, &y, &z) >= 3)
@@ -328,6 +339,7 @@ namespace BSPLumps
 							e.hasOrigin = true;
 						}
 					}
+					e.kv.emplace_back(std::move(key), std::move(val));
 				}
 				if (i < src.size())
 				{
@@ -335,6 +347,19 @@ namespace BSPLumps
 				}
 				out.push_back(std::move(e));
 			}
+		}
+
+		// nth value stored under key (0 = first). nullptr if the entity has fewer.
+		const std::string *FindValue(const Entity &e, const char *key, int nth = 0)
+		{
+			for (const auto &p : e.kv)
+			{
+				if (IEquals(p.first.c_str(), key) && nth-- == 0)
+				{
+					return &p.second;
+				}
+			}
+			return nullptr;
 		}
 
 		// Parse the sprp game lump (static props) from the open BSP file.
@@ -752,24 +777,23 @@ namespace BSPLumps
 		return true;
 	}
 
-	int EntityKeyValue(int idx, const char *key, char *buf, int maxlen)
+	int EntityKeyValue(int idx, const char *key, char *buf, int maxlen, int nth)
 	{
 		if (!buf || maxlen <= 0)
 		{
 			return 0;
 		}
 		buf[0] = '\0';
-		if (!g.loaded || idx < 0 || idx >= (int)g.entities.size() || !key)
+		if (!g.loaded || idx < 0 || idx >= (int)g.entities.size() || !key || nth < 0)
 		{
 			return 0;
 		}
-		const auto &kv = g.entities[idx].kv;
-		auto it = kv.find(key);
-		if (it == kv.end())
+		const std::string *pv = FindValue(g.entities[idx], key, nth);
+		if (!pv)
 		{
 			return 0;
 		}
-		const std::string &v = it->second;
+		const std::string &v = *pv;
 		int n = (int)v.size();
 		if (n > maxlen - 1)
 		{
@@ -786,13 +810,12 @@ namespace BSPLumps
 		{
 			return -1;
 		}
-		const auto &kv = g.entities[idx].kv;
-		auto it = kv.find("model");
-		if (it == kv.end())
+		const std::string *pv = FindValue(g.entities[idx], "model");
+		if (!pv)
 		{
 			return -1;
 		}
-		const std::string &v = it->second;
+		const std::string &v = *pv;
 		// Brush models are "*N", studio props are "models/....mdl".
 		if (v.size() < 2 || v[0] != '*')
 		{
@@ -1277,8 +1300,39 @@ namespace BSPLumps
 		int count = (int)g.entities.size();
 		for (int i = (startIdx < 0 ? 0 : startIdx); i < count; ++i)
 		{
-			auto it = g.entities[i].kv.find(key);
-			if (it != g.entities[i].kv.end() && it->second == value)
+			for (const auto &p : g.entities[i].kv)
+			{
+				if (IEquals(p.first.c_str(), key) && p.second == value)
+				{
+					return i;
+				}
+			}
+		}
+		return -1;
+	}
+
+	// Same rules as the engine's Matcher_NamesMatch.
+	static bool NameMatches(const char *query, const char *name)
+	{
+		while (*name && *query && std::tolower((unsigned char)*name) == std::tolower((unsigned char)*query))
+		{
+			++name;
+			++query;
+		}
+		return (*query == '\0' && *name == '\0') || *query == '*';
+	}
+
+	int FindEntityByName(const char *name)
+	{
+		if (!g.loaded || !name)
+		{
+			return -1;
+		}
+		int count = (int)g.entities.size();
+		for (int i = 0; i < count; ++i)
+		{
+			const std::string *targetname = FindValue(g.entities[i], "targetname");
+			if (targetname && NameMatches(name, targetname->c_str()))
 			{
 				return i;
 			}

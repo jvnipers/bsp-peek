@@ -32,7 +32,8 @@ namespace BSPLumps
 	int EntityCount();
 	int EntityClassname(int idx, char *buf, int maxlen);
 	bool EntityOrigin(int idx, float out[3]); // false if "origin" missing
-	int EntityKeyValue(int idx, const char *key, char *buf, int maxlen);
+	// Key is case-insensitive. Keys can repeat: nth picks among them in file order. Returns length, 0 if none.
+	int EntityKeyValue(int idx, const char *key, char *buf, int maxlen, int nth = 0);
 	// Brush-model index for entity[idx]:
 	// parses its "model" key, and if it is a "*N" brush-model reference returns N (the cmodel/submodel index usable with BSPData::CModel*).
 	// Returns -1 if the entity has no "model" key, the value is a studio/.mdl path rather than a "*N" reference, or idx is OOB.
@@ -98,8 +99,10 @@ namespace BSPLumps
 	int FaceMaterialName(int faceIdx, char *buf, int maxlen);
 	// Index of cubemap with closest origin to pos. -1 if no cubemaps.
 	int NearestCubemap(const float pos[3]);
-	// Find first entity at or after startIdx where kv[key]==value. -1 if none.
+	// Find first entity at or after startIdx where a value under key equals value. -1 if none.
 	int FindEntityByKeyValue(const char *key, const char *value, int startIdx);
+	// First entity whose targetname matches like the engine: case-insensitive, trailing '*' wildcard. -1 if none.
+	int FindEntityByName(const char *name);
 
 	// Faces (LUMP_FACES = 7, dface_t = 56 bytes)
 	int FaceCount();
