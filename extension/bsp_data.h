@@ -149,6 +149,7 @@ namespace BSPData
 	// Number of displacements touching this leaf (cleaf_t+14). -1 if invalid.
 	int LeafDispCount(int leafIdx);
 	// Leaf AABB via BSP tree-walk. Builds leaf cache lazily on first call.
+	// World tree only: submodel leaves/nodes return false.
 	bool LeafBounds(int leafIdx, float mins[3], float maxs[3]);
 
 	// Node accessors (manual BSP walking)
