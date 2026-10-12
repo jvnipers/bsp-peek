@@ -681,32 +681,40 @@ namespace BSPData
 		{
 			return 0;
 		}
+		int visBytes = (OFF_NUMVISIBILITY != 0) ? ReadI32(g_pBSPData, OFF_NUMVISIBILITY) : INT_MAX;
 		int nc = ReadI32(vis, 0);
-		if (cluster >= nc)
+		if (cluster >= nc || nc > 65536 || 4 + nc * 8 > visBytes) // MAX_MAP_CLUSTERS
 		{
 			return 0;
 		}
 		// dvis_t: { int numclusters; int bitofs[numclusters][2]; }
 		// bitofs[cluster][0] = byte offset of PVS row from start of vis blob.
-		int rowOff = ReadI32(vis, 4 + cluster * 8 + 0);
+		int in = ReadI32(vis, 4 + cluster * 8 + 0);
+		if (in < 0)
+		{
+			return 0;
+		}
 		int rowBytes = (nc + 7) >> 3;
 		if (rowBytes > maxBytes)
 		{
 			rowBytes = maxBytes;
 		}
-		const uint8_t *in = vis + rowOff;
 		int outIdx = 0;
 		// Standard Source RLE: nonzero byte verbatim, zero byte followed by N (count of zero bytes to emit).
-		while (outIdx < rowBytes)
+		while (outIdx < rowBytes && in < visBytes)
 		{
-			uint8_t b = *in++;
+			uint8_t b = vis[in++];
 			if (b)
 			{
 				outBuf[outIdx++] = b;
 			}
 			else
 			{
-				int rep = *in++;
+				if (in >= visBytes)
+				{
+					break;
+				}
+				int rep = vis[in++];
 				while (rep > 0 && outIdx < rowBytes)
 				{
 					outBuf[outIdx++] = 0;
@@ -723,14 +731,14 @@ namespace BSPData
 		{
 			return false;
 		}
-		if (c1 == c2)
-		{
-			return true;
-		}
 		int nc = GetNumClusters();
 		if (nc <= 0 || c1 >= nc || c2 >= nc)
 		{
 			return false;
+		}
+		if (c1 == c2)
+		{
+			return true;
 		}
 		// MAX_MAP_CLUSTERS = 65536 -> 8192 bytes max row.
 		uint8_t row[8192];
@@ -1152,6 +1160,10 @@ namespace BSPData
 		}
 		uint16_t first = ReadU16(leaf, OFF_CLEAF_FIRSTLEAFBRUSH);
 		uint16_t count = ReadU16(leaf, OFF_CLEAF_NUMLEAFBRUSHES);
+		if ((int)first + (int)count > GetNumLeafBrushes())
+		{
+			return -1;
+		}
 		int n = (int)count;
 		if (n > maxOut)
 		{
@@ -2091,7 +2103,8 @@ namespace BSPData
 			off += snprintf(buf + off, maxlen - off, "\n [%d] %s n=(%.3f,%.3f,%.3f) d=%.3f type=%d bevel=%d thin=%d", i, kAxis[axis], n[0], n[1],
 							n[2], d, ptype, bevel, thin);
 		}
-		return off;
+		// snprintf returns the untruncated length.
+		return off < maxlen ? off : maxlen - 1;
 	}
 
 	// "High-level" pixelsurf
