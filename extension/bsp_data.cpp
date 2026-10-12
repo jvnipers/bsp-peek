@@ -335,57 +335,6 @@ namespace BSPData
 		return -1;
 	}
 
-	void DebugDumpBoxBrushes(int maxCount)
-	{
-		if (!g_pBSPData || OFF_MAP_BOXBRUSHES == 0 || SZ_CBOXBRUSH <= 0)
-		{
-			return;
-		}
-		int n = GetNumBoxBrushes();
-		if (n <= 0)
-		{
-			return;
-		}
-		const uint8_t *table = reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_BOXBRUSHES));
-		if (!table)
-		{
-			return;
-		}
-		if (maxCount > n)
-		{
-			maxCount = n;
-		}
-		smutils->LogMessage(myself, "BoxBrushDump: count=%d sizeof=%d table=%p dumping %d", n, SZ_CBOXBRUSH, (const void *)table, maxCount);
-		for (int i = 0; i < maxCount; ++i)
-		{
-			const uint8_t *p = table + (size_t)i * SZ_CBOXBRUSH;
-			smutils->LogMessage(myself,
-								"  bb[%d] @+00..0F: "
-								"%02X %02X %02X %02X %02X %02X %02X %02X "
-								"%02X %02X %02X %02X %02X %02X %02X %02X",
-								i, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]);
-			smutils->LogMessage(myself,
-								"  bb[%d] @+10..1F: "
-								"%02X %02X %02X %02X %02X %02X %02X %02X "
-								"%02X %02X %02X %02X %02X %02X %02X %02X",
-								i, p[16], p[17], p[18], p[19], p[20], p[21], p[22], p[23], p[24], p[25], p[26], p[27], p[28], p[29], p[30], p[31]);
-			smutils->LogMessage(myself,
-								"  bb[%d] @+20..2F: "
-								"%02X %02X %02X %02X %02X %02X %02X %02X "
-								"%02X %02X %02X %02X %02X %02X %02X %02X",
-								i, p[32], p[33], p[34], p[35], p[36], p[37], p[38], p[39], p[40], p[41], p[42], p[43], p[44], p[45], p[46], p[47]);
-			// Float interpretations at common offsets (cmodel_t-like or VectorAligned).
-			float f00 = ReadF32(p, 0), f04 = ReadF32(p, 4), f08 = ReadF32(p, 8);
-			float f12 = ReadF32(p, 12), f16 = ReadF32(p, 16), f20 = ReadF32(p, 20);
-			float f24 = ReadF32(p, 24), f28 = ReadF32(p, 28), f32 = ReadF32(p, 32);
-			int i32 = ReadI32(p, 32), i36 = ReadI32(p, 36);
-			smutils->LogMessage(myself,
-								"  bb[%d] floats: f00=%.2f f04=%.2f f08=%.2f | f12=%.2f f16=%.2f "
-								"f20=%.2f | f24=%.2f f28=%.2f f32=%.2f | i@32=%d i@36=%d",
-								i, f00, f04, f08, f12, f16, f20, f24, f28, f32, i32, i36);
-		}
-	}
-
 	void DebugDumpCBSP(int startOff, int endOff)
 	{
 		if (!g_pBSPData)

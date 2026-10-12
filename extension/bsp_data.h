@@ -15,8 +15,6 @@ namespace BSPData
 
 	void *DebugGetBase();
 	int DebugGetOff(const char *name);
-	// Hex dump of first N box brushes for layout RE. Logs via smutils.
-	void DebugDumpBoxBrushes(int maxCount);
 	// Hex dump of `g_pBSPData + [startOff, endOff)` for offset RE.
 	// Range clamped to [0, 4096] and (end-start) <= 2048.
 	void DebugDumpCBSP(int startOff, int endOff);

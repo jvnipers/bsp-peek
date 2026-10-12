@@ -101,18 +101,6 @@
                     "read"  "472"
                 }
             }
-            "g_pDispBounds"
-            {
-                "signature" "DispCollTrees_Globals"
-                "linux"
-                {
-                    "read"  "670"
-                }
-                "windows"
-                {
-                    "read"  "389"
-                }
-            }
 
             // Static-prop collision globals (server module). read = byte offset of the
             // imm32 operand of `mov [global], eax` from the sig (= storing-fn prologue).
