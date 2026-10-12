@@ -212,13 +212,11 @@
             "dispcoll_tree_contents"   "32"
             "dispcoll_tree_surfprops" "108"
             // CDispCollTri (raw-byte dump):
-            //   0x00..0x05  ushort m_uiVerts[3]  (low 10 bits = index,
-            //               high 6 bits = edge flags). Mask with 0x3FF.
+            //   0x00..0x05  index_t m_TriData[3]  (low 9 bits = uiVert, then uiMin:2, uiMax:2). Mask with 0x1FF.
             //   0x06..0x07  ushort m_nFlags
             //   0x08..0x13  Vector m_vecNormal
             //   0x14..0x17  float  m_flDist
-            //   total 24 bytes. Layout differs from cstrike15_src --
-            //   CSGO engine packs flags into the upper bits of vert idx.
+            //   total 24 bytes, same as cstrike15_src dispcoll_common.h.
             "dispcoll_tri_sizeof"     "24"
             "dispcoll_tri_indices"     "0"
             "dispcoll_tri_normal"      "8"
