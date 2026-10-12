@@ -82,17 +82,17 @@ public bool TraceFilter_World(int entity, int mask)
 
 public void OnPluginStart()
 {
-    RegConsoleCmd("sm_bsp", Cmd_All);
-    RegConsoleCmd("sm_bsp_info", Cmd_Info);
-    RegConsoleCmd("sm_bsp_point", Cmd_Point);
-    RegConsoleCmd("sm_bsp_brush", Cmd_Brush);
-    RegConsoleCmd("sm_bsp_disp", Cmd_Disp);
-    RegConsoleCmd("sm_bsp_props", Cmd_Props);
-    RegConsoleCmd("sm_bsp_trace", Cmd_Trace);
-    RegConsoleCmd("sm_bsp_ents", Cmd_Ents);
-    RegConsoleCmd("sm_bsp_surf", Cmd_Surf);
+    RegAdminCmd("sm_bsp", Cmd_All, ADMFLAG_ROOT);
+    RegAdminCmd("sm_bsp_info", Cmd_Info, ADMFLAG_ROOT);
+    RegAdminCmd("sm_bsp_point", Cmd_Point, ADMFLAG_ROOT);
+    RegAdminCmd("sm_bsp_brush", Cmd_Brush, ADMFLAG_ROOT);
+    RegAdminCmd("sm_bsp_disp", Cmd_Disp, ADMFLAG_ROOT);
+    RegAdminCmd("sm_bsp_props", Cmd_Props, ADMFLAG_ROOT);
+    RegAdminCmd("sm_bsp_trace", Cmd_Trace, ADMFLAG_ROOT);
+    RegAdminCmd("sm_bsp_ents", Cmd_Ents, ADMFLAG_ROOT);
+    RegAdminCmd("sm_bsp_surf", Cmd_Surf, ADMFLAG_ROOT);
     // UNSAFE (bad ptrOff may crash) -> kept out of the run-all suite.
-    RegConsoleCmd("sm_bsp_debugptr", Cmd_DebugPtr);
+    RegAdminCmd("sm_bsp_debugptr", Cmd_DebugPtr, ADMFLAG_ROOT);
 }
 
 // sm_bsp_debugptr <ptrOff> <bytes> - read pointer at CBSPData+ptrOff, dump bytes.
