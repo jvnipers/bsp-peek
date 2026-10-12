@@ -335,12 +335,13 @@
             //   0x0C  Vector maxs
             //   0x18  Vector origin
             //   0x24  int    headnode
-            //   sizeof = 40 (0x28)
+            //   0x28  vcollide_t vcollisionData (16B)
+            //   sizeof = 56 (0x38)
             "cmodel_mins"            "0"
             "cmodel_maxs"            "12"
             "cmodel_origin"          "24"
             "cmodel_headnode"        "36"
-            "cmodel_sizeof"          "40"
+            "cmodel_sizeof"          "56"
 
             "cnode_plane"            "0"
             "cnode_children"         "4"

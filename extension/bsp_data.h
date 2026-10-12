@@ -176,6 +176,7 @@ namespace BSPData
 	int BoxBrushContents(int idx);
 
 	// Submodel (cmodel_t) accessors. Used for func_brush, doors, breakables etc.
+	// Bounds are model-local, padded 1 unit per side by the engine.
 	bool CModelBounds(int idx, float mins[3], float maxs[3]);
 	bool CModelOrigin(int idx, float origin[3]);
 	// Root BSP node for this submodel's collision tree. -1 if invalid.

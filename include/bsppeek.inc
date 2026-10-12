@@ -210,6 +210,7 @@ native int  BSP_BoxBrushContents(int idx);
 
 // Submodels (cmodel_t) - for func_brush, doors, breakables etc.
 // idx in [0, BSP_NumCModels()). idx 0 is the world model.
+// Bounds are model-local, padded 1 unit per side by the engine.
 native bool BSP_CModelBounds(int idx, float mins[3], float maxs[3]);
 native bool BSP_CModelOrigin(int idx, float origin[3]);
 // Root BSP node for this submodel's collision tree. -1 if invalid.
@@ -690,7 +691,8 @@ native float BSP_WaterSurfaceZAt(const float pos[3]);
 // Convenience over the entity + cmodel accessors for the common routing cases (trigger volumes, movers, ladders).
 
 // World AABB of a brush entity (any "model" == "*N" ent: triggers, func_door, func_brush, func_ladder...).
-// Chains EntityModelIndex -> CModelBounds + origin. false if entIdx isn't a brush-model entity.
+// Chains EntityModelIndex -> CModelBounds + origin (engine padding removed, "angles" not applied).
+// false if entIdx isn't a brush-model entity.
 native bool  BSP_EntityBrushBounds(int entIdx, float mins[3], float maxs[3]);
 // Applied push velocity of a trigger_push: AngleVectors(pushdir) * speed (speed defaults to 40).
 // Returns false (and zero vel) if entIdx isn't a trigger_push.

@@ -391,6 +391,12 @@ void Section_Point()
         P("CModel[0] (world)  : (%.0f %.0f %.0f)-(%.0f %.0f %.0f) head=%d",
           cmin[0], cmin[1], cmin[2], cmax[0], cmax[1], cmax[2], BSP_CModelHeadnode(0));
     }
+    // CModel 1 (first brush entity): checks cmodel_sizeof.
+    if (BSP_CModelBounds(1, cmin, cmax))
+    {
+        P("CModel[1]          : (%.1f %.1f %.1f)-(%.1f %.1f %.1f) head=%d",
+          cmin[0], cmin[1], cmin[2], cmax[0], cmax[1], cmax[2], BSP_CModelHeadnode(1));
+    }
 
     // Box brush 0
     if (BSP_NumBoxBrushes() > 0)
