@@ -22,12 +22,19 @@ static void EnsureLumpsLoaded()
 	{
 		return;
 	}
+	// One attempt per map: natives can run every tick.
+	static char s_failedMap[128] = {0};
+	if (std::strcmp(s_failedMap, mapname) == 0)
+	{
+		return;
+	}
 	char bspPath[260];
 	smutils->BuildPath(Path_Game, bspPath, sizeof(bspPath), "maps/%s.bsp", mapname);
 	char err[256] = {0};
 	if (!BSPLumps::LoadFromMap(mapname, bspPath, err, sizeof(err)))
 	{
 		smutils->LogError(myself, "Lump load failed for '%s': %s", mapname, err);
+		std::strncpy(s_failedMap, mapname, sizeof(s_failedMap) - 1);
 	}
 }
 
@@ -38,12 +45,18 @@ static void EnsureDispLoaded()
 	{
 		return;
 	}
+	static char s_failedMap[128] = {0};
+	if (std::strcmp(s_failedMap, mapname) == 0)
+	{
+		return;
+	}
 	char bspPath[260];
 	smutils->BuildPath(Path_Game, bspPath, sizeof(bspPath), "maps/%s.bsp", mapname);
 	char err[256] = {0};
 	if (!BSPDisp::EnsureLoaded(mapname, bspPath, err, sizeof(err)))
 	{
 		smutils->LogError(myself, "Displacement load failed for '%s': %s", mapname, err);
+		std::strncpy(s_failedMap, mapname, sizeof(s_failedMap) - 1);
 	}
 	else if (BSPDisp::DiskCount() > 0)
 	{

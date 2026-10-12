@@ -191,9 +191,14 @@ namespace BSPDisp
 		bool ReadLump(FILE *f, const uint8_t *header, int lump, std::vector<uint8_t> &out)
 		{
 			int ofs = 8 + lump * 16;
-			int32_t fileofs, filelen;
+			int32_t fileofs, filelen, uncompressedLen;
 			std::memcpy(&fileofs, header + ofs + 0, 4);
 			std::memcpy(&filelen, header + ofs + 4, 4);
+			std::memcpy(&uncompressedLen, header + ofs + 12, 4);
+			if (uncompressedLen != 0)
+			{
+				return false; // LZMA-compressed lump
+			}
 			if (filelen <= 0 || fileofs < 0)
 			{
 				out.clear();
@@ -513,7 +518,7 @@ namespace BSPDisp
 			|| !disk::ReadLump(f, header.data(), disk::LUMP_FACES, facesLump) || !disk::ReadLump(f, header.data(), disk::LUMP_DISPINFO, dispInfoLump)
 			|| !disk::ReadLump(f, header.data(), disk::LUMP_DISP_VERTS, dispVertsLump))
 		{
-			std::snprintf(err, errLen, "lump read failed");
+			std::snprintf(err, errLen, "lump read failed (truncated file, or LZMA-compressed lumps which are not supported)");
 			std::fclose(f);
 			return false;
 		}

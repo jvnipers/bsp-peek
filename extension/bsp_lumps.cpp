@@ -54,6 +54,7 @@ namespace BSPLumps
 		// GAMELUMP_STATIC_PROPS = 'sprp' multichar int (engine: id == this constant).
 		constexpr int kGameLumpSprp = ('s' << 24) | ('p' << 16) | ('r' << 8) | ('p');
 		constexpr int kGameLump_Id = 0;
+		constexpr int kGameLump_Flags = 4; // uint16, bit 0 = GAMELUMPFLAG_COMPRESSED
 		constexpr int kGameLump_Version = 6;
 		constexpr int kGameLump_FileOfs = 8;
 		constexpr int kGameLump_FileLen = 12;
@@ -238,12 +239,9 @@ namespace BSPLumps
 				return true;
 			}
 			out.resize(len);
-			if (std::fseek(f, (long)offset, SEEK_SET) != 0)
+			if (std::fseek(f, (long)offset, SEEK_SET) != 0 || std::fread(out.data(), 1, len, f) != (size_t)len)
 			{
-				return false;
-			}
-			if (std::fread(out.data(), 1, len, f) != (size_t)len)
-			{
+				out.clear();
 				return false;
 			}
 			return true;
@@ -394,6 +392,10 @@ namespace BSPLumps
 				int id = ReadI32(dir.data(), base + kGameLump_Id);
 				if (id == kGameLumpSprp)
 				{
+					if (ReadU16(dir.data(), base + kGameLump_Flags) & 1)
+					{
+						return; // LZMA-compressed
+					}
 					sprpVer = ReadU16(dir.data(), base + kGameLump_Version);
 					sprpOfs = ReadI32(dir.data(), base + kGameLump_FileOfs);
 					sprpLen = ReadI32(dir.data(), base + kGameLump_FileLen);
@@ -605,6 +607,18 @@ namespace BSPLumps
 			std::memcpy(&g.lumps[i].uncompressedLen, hdr + base + 12, 4);
 		}
 		std::memcpy(&g.revision, hdr + 1032, 4);
+
+		// LZMA-compressed lumps would parse as garbage.
+		for (int i = 0; i < kNumLumps; ++i)
+		{
+			if (g.lumps[i].uncompressedLen != 0)
+			{
+				std::snprintf(err, errLen, "BSPLumps: '%s' has LZMA-compressed lumps (lump %d), which are not supported", bspPath, i);
+				std::fclose(f);
+				Clear();
+				return false;
+			}
+		}
 
 		// Read lumps we care about.
 		std::vector<uint8_t> raw;
