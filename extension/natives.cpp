@@ -1120,7 +1120,8 @@ cell_t N_EntityKeyValue(IPluginContext *pCtx, const cell_t *params)
 	char *key = nullptr;
 	pCtx->LocalToString(params[2], &key);
 	std::vector<char> tmp(maxlen);
-	int n = BSPLumps::EntityKeyValue(params[1], key, tmp.data(), maxlen);
+	int nth = params[0] >= 5 ? params[5] : 0; // absent in plugins built against the 4-argument form
+	int n = BSPLumps::EntityKeyValue(params[1], key, tmp.data(), maxlen, nth);
 	pCtx->StringToLocal(params[3], maxlen, tmp.data());
 	return n;
 }
@@ -2047,7 +2048,7 @@ cell_t N_EntityTargetOrigin(IPluginContext *pCtx, const cell_t *params)
 	bool ok = false;
 	if (BSPLumps::EntityKeyValue(params[1], "target", target, sizeof(target)) > 0)
 	{
-		int dest = BSPLumps::FindEntityByKeyValue("targetname", target, 0);
+		int dest = BSPLumps::FindEntityByName(target);
 		if (dest >= 0)
 		{
 			ok = BSPLumps::EntityOrigin(dest, origin);

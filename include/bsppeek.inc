@@ -406,8 +406,9 @@ native int   BSP_EntityCount();
 native int   BSP_EntityClassname(int idx, char[] buf, int maxlen);
 // Parsed "origin" key. false if missing.
 native bool  BSP_EntityOrigin(int idx, float origin[3]);
-// Lookup arbitrary key on entity[idx]. Returns value length, 0 if missing.
-native int   BSP_EntityKeyValue(int idx, const char[] key, char[] buf, int maxlen);
+// Lookup key (case-insensitive) on entity[idx]. Returns value length, 0 if missing.
+// Keys can repeat (outputs): nth picks among them in file order.
+native int   BSP_EntityKeyValue(int idx, const char[] key, char[] buf, int maxlen, int nth = 0);
 // Brush-model index for entity[idx]: if its "model" key is "*N", returns N (usable as the cmodel/submodel index for BSP_CModel*).
 // Ties a moving brush ent (func_door, func_brush, triggers) to its collision submodel.
 // -1 if no "model" key, a studio (.mdl) model, or idx out of range.
@@ -424,7 +425,7 @@ native bool  BSP_TexDataReflectivity(int texdataIdx, float refl[3]);
 
 // Convenience / compound queries
 
-// Entity search: returns first entity index >= startIdx where kv[key]==value.
+// Entity search: returns first entity index >= startIdx with a value under key equal to value.
 // Returns -1 if not found. Enumerate by calling again with lastResult+1.
 native int   BSP_FindEntityByKeyValue(const char[] key, const char[] value, int startIdx = 0);
 
@@ -699,6 +700,7 @@ native bool  BSP_EntityBrushBounds(int entIdx, float mins[3], float maxs[3]);
 // Returns false (and zero vel) if entIdx isn't a trigger_push.
 native bool  BSP_TriggerPushVelocity(int entIdx, float vel[3]);
 // Origin of the entity referenced by entIdx's "target" key (e.g. a trigger_teleport's info_teleport_destination).
+// Targetname matched like the engine: case-insensitive, trailing '*' wildcard.
 // false if no target / not found.
 native bool  BSP_EntityTargetOrigin(int entIdx, float origin[3]);
 // Enumerate world brushes with CONTENTS_LADDER:
