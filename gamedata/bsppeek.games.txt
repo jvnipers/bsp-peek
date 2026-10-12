@@ -1,5 +1,3 @@
-// Engine binary: engine.so (Linux) / engine.dll (Windows)
-
 "Games"
 {
     "csgo"
@@ -13,10 +11,10 @@
                 "windows"   "\x55\x8B\xEC\x56\x8B\xF1\xC7\x05\x2A\x2A\x2A\x2A\x01\x00\x00\x00\xC7\x05\x2A\x2A\x2A\x2A\x00\x00\x00\x00\xC7\x05\x2A\x2A\x2A\x2A\x01\x00\x00\x00"
             }
 
-            // Anchor: CMod_LoadDispInfo (a.k.a. DispCollTrees_AllocateData).
+            // Anchor: CMod_LoadDispInfo (DispCollTrees_AllocateData).
             // Writes all three disp globals (g_DispCollTreeCount, g_pDispCollTrees, g_pDispBounds).
-            //   Linux  : 0x1F30A0  (CSGO engine.so)
-            //   Windows: 0x101E6650 (CSGO engine.dll)
+            //   Linux  : 0x1F30A0
+            //   Windows: 0x101E6650
             "DispCollTrees_Globals"
             {
                 "library"   "engine"
@@ -26,10 +24,9 @@
 
             // Server-module global interface pointers, for static-prop collision (bsp_props).
             // Anchor: CServerGameDLL::DLLInit grabs each interface and stores it (`mov [global], eax`).
-            // sig = prologue of the storing fn, Addresses "read" = offset to that store's imm32 -> &global,
-            // which the ext derefs once.
-            // modelinfo/enginetrace/staticpropmgr all live in DLLInit (one fn),
-            // so they share modelinfo_global. physcollision is grabbed in a separate fn.
+            // sig = prologue of the storing fn, Addresses "read" = offset to that store's imm32 -> &global, which the ext derefs once.
+            // modelinfo/enginetrace/staticpropmgr all live in DLLInit (one fn), so they share modelinfo_global.
+            // physcollision is grabbed in a separate fn.
             //   Linux  DLLInit fn 0x700700: modelinfo read 0x497, enginetrace 0x4B4, staticpropmgr 0x42B
             //   Linux  physcollision fn 0x776750: read 0x4E
             //   Win    DLLInit fn 0x102A2C60: modelinfo 0x129, enginetrace 0x13E, staticpropmgr 0xD5
@@ -102,8 +99,8 @@
                 }
             }
 
-            // Static-prop collision globals (server module). read = byte offset of the
-            // imm32 operand of `mov [global], eax` from the sig (= storing-fn prologue).
+            // Static-prop collision globals (server module).
+            // read = byte offset of the imm32 operand of `mov [global], eax` from the sig (= storing-fn prologue).
             // GetAddress returns &global, the ext derefs it for the interface pointer.
             "modelinfo"
             {
@@ -181,14 +178,11 @@
             //   0xF0  CDispCollHelper m_Helper                     (~24B)
             //   ...   unsigned int m_nSize at end. Total = 268 (0x10C).
             //
-            // CUtlVector: pMemory(4) + growSize(4) + allocCount(4)
-            //   + size(4) + pMemoryBase-alias(4) = 20 bytes.
+            // CUtlVector: pMemory(4) + growSize(4) + allocCount(4) + size(4) + pMemoryBase-alias(4) = 20 bytes.
             //   (Aligned variant adds the pMemoryBase backup; size still at +12.)
             // sizeof(CDispCollTree) = 0x10C = 268 bytes.
-            // DispCollTrees_FreeAll loop stride:
-            // (Windows engine.dll @0x101E4768: `add edi, 10Ch`)
-            // and CMod_LoadDispInfo allocation:
-            // (Linux engine.so @0x1F3976: `imul edi, [..], 10Ch`).
+            // DispCollTrees_FreeAll loop stride: (Windows engine.dll @0x101E4768: `add edi, 10Ch`)
+            // and CMod_LoadDispInfo allocation: (Linux engine.so @0x1F3976: `imul edi, [..], 10Ch`).
             "dispcoll_tree_sizeof"    "268"
             "dispcoll_tree_mins"        "4"
             "dispcoll_tree_maxs"       "20"

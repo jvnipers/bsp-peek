@@ -179,6 +179,7 @@ native int  BSP_LeafDispListStart(int leafIdx);
 // Number of displacements touching this leaf. -1 if invalid.
 native int  BSP_LeafDispCount(int leafIdx);
 // Leaf AABB via BSP tree-walk (splits parent box on axis-aligned planes). Lazy-built.
+// World tree only: brush-entity submodel leaves/nodes return false (also BSP_NodeBounds).
 native bool BSP_LeafBounds(int leafIdx, float mins[3], float maxs[3]);
 
 // Sentinel leaf indices. EmptyLeaf = void leaf, SolidLeaf = fully-solid leaf.

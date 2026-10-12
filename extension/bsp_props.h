@@ -75,7 +75,7 @@ namespace BSPProps
 	bool SurfacePropData(int idx, float &friction, float &elasticity, float &density, float &thickness, float &dampening, float &maxSpeedFactor,
 						 float &jumpFactor, int &material, bool &climbable);
 
-	// Diagnostic: hex+float dump of the live surfacedata_t for surfaceprop[idx] (the struct GetSurfaceData returns). 
+	// Diagnostic: hex+float dump of the live surfacedata_t for surfaceprop[idx] (the struct GetSurfaceData returns).
 	// Used to RE the runtime field layout. (friction=+0 is the known anchor). Returns length written.
 	int SurfacePropDump(int idx, char *buf, size_t buflen);
 
