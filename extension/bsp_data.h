@@ -88,8 +88,8 @@ namespace BSPData
 	int BrushSideBevel(int brushIdx, int sideIdx);
 	// Thin side? (0=no, 1=yes, -1=invalid).
 	int BrushSideThin(int brushIdx, int sideIdx);
-	// Texinfo index for this side. -1 if invalid.
-	int BrushSideTexInfo(int brushIdx, int sideIdx);
+	// cbrushside_t::surfaceIndex, a TEXDATA index. -1 if invalid or the side has none.
+	int BrushSideTexData(int brushIdx, int sideIdx);
 	// Plane table index for this side. -1 if invalid or the pointer doesn't land on a map_planes entry.
 	int BrushSidePlaneIndex(int brushIdx, int sideIdx);
 
@@ -169,7 +169,7 @@ namespace BSPData
 	bool BoxBrushBounds(int idx, float mins[3], float maxs[3]);
 	// Original cbrush_t index this box brush was derived from. -1 if invalid.
 	int BoxBrushOriginalBrush(int idx);
-	// Per-face surface property indices (-X,+X,-Y,+Y,-Z,+Z). false if invalid.
+	// Per-face TEXDATA indices (-X,-Y,-Z,+X,+Y,+Z). false if invalid.
 	bool BoxBrushSurfaceIndex(int idx, int outSurf[6]);
 	// Contents via originalBrush lookup. 0 if invalid.
 	int BoxBrushContents(int idx);

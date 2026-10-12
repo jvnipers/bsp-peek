@@ -55,8 +55,8 @@ namespace BSPProps
 
 	// Surface physics properties (friction / elasticity / movement modifiers).
 	// Resolved from the live IPhysicsSurfaceProps singleton in the already-loaded vphysics module.
-	// The index is a PHYSICS surfaceprop-database index, the kind returned by WorldTraceHull's surfaceProps,
-	// BSP_DispGetSurfaceProps, and BSP_BoxBrushSurfaceIndex. NOT a texdata index.
+	// The index is a PHYSICS surfaceprop-database index, the kind returned by WorldTraceHull's surfaceProps
+	// and BSP_DispGetSurfaceProps. NOT a texdata index (BSP_BoxBrushSurfaceIndex / BSP_BrushSideTexData are).
 
 	// True once the IPhysicsSurfaceProps interface resolved.
 	bool SurfacePropsReady();

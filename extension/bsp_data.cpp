@@ -70,7 +70,7 @@ namespace BSPData
 
 	// cbrushside_t layout
 	static int OFF_CBRUSHSIDE_PLANE = 0;
-	static int OFF_CBRUSHSIDE_TEXINFO = 4;
+	static int OFF_CBRUSHSIDE_SURFIDX = 4;
 	static int OFF_CBRUSHSIDE_BEVEL = 6;
 	static int OFF_CBRUSHSIDE_THIN = 7;
 	static int SZ_CBRUSHSIDE = 8;
@@ -214,7 +214,7 @@ namespace BSPData
 		SZ_CBRUSH = GetKeyInt(gameconf, "cbrush_sizeof", 8);
 
 		OFF_CBRUSHSIDE_PLANE = GetKeyInt(gameconf, "cbrushside_plane", 0);
-		OFF_CBRUSHSIDE_TEXINFO = GetKeyInt(gameconf, "cbrushside_texinfo", 4);
+		OFF_CBRUSHSIDE_SURFIDX = GetKeyInt(gameconf, "cbrushside_surfidx", 4);
 		OFF_CBRUSHSIDE_BEVEL = GetKeyInt(gameconf, "cbrushside_bevel", 6);
 		OFF_CBRUSHSIDE_THIN = GetKeyInt(gameconf, "cbrushside_thin", 7);
 		SZ_CBRUSHSIDE = GetKeyInt(gameconf, "cbrushside_sizeof", 8);
@@ -1098,14 +1098,15 @@ namespace BSPData
 		return (int)*(side + OFF_CBRUSHSIDE_THIN);
 	}
 
-	int BrushSideTexInfo(int brushIdx, int sideIdx)
+	int BrushSideTexData(int brushIdx, int sideIdx)
 	{
 		const uint8_t *side = brushside_for(brushIdx, sideIdx);
 		if (!side)
 		{
 			return -1;
 		}
-		return (int)ReadU16(side, OFF_CBRUSHSIDE_TEXINFO);
+		uint16_t surf = ReadU16(side, OFF_CBRUSHSIDE_SURFIDX);
+		return surf == 0xFFFF ? -1 : (int)surf; // SURFACE_INDEX_INVALID
 	}
 
 	int BrushSidePlaneIndex(int brushIdx, int sideIdx)
