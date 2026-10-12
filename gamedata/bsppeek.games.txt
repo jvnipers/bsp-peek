@@ -243,14 +243,13 @@
             // cboxbrush_t layout (SIMD-aligned, verified via runtime byte dump):
             //   0x00  VectorAligned mins (16B: float[3] + 4B pad)
             //   0x10  VectorAligned maxs (16B: float[3] + 4B pad)
-            //   0x20  ushort surfaceIndex[6] (per-face: -X,+X,-Y,+Y,-Z,+Z)
-            //   0x2C  int originalBrushNumber (index into map_brushes)
+            //   0x20  ushort surfaceIndex[6] (texdata index per face: -X,-Y,-Z,+X,+Y,+Z)
+            //   0x2C  ushort thinMask, ushort pad
             //   sizeof = 48 (0x30), verified via lea+eax*3, shl 4 pattern
             "cboxbrush_sizeof"       "48"
             "cboxbrush_mins"         "0"
             "cboxbrush_maxs"         "16"
             "cboxbrush_surfidx"      "32"
-            "cboxbrush_brushnum"     "44"
 
             "off_map_pathname"       "4"     // char mapPathName[96] at +0x04..0x63
             "off_emptyleaf"          "160"   // 0xA0 sentinel leaf index (empty)

@@ -283,13 +283,10 @@ cell_t N_BrushContents(IPluginContext *pCtx, const cell_t *params)
 cell_t N_BrushBounds(IPluginContext *pCtx, const cell_t *params)
 {
 	float mins[3], maxs[3];
-	if (!BSPData::GetBrushBounds(params[1], mins, maxs))
-	{
-		mins[0] = mins[1] = mins[2] = maxs[0] = maxs[1] = maxs[2] = 0.0f;
-	}
-	float3_to_cell(pCtx, params[2], mins);
-	float3_to_cell(pCtx, params[3], maxs);
-	return 0;
+	bool ok = BSPData::GetBrushBounds(params[1], mins, maxs);
+	float3_to_cell_ok(pCtx, params[2], mins, ok);
+	float3_to_cell_ok(pCtx, params[3], maxs, ok);
+	return ok ? 1 : 0;
 }
 
 cell_t N_IsBoxBrush(IPluginContext *pCtx, const cell_t *params)

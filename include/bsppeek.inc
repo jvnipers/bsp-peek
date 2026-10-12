@@ -88,7 +88,8 @@ native int  BSP_PointContents(const float pos[3]);
 
 // Brush accessors
 native int  BSP_BrushContents(int brushIdx);
-native void BSP_BrushBounds(int brushIdx, float mins[3], float maxs[3]);
+// false (zeroed outputs) if brushIdx is invalid.
+native bool BSP_BrushBounds(int brushIdx, float mins[3], float maxs[3]);
 // Heuristic only - CSGO splits box brushes into a parallel `cboxbrush_t` table so the result can false-negative.
 native bool BSP_IsBoxBrush(int brushIdx);
 native int  BSP_BrushNumSides(int brushIdx);
@@ -215,9 +216,7 @@ native int  BSP_CModelHeadnode(int idx);
 native bool BSP_FindBrushPairAtSeam(const float samplePos[3], float seamZ,
                                     int &outLowerBrush, int &outUpperBrush);
 
-// Box-table analog of BSP_FindBrushPairAtSeam for CSGO box-optimized walls, which the regular pair finder misses
-// (box brushes aren't in the leafbrush lump, and several can share one originalBrush).
-// Scans cboxbrush_t directly.
+// Box-table analog of BSP_FindBrushPairAtSeam for CSGO box-optimized walls. Scans cboxbrush_t directly.
 // outLower/outUpper are BOX-table indices (use BSP_BoxBrush* accessors):
 // outLower w/ maxs.z == seamZ, outUpper w/ mins.z == seamZ. true if both found.
 native bool BSP_FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
