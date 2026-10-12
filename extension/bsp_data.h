@@ -194,8 +194,9 @@ namespace BSPData
 	bool FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower, int &outUpper);
 
 	// Texturebug overhang.
-	// Scans cboxbrush_t for a player-collidable (SOLID or PLAYERCLIP) box brush whose XY AABB contains samplePos,
+	// Scans cboxbrush_t for a player-collidable (MASK_PLAYERSOLID) box brush whose XY AABB contains samplePos,
 	// whose underside (mins.z) is open to air, and which has >=1 exposed vertical wall face.
+	// Open/exposed are tested against brushes only, not displacements or props.
 	// Returns the BOX-TABLE index plus the hugged wall (face axis+sign, world coord), underside z, and height.
 	// Among exposed lateral faces, picks the one whose outward normal points toward samplePos.
 	// Among qualifying boxes in the column, returns the one whose bottom  edge is nearest BELOW samplePos.z
