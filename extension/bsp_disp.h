@@ -44,7 +44,7 @@ namespace BSPDisp
 	bool EngineGetBounds(int idx, float mins[3], float maxs[3]);
 	int EngineGetPower(int idx);
 	int EngineGetContents(int idx);
-	bool EngineGetSurfaceProps(int idx, int props[4]);
+	bool EngineGetSurfaceProps(int idx, int props[5]);
 	int EngineVertCount(int idx);
 	int EngineTriCount(int idx);
 	bool EngineGetVert(int idx, int vertIdx, float pos[3]);

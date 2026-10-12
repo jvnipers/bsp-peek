@@ -532,10 +532,11 @@ void Section_Disp()
         float emin[3], emax[3];
         int   props[4];
         BSP_DispGetBounds(0, emin, emax);
-        BSP_DispGetSurfaceProps(0, props);
-        P("DispTree[0]        : power=%d contents=0x%X verts=%d tris=%d surfProps={%d,%d,%d,%d}",
+        int alphaProp;
+        BSP_DispGetSurfaceProps(0, props, alphaProp);
+        P("DispTree[0]        : power=%d contents=0x%X verts=%d tris=%d surfProps={%d,%d,%d,%d} alpha=%d",
           BSP_DispGetPower(0), BSP_DispGetContents(0), BSP_DispVertCount(0), BSP_DispTriCount(0),
-          props[0], props[1], props[2], props[3]);
+          props[0], props[1], props[2], props[3], alphaProp);
         P("DispTree[0] bounds : (%.0f %.0f %.0f)-(%.0f %.0f %.0f)", emin[0], emin[1], emin[2], emax[0], emax[1], emax[2]);
         float dv[3];
         if (BSP_DispGetVert(0, 0, dv))
