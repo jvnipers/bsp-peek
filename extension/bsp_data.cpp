@@ -87,8 +87,8 @@ namespace BSPData
 	static int OFF_CLEAF_AREA_FLAGS = 6; // packed: area:9 flags:7 (short)
 	static int OFF_CLEAF_FIRSTLEAFBRUSH = 8;
 	static int OFF_CLEAF_NUMLEAFBRUSHES = 10;
-	static int OFF_CLEAF_FIRSTLEAFFACE = 12;
-	static int OFF_CLEAF_NUMLEAFFACES = 14;
+	static int OFF_CLEAF_DISPLISTSTART = 12;
+	static int OFF_CLEAF_DISPCOUNT = 14;
 	static int SZ_CLEAF = 16;
 
 	// cnode_t layout
@@ -230,8 +230,8 @@ namespace BSPData
 		OFF_CLEAF_AREA_FLAGS = GetKeyInt(gameconf, "cleaf_area_flags", 6);
 		OFF_CLEAF_FIRSTLEAFBRUSH = GetKeyInt(gameconf, "cleaf_firstleafbrush", 8);
 		OFF_CLEAF_NUMLEAFBRUSHES = GetKeyInt(gameconf, "cleaf_numleafbrushes", 10);
-		OFF_CLEAF_FIRSTLEAFFACE = GetKeyInt(gameconf, "cleaf_firstleafface", 12);
-		OFF_CLEAF_NUMLEAFFACES = GetKeyInt(gameconf, "cleaf_numleaffaces", 14);
+		OFF_CLEAF_DISPLISTSTART = GetKeyInt(gameconf, "cleaf_displiststart", 12);
+		OFF_CLEAF_DISPCOUNT = GetKeyInt(gameconf, "cleaf_dispcount", 14);
 		SZ_CLEAF = GetKeyInt(gameconf, "cleaf_sizeof", 16);
 
 		// cnode_t
@@ -1205,24 +1205,24 @@ namespace BSPData
 		return (int)((v >> 9) & 0x7F); // high 7 bits = flags
 	}
 
-	int LeafFirstFace(int leafIdx)
+	int LeafDispListStart(int leafIdx)
 	{
 		const uint8_t *leaf = leaf_at(leafIdx);
 		if (!leaf)
 		{
 			return -1;
 		}
-		return (int)ReadU16(leaf, OFF_CLEAF_FIRSTLEAFFACE);
+		return (int)ReadU16(leaf, OFF_CLEAF_DISPLISTSTART);
 	}
 
-	int LeafNumFaces(int leafIdx)
+	int LeafDispCount(int leafIdx)
 	{
 		const uint8_t *leaf = leaf_at(leafIdx);
 		if (!leaf)
 		{
 			return -1;
 		}
-		return (int)ReadU16(leaf, OFF_CLEAF_NUMLEAFFACES);
+		return (int)ReadU16(leaf, OFF_CLEAF_DISPCOUNT);
 	}
 
 	bool LeafBounds(int leafIdx, float mins[3], float maxs[3])

@@ -116,10 +116,8 @@ namespace BSPLumps
 
 	// LeafFaces (LUMP_LEAFFACES = 16, uint16 array)
 	int LeafFacesCount();
-	// Read leaf-face indices for leaf at firstFace..firstFace+numFaces from BSPData.
-	// Returns count written (clamped to maxOut).
-	// Uses caller-supplied first/num so this is a pure lookup against the leaffaces table.
-	int LeafFacesRange(int firstFace, int numFaces, int *outBuf, int maxOut);
+	// Face indices of one leaf via on-disk dleaf_t (LUMP_LEAFS = 10). Same leaf index as BSPData. Returns count written.
+	int LeafFaces(int leafIdx, int *outBuf, int maxOut);
 
 	// Worldlights (LUMP_WORLDLIGHTS = 15 LDR, LUMP_WORLDLIGHTS_HDR = 54)
 	int WorldlightCount(); // total across both LDR + HDR if present (LDR first)
