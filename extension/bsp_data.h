@@ -122,7 +122,8 @@ namespace BSPData
 	int BrushSideWinding(int brushIdx, int sideIdx, float *outVerts, int maxVerts);
 
 	// Sweep an AABB [mins,maxs] (relative to its center) from start to end against brush brushIdx.
-	// Direct port of CM_ClipBoxToBrush (DIST_EPSILON = 1/32), so the result matches a real player-hull trace against this one brush.
+	// Port of CM_ClipBoxToBrush / IntersectRayWithBoxBrush (DIST_EPSILON = 1/32): matches a real hull trace against this one brush.
+	// mins == maxs == 0 is a point trace (bevel sides skipped).
 	// Fills fraction (1.0 = no hit), the hit plane normal, and startSolid.
 	// Returns -1 = invalid brush, 0 = no contact, 1 = contact (or startSolid).
 	int BrushClipBox(int brushIdx, const float start[3], const float end[3], const float mins[3], const float maxs[3], float &fraction,

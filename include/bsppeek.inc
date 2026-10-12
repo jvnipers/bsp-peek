@@ -141,8 +141,9 @@ native bool BSP_BrushTopZAt(int brushIdx, float x, float y, float &z);
 native int  BSP_BrushSideWinding(int brushIdx, int sideIdx, float verts[][3], int maxVerts);
 
 // Sweep an AABB [mins,maxs] (relative to its center) from start to end against brushIdx.
-// Direct port of the engine's CM_ClipBoxToBrush (DIST_EPSILON = 1/32),
+// Port of the engine's CM_ClipBoxToBrush / IntersectRayWithBoxBrush (DIST_EPSILON = 1/32),
 // so the result matches a real player-hull trace against this one brush.
+// mins == maxs == 0 is a point trace (bevel sides skipped).
 // Fills fraction (1.0 = no hit), hit plane normal, startSolid.
 // Returns -1 = invalid brush, 0 = no contact, 1 = contact (or startSolid).
 native int  BSP_BrushClipBox(int brushIdx, const float start[3], const float end[3],
