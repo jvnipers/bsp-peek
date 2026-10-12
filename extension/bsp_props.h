@@ -18,6 +18,8 @@ namespace BSPProps
 	bool Init(IGameConfig *gc, char *err, size_t errLen);
 	// Both interfaces resolved.
 	bool Ready();
+	// enginetrace + staticpropmgr resolved.
+	bool SweepReady();
 	// Fill buf with the resolved interface pointers + their first-deref vtable pointers (sanity check that the sigscanned globals are real).
 	// Returns length.
 	int Debug(char *buf, size_t buflen);

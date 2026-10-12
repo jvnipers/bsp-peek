@@ -11,6 +11,8 @@
 #include "engine/IStaticPropMgr.h"
 #include "engine/ivmodelinfo.h"
 #include "gametrace.h" // CGameTrace (trace_t) -> pulls cmodel.h/CBaseTrace (Ray_t)
+#include "iserverunknown.h"
+#include "model_types.h" // mod_brush
 #include "tier1/utlvector.h"
 #include "vcollide.h"
 #include "vphysics_interface.h"
@@ -112,14 +114,23 @@ namespace BSPProps
 			}
 		};
 
-		// World, static props, AND brush-model entities.
-		// Returning true keeps server entities (func_* brush models) on top of the always-on world + props.
-		class AllFilter : public ITraceFilter
+		// World, static props, and brush-model entities (func_*). Studio-model entities (players, prop_*) are rejected.
+		class BrushEntityFilter : public ITraceFilter
 		{
 		public:
-			bool ShouldHitEntity(IHandleEntity *, int) override
+			bool ShouldHitEntity(IHandleEntity *ent, int) override
 			{
-				return true;
+				// Static props normally skip the filter. Guarded anyway: they are not IServerUnknown.
+				if (g_staticpropmgr && g_staticpropmgr->IsStaticProp(ent))
+				{
+					return true;
+				}
+				if (!g_modelinfo)
+				{
+					return false;
+				}
+				ICollideable *c = static_cast<IServerUnknown *>(ent)->GetCollideable();
+				return c && g_modelinfo->GetModelType(c->GetCollisionModel()) == mod_brush;
 			}
 
 			TraceType_t GetTraceType() const override
@@ -510,7 +521,7 @@ namespace BSPProps
 		tr.allsolid = false;
 		if (hitEntities)
 		{
-			AllFilter filter;
+			BrushEntityFilter filter;
 			g_enginetrace->TraceRay(ray, mask, &filter, &tr);
 		}
 		else
