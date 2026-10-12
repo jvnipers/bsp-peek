@@ -102,7 +102,6 @@ namespace BSPLumps
 
 		// dleafwaterdata_t: float surfaceZ + float minZ + short surfaceTexInfoID.
 		// Natural size 10, but 4-byte alignment pads sizeof to 12 (the stride vbsp wrote).
-		// Stride is re-derived from the lump length at load (12, else 10).
 		constexpr int kSizeofLeafWater = 12;
 		constexpr int kLeafWater_SurfaceZ = 0; // float
 		constexpr int kLeafWater_MinZ = 4;     // float
@@ -204,14 +203,13 @@ namespace BSPLumps
 			std::string entityRaw;
 			std::vector<Entity> entities;
 
-			std::vector<uint8_t> visLump;           // LUMP_VISIBILITY raw bytes
-			std::vector<uint8_t> leafWaterLump;     // array of dleafwaterdata_t
-			int leafWaterStride = kSizeofLeafWater; // derived per-map (12 or 10)
-			std::vector<uint8_t> cubemapsLump;      // array of dcubemapsample_t (16B each)
-			std::vector<uint8_t> vertexesLump;      // array of Vector (12B each)
-			std::vector<uint8_t> edgesLump;         // array of dedge_t (4B each)
-			std::vector<uint8_t> surfedgesLump;     // array of int32 (4B each)
-			std::vector<uint8_t> facesLump;         // array of dface_t (56B each)
+			std::vector<uint8_t> visLump;       // LUMP_VISIBILITY raw bytes
+			std::vector<uint8_t> leafWaterLump; // array of dleafwaterdata_t
+			std::vector<uint8_t> cubemapsLump;  // array of dcubemapsample_t (16B each)
+			std::vector<uint8_t> vertexesLump;  // array of Vector (12B each)
+			std::vector<uint8_t> edgesLump;     // array of dedge_t (4B each)
+			std::vector<uint8_t> surfedgesLump; // array of int32 (4B each)
+			std::vector<uint8_t> facesLump;     // array of dface_t (56B each)
 
 			std::vector<uint8_t> texinfoLump;
 			std::vector<uint8_t> texdataLump;
@@ -543,7 +541,6 @@ namespace BSPLumps
 		g.entities.clear();
 		g.visLump.clear();
 		g.leafWaterLump.clear();
-		g.leafWaterStride = kSizeofLeafWater;
 		g.cubemapsLump.clear();
 		g.vertexesLump.clear();
 		g.edgesLump.clear();
@@ -638,14 +635,8 @@ namespace BSPLumps
 
 		// Visibility
 		ReadFile(f, g.lumps[LUMP_VISIBILITY].fileofs, g.lumps[LUMP_VISIBILITY].filelen, g.visLump);
-		// Leaf water data:
-		// derive the on-disk stride from the length (12 padded, 10 tight) so the count is right regardless of how the lump was packed.
+		// Leaf water data
 		ReadFile(f, g.lumps[LUMP_LEAFWATERDATA].fileofs, g.lumps[LUMP_LEAFWATERDATA].filelen, g.leafWaterLump);
-		if (!g.leafWaterLump.empty())
-		{
-			size_t n = g.leafWaterLump.size();
-			g.leafWaterStride = (n % 12 == 0) ? 12 : (n % 10 == 0 ? 10 : 12);
-		}
 		// Cubemaps
 		ReadFile(f, g.lumps[LUMP_CUBEMAPS].fileofs, g.lumps[LUMP_CUBEMAPS].filelen, g.cubemapsLump);
 		// Vertexes
@@ -997,7 +988,7 @@ namespace BSPLumps
 		{
 			return 0;
 		}
-		return (int)(g.leafWaterLump.size() / (size_t)g.leafWaterStride);
+		return (int)(g.leafWaterLump.size() / kSizeofLeafWater);
 	}
 
 	bool LeafWaterData(int idx, float &surfaceZ, float &minZ, int &surfaceTexInfo)
@@ -1008,7 +999,7 @@ namespace BSPLumps
 		{
 			return false;
 		}
-		const uint8_t *p = g.leafWaterLump.data() + (size_t)idx * (size_t)g.leafWaterStride;
+		const uint8_t *p = g.leafWaterLump.data() + (size_t)idx * kSizeofLeafWater;
 		surfaceZ = ReadF32(p, kLeafWater_SurfaceZ);
 		minZ = ReadF32(p, kLeafWater_MinZ);
 		surfaceTexInfo = ReadI16(p, kLeafWater_TexInfo);

@@ -28,16 +28,10 @@ namespace BSPDisp
 		// Caching the value at init is a use-after-free once the old map's tree arrays are freed.
 		static int *g_pTreeCount = nullptr;
 		static uint8_t **g_ppTreeArrayBase = nullptr;
-		static uint8_t **g_ppBoundsArrayBase = nullptr;
 
 		inline uint8_t *TreeArrayBase()
 		{
 			return g_ppTreeArrayBase ? *g_ppTreeArrayBase : nullptr;
-		}
-
-		inline uint8_t *BoundsArrayBase()
-		{
-			return g_ppBoundsArrayBase ? *g_ppBoundsArrayBase : nullptr;
 		}
 
 		static int SZ_DISPCOLL_TREE = 268;
@@ -424,11 +418,6 @@ namespace BSPDisp
 		}
 		engine::g_ppTreeArrayBase = reinterpret_cast<uint8_t **>(addr);
 
-		if (gc->GetAddress("g_pDispBounds", &addr) && addr)
-		{
-			engine::g_ppBoundsArrayBase = reinterpret_cast<uint8_t **>(addr);
-		}
-
 		engine::SZ_DISPCOLL_TREE = GetKeyInt(gc, "dispcoll_tree_sizeof", 268);
 		engine::OFF_TREE_MINS = GetKeyInt(gc, "dispcoll_tree_mins", 4);
 		engine::OFF_TREE_MAXS = GetKeyInt(gc, "dispcoll_tree_maxs", 20);
@@ -456,7 +445,6 @@ namespace BSPDisp
 	{
 		engine::g_pTreeCount = nullptr;
 		engine::g_ppTreeArrayBase = nullptr;
-		engine::g_ppBoundsArrayBase = nullptr;
 	}
 
 	void Clear()

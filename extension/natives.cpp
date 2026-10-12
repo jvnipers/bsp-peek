@@ -1,4 +1,4 @@
-#include "natives.h"
+#include "extension.h"
 #include "bsp_data.h"
 #include "bsp_disp.h"
 #include "bsp_lumps.h"
