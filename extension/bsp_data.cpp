@@ -288,6 +288,15 @@ namespace BSPData
 		g_boxBrushAuthBuiltFor = -1;
 	}
 
+	// The engine frees the collision tables right after LevelShutdown, and the worker reads them unlocked.
+	void OnMapEnd()
+	{
+		if (g_asyncBuildThread.joinable())
+		{
+			g_asyncBuildThread.join();
+		}
+	}
+
 	// Debug accessors (used by extension.cpp at load time)
 	void *DebugGetBase()
 	{

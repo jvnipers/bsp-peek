@@ -282,7 +282,7 @@ native bool BSP_LeafBrushPairAtSeam(const float samplePos[3], float seamZ,
 native int  BSP_RebuildCache();
 
 // Async cache build - kicks off a worker thread, returns immediately.
-// Reads via BSP_FindBrushPairAtSeam block until the worker swaps the cache in.
+// A BSP_FindBrushPairAtSeam call before swap-in builds the cache itself.
 // Use this in OnMapStart to avoid stalling the server during map load.
 // Returns brush count (or 0 if no BSP data).
 native int  BSP_RebuildCacheAsync();

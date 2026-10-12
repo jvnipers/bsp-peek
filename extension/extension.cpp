@@ -74,6 +74,11 @@ bool BSPPeek::QueryRunning(char *error, size_t maxlen)
 	return true;
 }
 
+void BSPPeek::OnCoreMapEnd()
+{
+	BSPData::OnMapEnd();
+}
+
 void BSPPeek::OnCoreMapStart(edict_t *pEdictList, int edictCount, int clientMax)
 {
 	BSPData::OnMapStart();
