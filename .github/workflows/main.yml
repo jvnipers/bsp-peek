@@ -180,7 +180,7 @@ jobs:
         run: |
           cd artifacts
           for dir in */; do
-            zip -r "../${dir%/}.zip" "$dir"
+            (cd "$dir" && zip -r "../../${dir%/}.zip" .)
           done
           cd ..
 
