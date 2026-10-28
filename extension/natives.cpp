@@ -3,6 +3,7 @@
 #include "bsp_disp.h"
 #include "bsp_lumps.h"
 #include "bsp_props.h"
+#include "collide.h"
 #include <IGameHelpers.h>
 #include <cmath>
 #include <cstdio>
@@ -496,6 +497,49 @@ cell_t N_BrushClipBox(IPluginContext *pCtx, const cell_t *params)
 	float3_to_cell(pCtx, params[7], normal);
 	*pSS = startSolid ? 1 : 0;
 	return rc;
+}
+
+cell_t N_SeamOrder(IPluginContext *pCtx, const cell_t *params)
+{
+	const collide::Bsp *bsp = BSPData::CollideBsp();
+	if (!bsp)
+	{
+		return -1;
+	}
+	collide::SeamOrderQuery q;
+	q.lower = (uint16_t)params[1];
+	q.upper = (uint16_t)params[2];
+	cell_to_float3(pCtx, params[3], q.origin);
+	cell_to_float3(pCtx, params[4], q.along);
+	q.alongMin = sp_ctof(params[5]);
+	q.alongMax = sp_ctof(params[6]);
+	q.speedMax = sp_ctof(params[7]);
+	q.maxspeed = sp_ctof(params[8]);
+	q.frametime = sp_ctof(params[9]);
+	q.stepsize = 18.0f;
+	std::vector<collide::SeamOrderCell> cells;
+	collide::SeamOrders(*bsp, q, cells);
+
+	int mask = 0;
+	float lo[2] = {-1.0f, -1.0f}, hi[2] = {-1.0f, -1.0f};
+	for (const collide::SeamOrderCell &c : cells)
+	{
+		mask |= 1 << (int)c.order;
+		int k = c.order == collide::SeamOrder::LowerFirst ? 0 : c.order == collide::SeamOrder::UpperFirst ? 1 : -1;
+		if (k >= 0)
+		{
+			lo[k] = lo[k] < 0.0f ? c.speedMin : std::fmin(lo[k], c.speedMin);
+			hi[k] = std::fmax(hi[k], c.speedMax);
+		}
+	}
+	cell_t *out;
+	pCtx->LocalToPhysAddr(params[10], &out);
+	out[0] = sp_ftoc(lo[0]);
+	out[1] = sp_ftoc(hi[0]);
+	pCtx->LocalToPhysAddr(params[11], &out);
+	out[0] = sp_ftoc(lo[1]);
+	out[1] = sp_ftoc(hi[1]);
+	return mask;
 }
 
 cell_t N_BrushSideOrder(IPluginContext *pCtx, const cell_t *params)
@@ -2160,6 +2204,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 	{"BSP_BrushTopZAt", N_BrushTopZAt},
 	{"BSP_BrushSideWinding", N_BrushSideWinding},
 	{"BSP_BrushClipBox", N_BrushClipBox},
+	{"BSP_SeamOrder", N_SeamOrder},
 	{"BSP_BrushSideOrder", N_BrushSideOrder},
 
 	// Leaf accessors

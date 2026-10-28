@@ -1,5 +1,6 @@
 #include "bsp_data.h"
 #include "bsp_util.h"
+#include "collide.h"
 #include <atomic>
 #include <cfloat>
 #include <climits>
@@ -33,6 +34,7 @@ namespace BSPData
 	static int OFF_MAP_LEAFS = 0;
 	static int OFF_NUMNODES = 0;
 	static int OFF_MAP_NODES = 0;
+	static int OFF_MAP_ROOTNODE = -1;
 	static int OFF_NUMBOXBRUSHES = 0;
 	static int OFF_MAP_BOXBRUSHES = 0;
 	static int SZ_CBOXBRUSH = 48;
@@ -150,6 +152,14 @@ namespace BSPData
 
 	// Forward decls - built lazily by various accessors below.
 	static void EnsureBoxBrushAuthSet();
+
+	// Rebuilt per map. Main-thread only.
+	static std::vector<collide::Plane> g_collidePlanes;
+	static std::vector<collide::Node> g_collideNodes;
+	static std::vector<collide::Leaf> g_collideLeafs;
+	static std::vector<uint16_t> g_collideLeafBrushes;
+	static collide::Bsp g_collideBsp;
+	static bool g_collideBuilt = false;
 	static void BuildBrushCache();
 	static void BuildLeafCache();
 	static void PopulateBrushCache(std::vector<BrushCacheEntry> &out);
@@ -178,6 +188,7 @@ namespace BSPData
 		OFF_MAP_LEAFS = GetKeyInt(gameconf, "off_map_leafs", 0);
 		OFF_NUMNODES = GetKeyInt(gameconf, "off_numnodes", 0);
 		OFF_MAP_NODES = GetKeyInt(gameconf, "off_map_nodes", 0);
+		OFF_MAP_ROOTNODE = GetKeyInt(gameconf, "off_map_rootnode", -1);
 		OFF_NUMBOXBRUSHES = GetKeyInt(gameconf, "off_numboxbrushes", 0);
 		OFF_MAP_BOXBRUSHES = GetKeyInt(gameconf, "off_map_boxbrushes", 0);
 		SZ_CBOXBRUSH = GetKeyInt(gameconf, "cboxbrush_sizeof", 48);
@@ -275,6 +286,7 @@ namespace BSPData
 		g_brushToBoxIdx.clear();
 		g_boxToBrushIdx.clear();
 		g_boxBrushAuthBuiltFor = -1;
+		g_collideBuilt = false;
 	}
 
 	void OnMapStart()
@@ -289,6 +301,7 @@ namespace BSPData
 		g_brushToBoxIdx.clear();
 		g_boxToBrushIdx.clear();
 		g_boxBrushAuthBuiltFor = -1;
+		g_collideBuilt = false;
 	}
 
 	// The engine frees the collision tables right after LevelShutdown, and the worker reads them unlocked.
@@ -1806,187 +1819,115 @@ namespace BSPData
 		normal[0] = normal[1] = normal[2] = 0.0f;
 		startSolid = false;
 
-		const float DIST_EPSILON = 0.03125f; // 1/32, engine constant
-
-		// As Ray_t::Init: a ray through the hull center plus half-extents.
-		float p1[3], p2[3], delta[3], extents[3];
-		for (int k = 0; k < 3; ++k)
-		{
-			delta[k] = end[k] - start[k];
-			extents[k] = (maxs[k] - mins[k]) * 0.5f;
-			p1[k] = start[k] + (mins[k] + maxs[k]) * 0.5f;
-			p2[k] = p1[k] + delta[k];
-		}
+		collide::Ray ray = collide::MakeRay(start, end, mins, maxs);
+		collide::Trace tr;
+		collide::ClearTrace(tr);
 
 		int bi = BoxIndexForBrush(brushIdx);
 		if (bi >= 0)
 		{
-			// Port of IntersectRayWithBoxBrush.
 			float mn[3], mx[3];
 			if (!BoxBrushBounds(bi, mn, mx))
 			{
 				return -1;
 			}
-			float oMin[3], oMax[3], invDelta[3];
-			bool cross[3];
-			bool startOut = false;
-			for (int k = 0; k < 3; ++k)
-			{
-				// Operand order as in engine.so, so rounding matches.
-				oMin[k] = (mn[k] - p1[k]) - extents[k];
-				oMax[k] = (extents[k] + mx[k]) - p1[k];
-				bool startOutMin = 0.0f < oMin[k], endOutMin = delta[k] < oMin[k];
-				bool startOutMax = 0.0f > oMax[k], endOutMax = delta[k] > oMax[k];
-				if ((startOutMin && endOutMin) || (startOutMax && endOutMax))
-				{
-					return 0;
-				}
-				cross[k] = (startOutMin != endOutMin) || (startOutMax != endOutMax);
-				startOut = startOut || startOutMin || startOutMax;
-				invDelta[k] = (delta[k] != 0.0f) ? 1.0f / delta[k] : FLT_MAX;
-			}
-
-			// face: 0..2 = mins face of that axis, 3..5 = maxs face.
-			auto interval = [&](float eps, float &lastIn, float &firstOut, int &face)
-			{
-				float mint[3], maxt[3];
-				int faceId[3];
-				for (int k = 0; k < 3; ++k)
-				{
-					float tmin = (oMin[k] - eps) * invDelta[k];
-					float tmax = (oMax[k] + eps) * invDelta[k];
-					faceId[k] = (tmin <= tmax) ? k : k + 3;
-					mint[k] = cross[k] ? std::fmin(tmin, tmax) : -FLT_MAX;
-					maxt[k] = cross[k] ? std::fmax(tmin, tmax) : FLT_MAX;
-				}
-				firstOut = std::fmin(std::fmin(maxt[0], std::fmin(maxt[1], maxt[2])), 1.0f);
-				// Tie order of the engine's SIMD max: y beats x, z beats both.
-				int hi = (mint[0] > mint[1]) ? 0 : 1;
-				if (!(mint[hi] > mint[2]))
-				{
-					hi = 2;
-				}
-				face = faceId[hi];
-				lastIn = std::fmax(mint[hi], 0.0f);
-			};
-
-			float lastIn, firstOut;
-			int face;
-			interval(0.0f, lastIn, firstOut, face);
-			if (lastIn > firstOut)
-			{
-				return 0;
-			}
-			interval(DIST_EPSILON, lastIn, firstOut, face);
-			if (lastIn > firstOut)
-			{
-				return 0;
-			}
-			if (!startOut)
-			{
-				startSolid = true;
-				fraction = (firstOut >= 1.0f) ? 0.0f : 1.0f; // allsolid (never exits) -> blocked at 0
-				return 1;
-			}
-			if (lastIn < 1.0f)
-			{
-				fraction = lastIn;
-				normal[face % 3] = (face >= 3) ? 1.0f : -1.0f;
-				return 1;
-			}
-			return 0;
+			static const uint16_t noSurfaces[6] = {collide::NULL_SURFACE, collide::NULL_SURFACE, collide::NULL_SURFACE,
+												   collide::NULL_SURFACE, collide::NULL_SURFACE, collide::NULL_SURFACE};
+			collide::ClipBoxToBoxBrush(ray, tr, mn, mx, noSurfaces, 1);
 		}
-
-		// Port of CM_ClipBoxToBrush.
-		uint16_t numsides, first;
-		if (!brush_sides(brushIdx, numsides, first) || numsides == 0)
+		else
 		{
-			return -1;
-		}
-		bool isPoint = DotV(extents, extents) < 1e-6f; // Ray_t::m_IsRay
-
-		const float NEVER_UPDATED = -99999.0f;
-		float enterfrac = NEVER_UPDATED, leavefrac = 1.0f;
-		float clipN[3] = {0, 0, 0};
-		bool getout = false, startout = false;
-
-		for (uint16_t i = 0; i < numsides; ++i)
-		{
-			float n[3], d;
-			if (!side_plane(first, i, n, d))
+			uint16_t numsides, first;
+			if (!brush_sides(brushIdx, numsides, first) || numsides == 0)
 			{
 				return -1;
 			}
-			float dist = d;
-			if (!isPoint)
+			std::vector<collide::Plane> planes(numsides);
+			std::vector<collide::Side> sides(numsides);
+			for (uint16_t i = 0; i < numsides; ++i)
 			{
-				// Summed in engine.so's order, so rounding matches.
-				dist = std::fabs(extents[2] * n[2]) + ((std::fabs(extents[1] * n[1]) + std::fabs(extents[0] * n[0])) + d);
-			}
-			else if (BrushSideBevel(brushIdx, i) == 1)
-			{
-				continue; // engine skips bevels on point traces
-			}
-			float d1 = DotV(p1, n) - dist;
-			float d2 = DotV(p2, n) - dist;
-			if (d1 > 0.0f)
-			{
-				startout = true;
-				if (d2 > 0.0f)
+				if (!side_plane(first, i, planes[i].normal, planes[i].dist))
 				{
-					return 0; // completely in front of this side
+					return -1;
 				}
+				sides[i].plane = &planes[i];
+				sides[i].surfaceIndex = collide::NULL_SURFACE;
+				sides[i].bevel = BrushSideBevel(brushIdx, i) == 1;
+				sides[i].thin = 0;
+			}
+			if (ray.isPoint)
+			{
+				collide::ClipRayToBrush(ray, tr, sides.data(), numsides, 1);
 			}
 			else
 			{
-				if (d2 <= 0.0f)
-				{
-					continue;
-				}
-				getout = true; // endpoint is not in solid
-			}
-			if (d1 > d2)
-			{ // entering the brush across this side
-				float f = d1 - DIST_EPSILON;
-				if (f < 0.0f)
-				{
-					f = 0.0f;
-				}
-				f = f / (d1 - d2);
-				if (f > enterfrac)
-				{
-					enterfrac = f;
-					clipN[0] = n[0];
-					clipN[1] = n[1];
-					clipN[2] = n[2];
-				}
-			}
-			else
-			{ // leaving
-				float f = (d1 + DIST_EPSILON) / (d1 - d2);
-				if (f < leavefrac)
-				{
-					leavefrac = f;
-				}
+				collide::ClipBoxToBrush(ray, tr, sides.data(), numsides, 1);
 			}
 		}
 
-		if (!startout)
+		startSolid = tr.startSolid;
+		fraction = tr.fraction;
+		if (startSolid)
 		{
-			// Started inside the brush.
-			startSolid = true;
-			fraction = getout ? 1.0f : 0.0f; // allsolid (never exits) -> blocked at 0
 			return 1;
 		}
-		if (enterfrac < leavefrac && enterfrac > NEVER_UPDATED && enterfrac < 1.0f)
+		if (fraction < 1.0f)
 		{
-			fraction = enterfrac;
-			normal[0] = clipN[0];
-			normal[1] = clipN[1];
-			normal[2] = clipN[2];
+			normal[0] = tr.plane.normal[0];
+			normal[1] = tr.plane.normal[1];
+			normal[2] = tr.plane.normal[2];
 			return 1;
 		}
 		return 0;
+	}
+
+	const collide::Bsp *CollideBsp()
+	{
+		if (g_collideBuilt)
+		{
+			return &g_collideBsp;
+		}
+		int numNodes = GetNumNodes(), numLeafs = GetNumLeaves();
+		if (!g_pBSPData || numNodes <= 0 || numLeafs <= 0 || OFF_MAP_ROOTNODE < 0)
+		{
+			return nullptr;
+		}
+		// The movement walk starts at map_rootnode, the accessors index map_nodes.
+		if (ReadPtr(g_pBSPData, OFF_MAP_ROOTNODE) != ReadPtr(g_pBSPData, OFF_MAP_NODES))
+		{
+			return nullptr;
+		}
+		g_collidePlanes.assign(numNodes, collide::Plane {});
+		g_collideNodes.assign(numNodes, collide::Node {});
+		for (int i = 0; i < numNodes; ++i)
+		{
+			collide::Plane &plane = g_collidePlanes[i];
+			collide::Node &node = g_collideNodes[i];
+			if (!NodePlane(i, plane.normal, plane.dist) || !NodeChildren(i, node.children[0], node.children[1]))
+			{
+				return nullptr;
+			}
+			node.plane = &plane;
+		}
+		g_collideLeafs.assign(numLeafs, collide::Leaf {});
+		g_collideLeafBrushes.clear();
+		std::vector<int> brushes(65536);
+		for (int i = 0; i < numLeafs; ++i)
+		{
+			int n = LeafBrushes(i, brushes.data(), (int)brushes.size());
+			if (n < 0 || g_collideLeafBrushes.size() + n > 65536)
+			{
+				return nullptr;
+			}
+			collide::Leaf &leaf = g_collideLeafs[i];
+			leaf.contents = LeafContents(i);
+			leaf.firstLeafBrush = (uint16_t)g_collideLeafBrushes.size();
+			leaf.numLeafBrushes = (uint16_t)n;
+			g_collideLeafBrushes.insert(g_collideLeafBrushes.end(), brushes.begin(), brushes.begin() + n);
+		}
+		g_collideBsp = collide::Bsp {g_collideNodes.data(), g_collideLeafs.data(), g_collideLeafBrushes.data(), GetNumBrushes(), nullptr, nullptr, 0};
+		g_collideBuilt = true;
+		return &g_collideBsp;
 	}
 
 	int BrushSideOrder(int brushIdx, char *buf, int maxlen)

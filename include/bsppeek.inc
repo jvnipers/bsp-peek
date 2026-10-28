@@ -160,8 +160,23 @@ native int  BSP_BrushClipBox(int brushIdx, const float start[3], const float end
 // per side, plane normal/dist, PLANE_* type, axis class, bevel/thin. Returns length.
 native int  BSP_BrushSideOrder(int brushIdx, char[] buf, int maxlen);
 
+// Order bits returned by BSP_SeamOrder (1 << value).
+#define BSPP_SEAM_LOWER_FIRST   0
+#define BSPP_SEAM_UPPER_FIRST   1
+#define BSPP_SEAM_LOWER_MISSING 2
+#define BSPP_SEAM_UPPER_MISSING 3
+#define BSPP_SEAM_BOTH_MISSING  4
+
+// Every order player movement can test lowerBrush and upperBrush in (the first one wins a fraction-0 tie),
+// for a standing-hull origin on origin + t * along, t in [alongMin, alongMax], at any speed up to speedMax.
+// lowerFirst / upperFirst: speed range where that order occurs, -1.0 if never.
+// Returns a mask of 1 << BSPP_SEAM_*, -1 when the collision tree is unreadable.
+native int BSP_SeamOrder(int lowerBrush, int upperBrush, const float origin[3], const float along[3],
+                         float alongMin, float alongMax, float speedMax, float maxspeed, float frametime,
+                         float lowerFirst[2], float upperFirst[2]);
+
 // True if the brush-accurate contents at pos include CONTENTS_LADDER.
-stock bool  BSP_IsLadder(const float pos[3])
+stock bool BSP_IsLadder(const float pos[3])
 {
     return (BSP_PointContentsBrushes(pos) & BSPP_CONTENTS_LADDER) != 0;
 }
@@ -765,6 +780,7 @@ public void __ext_bsppeek_SetNTVOptional()
     MarkNativeAsOptional("BSP_BrushSideWinding");
     MarkNativeAsOptional("BSP_BrushClipBox");
     MarkNativeAsOptional("BSP_BrushSideOrder");
+    MarkNativeAsOptional("BSP_SeamOrder");
     MarkNativeAsOptional("BSP_LeafBrushes");
     MarkNativeAsOptional("BSP_LeafContents");
     MarkNativeAsOptional("BSP_LeafCluster");

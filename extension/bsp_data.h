@@ -4,6 +4,11 @@
 #include "smsdk_ext.h"
 #include <cstdint>
 
+namespace collide
+{
+	struct Bsp;
+}
+
 // BSP collision data accessor (CCollisionBSPData).
 // Reads brush/leaf/plane/node tables directly from engine memory via gamedata offsets.
 namespace BSPData
@@ -126,6 +131,9 @@ namespace BSPData
 	// Returns -1 = invalid brush, 0 = no contact, 1 = contact (or startSolid).
 	int BrushClipBox(int brushIdx, const float start[3], const float end[3], const float mins[3], const float maxs[3], float &fraction,
 					 float normal[3], bool &startSolid);
+
+	// Without displacements, which don't change the brush order. nullptr when the tables are unreadable.
+	const collide::Bsp *CollideBsp();
 
 	// Diagnostic: dump each side of brushIdx in engine iteration order
 	//(the order CM_ClipBoxToBrush processes them, which the pixelsurf gate depends on):
