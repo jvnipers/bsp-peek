@@ -445,13 +445,34 @@ namespace collide
 		float speed = std::sqrt(velocity[2] * velocity[2] + (velocity[1] * velocity[1] + velocity[0] * velocity[0]));
 		float radius = (speed + maxspeed) * frametime + 1.0f;
 		float radiusZ = radius + stepsize;
+		float hi[3], lo[3];
 		for (int k = 0; k < 2; ++k)
 		{
-			boxMaxs[k] = (origin[k] + hullMaxs[k]) + radius;
-			boxMins[k] = (hullMins[k] + origin[k]) - radius;
+			hi[k] = (origin[k] + hullMaxs[k]) + radius;
+			lo[k] = (hullMins[k] + origin[k]) - radius;
 		}
-		boxMaxs[2] = (origin[2] + hullMaxs[2]) + radiusZ;
-		boxMins[2] = (hullMins[2] + origin[2]) - radiusZ;
+		hi[2] = (origin[2] + hullMaxs[2]) + radiusZ;
+		lo[2] = (hullMins[2] + origin[2]) - radiusZ;
+		// ClearBounds, then AddPointToBounds of the max corner and the min corner (comiss: NaN lands in mins only).
+		for (int k = 0; k < 3; ++k)
+		{
+			boxMins[k] = FLT_MAX;
+			boxMaxs[k] = -FLT_MAX;
+		}
+		for (const float *p : {hi, lo})
+		{
+			for (int k = 0; k < 3; ++k)
+			{
+				if (!(p[k] >= boxMins[k]))
+				{
+					boxMins[k] = p[k];
+				}
+				if (p[k] > boxMaxs[k])
+				{
+					boxMaxs[k] = p[k];
+				}
+			}
+		}
 	}
 
 	namespace
