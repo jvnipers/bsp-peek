@@ -40,6 +40,7 @@ for cxx in builder.targets:
         binary.compiler.linkflags += [
             os.path.join(sdklib, "linux", "tier1_i486.a"),
             os.path.join(sdklib, "linux", "mathlib_i486.a"),
+            os.path.join(sdklib, "linux", "interfaces_i486.a"),
             "-L" + os.path.join(sdklib, "linux"),
             "-ltier0",
             "-lvstdlib",
