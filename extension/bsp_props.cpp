@@ -1127,4 +1127,14 @@ namespace BSPProps
 		return std::sqrt(bestSq);
 	}
 
+	IEngineTrace *EngineTrace()
+	{
+		return g_enginetrace;
+	}
+
+	IStaticPropMgrServer *StaticPropMgr()
+	{
+		return g_staticpropmgr;
+	}
+
 } // namespace BSPProps

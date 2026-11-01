@@ -1,6 +1,7 @@
 #ifndef _INCLUDE_BSPPEEK_BSP_DISP_H_
 #define _INCLUDE_BSPPEEK_BSP_DISP_H_
 
+#include <vector>
 #include "smsdk_ext.h"
 #include <cstddef>
 
@@ -39,6 +40,7 @@ namespace BSPDisp
 	float EngineDistToSurface(const float pos[3], float maxDist);
 	float EngineNearestTri(const float pos[3], float maxDist, float outNormal[3], float outV0[3], float outV1[3], float outV2[3]);
 	int EngineTreeIndexAt(const float pos[3], float maxDist);
+	void EngineVertexZsInBox(const float mins[3], const float maxs[3], std::vector<float> &out);
 	int EngineDebugTreeInfo(int idx, char *buf, size_t bufLen);
 	int EngineDiagnoseQuery(float x, float y, char *buf, size_t bufLen);
 	bool EngineGetBounds(int idx, float mins[3], float maxs[3]);

@@ -4,6 +4,9 @@
 #include "smsdk_ext.h"
 #include <cstddef>
 
+class IEngineTrace;
+class IStaticPropMgrServer;
+
 // Static prop collision.
 // TraceHull: resolves one prop's collision by model name (IVModelInfo -> vcollide_t) and sweeps an AABB against it via IPhysicsCollision.
 // Exact, but fails on prop-combine model names.
@@ -54,6 +57,9 @@ namespace BSPProps
 					   float &outFraction, float outEndPos[3], float outNormal[3], bool &outStartSolid, bool &outAllSolid, int &outContents,
 					   int &outDispFlags, float &outPlaneDist, int &outSurfaceProps, int &outSurfaceFlags, int &outHitType, char *outSurfName,
 					   int surfNameLen);
+
+	IEngineTrace *EngineTrace();
+	IStaticPropMgrServer *StaticPropMgr();
 
 	// Surface physics properties (friction / elasticity / movement modifiers).
 	// Resolved from the live IPhysicsSurfaceProps singleton in the already-loaded vphysics module.

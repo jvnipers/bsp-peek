@@ -741,6 +741,41 @@ namespace BSPDisp
 
 	// EngineDistToSurface + the nearest tri's stored normal (CDispCollTri::m_vecNormal) and 3 world-space verts.
 	// kNoHit if none in range.
+	void EngineVertexZsInBox(const float mins[3], const float maxs[3], std::vector<float> &out)
+	{
+		if (!EngineReady())
+		{
+			return;
+		}
+		int count = EngineCount();
+		for (int i = 0; i < count; i++)
+		{
+			const uint8_t *tree = engine::TreePtr(i);
+			if (!engine::IsTreeSane(tree))
+			{
+				continue;
+			}
+			float mn[3], mx[3];
+			engine::ReadTreeAABB(tree, mn, mx);
+			if (mins[0] > mx[0] || maxs[0] < mn[0] || mins[1] > mx[1] || maxs[1] < mn[1] || mins[2] > mx[2] || maxs[2] < mn[2])
+			{
+				continue;
+			}
+			engine::ForEachTreeTriangle(tree,
+										[&](const uint8_t *, const Vec3 &v0, const Vec3 &v1, const Vec3 &v2)
+										{
+											for (const Vec3 *v : {&v0, &v1, &v2})
+											{
+												if (v->x >= mins[0] && v->x <= maxs[0] && v->y >= mins[1] && v->y <= maxs[1] && v->z >= mins[2]
+													&& v->z <= maxs[2])
+												{
+													out.push_back(v->z);
+												}
+											}
+										});
+		}
+	}
+
 	float EngineNearestTri(const float pos[3], float maxDist, float outNormal[3], float outV0[3], float outV1[3], float outV2[3])
 	{
 		outNormal[0] = outNormal[1] = outNormal[2] = 0.0f;

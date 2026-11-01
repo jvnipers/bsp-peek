@@ -680,8 +680,23 @@ void Section_Trace()
                             frac, ep, n, ss, allSolid, contents, dispFlags, pd, sprops, sflags, htype, sname, sizeof sname);
 
     P("TraceHull          : ret=%d frac=%.3f hitType=%d", r, frac, htype);
+
     P("  endpos           : (%.1f %.1f %.1f)", ep[0], ep[1], ep[2]);
     P("  normal           : (%.2f %.2f %.2f) planeDist=%.2f", n[0], n[1], n[2], pd);
+
+    if (r == 1 && FloatAbs(n[2]) < 0.3)
+    {
+        float wall[3], heights[64], speed[2], first[6];
+        for (int k = 0; k < 3; k++)
+            wall[k] = ep[k] - n[k] * 16.0;
+        int count  = BSP_SeamCandidates(wall, n, wall[2] - 64.0, wall[2] + 64.0, heights, sizeof(heights));
+        int caught = 0;
+        for (int k = 0; k < count; k++)
+        {
+            if (BSP_SeamCatch(wall, n, heights[k], GetTickInterval(), 800.0, 12.0, 250.0, speed, first) > 0) caught++;
+        }
+        P("SeamCandidates     : %d heights, SeamCatch caught %d", count, caught);
+    }
     P("  startSolid=%d allSolid=%d contents=0x%X dispFlags=0x%X", ss, allSolid, contents, dispFlags);
     P("  surfaceProps=%d surfaceFlags=0x%X material=%s", sprops, sflags, sname);
 }

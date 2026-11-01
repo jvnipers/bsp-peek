@@ -3,6 +3,7 @@
 #include "bsp_disp.h"
 #include "bsp_lumps.h"
 #include "bsp_props.h"
+#include "bsp_seam.h"
 #include "collide.h"
 #include <IGameHelpers.h>
 #include <cmath>
@@ -1900,6 +1901,42 @@ cell_t N_StaticPropTraceHull(IPluginContext *pCtx, const cell_t *params)
 	return rc;
 }
 
+cell_t N_SeamCatch(IPluginContext *pCtx, const cell_t *params)
+{
+	float wall[3], normal[3], speed[2], start[6];
+	cell_to_float3(pCtx, params[1], wall);
+	cell_to_float3(pCtx, params[2], normal);
+	int r = BSPSeam::Catch(wall, normal, sp_ctof(params[3]), sp_ctof(params[4]), sp_ctof(params[5]), sp_ctof(params[6]), sp_ctof(params[7]), speed,
+						   start);
+	cell_t *out;
+	pCtx->LocalToPhysAddr(params[8], &out);
+	out[0] = sp_ftoc(speed[0]);
+	out[1] = sp_ftoc(speed[1]);
+	pCtx->LocalToPhysAddr(params[9], &out);
+	for (int i = 0; i < 6; i++)
+	{
+		out[i] = sp_ftoc(start[i]);
+	}
+	return r;
+}
+
+cell_t N_SeamCandidates(IPluginContext *pCtx, const cell_t *params)
+{
+	float wall[3], normal[3];
+	cell_to_float3(pCtx, params[1], wall);
+	cell_to_float3(pCtx, params[2], normal);
+	int maxOut = params[6];
+	std::vector<float> zs(maxOut > 0 ? maxOut : 1);
+	int n = BSPSeam::Candidates(wall, normal, sp_ctof(params[3]), sp_ctof(params[4]), zs.data(), maxOut);
+	cell_t *out;
+	pCtx->LocalToPhysAddr(params[5], &out);
+	for (int i = 0; i < n; i++)
+	{
+		out[i] = sp_ftoc(zs[i]);
+	}
+	return n;
+}
+
 cell_t N_WorldTraceHull(IPluginContext *pCtx, const cell_t *params)
 {
 	float start[3], end[3], mins[3], maxs[3];
@@ -2390,6 +2427,8 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 
 	// Unified world trace
 	{"BSP_TraceHull", N_WorldTraceHull},
+	{"BSP_SeamCatch", N_SeamCatch},
+	{"BSP_SeamCandidates", N_SeamCandidates},
 
 	// Surface physics properties (friction / surfaceprop)
 	{"BSP_SurfacePropsReady", N_SurfacePropsReady},
