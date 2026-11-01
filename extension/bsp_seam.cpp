@@ -102,7 +102,7 @@ namespace BSPSeam
 			collide::MovementListBox(origin, vel, maxspeed, frametime, 18.0f, mn, mx);
 			BSPProps::EngineTrace()->SetupLeafAndEntityListBox(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), mt.list);
 
-			float add = std::min(std::max(30.0f - vin, 0.0f), airaccelerate * 250.0f * frametime);
+			float add = (std::min)((std::max)(30.0f - vin, 0.0f), airaccelerate * 250.0f * frametime);
 			Vector v(vel[0] - normal[0] * add, vel[1] - normal[1] * add, vz - gravity * 0.5f * frametime);
 			CGameTrace tr;
 			mt.Run(start, start + v * frametime, tr);
