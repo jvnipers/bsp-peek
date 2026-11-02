@@ -131,11 +131,14 @@ class ExtensionConfig(object):
             "-Wno-switch",
             "-Wno-array-bounds",
             "-fvisibility=hidden",
+            "-ffunction-sections",
+            "-fdata-sections",
         ]
         if cxx.target.arch in ["x86", "x86_64"]:
             cxx.cflags += ["-msse"]
         cxx.cxxflags += [
             "-fno-threadsafe-statics",
+            "-fno-rtti",
             "-Wno-non-virtual-dtor",
             "-Wno-overloaded-virtual",
             "-fvisibility-inlines-hidden",
@@ -175,7 +178,7 @@ class ExtensionConfig(object):
             "/std:c++17",
         ]
         if builder.options.opt == "1":
-            cxx.cflags += ["/Ox", "/Zo"]
+            cxx.cflags += ["/Ox", "/Zo", "/Gy", "/Gw"]
             cxx.linkflags += ["/OPT:ICF", "/OPT:REF"]
         if builder.options.debug == "1":
             cxx.cflags += ["/Od", "/RTC1"]
@@ -183,7 +186,12 @@ class ExtensionConfig(object):
 
     def configure_linux(self, cxx):
         cxx.defines += ["LINUX", "_LINUX", "POSIX", "_FILE_OFFSET_BITS=64"]
-        cxx.linkflags += ["-pthread"]
+        cxx.linkflags += [
+            "-pthread",
+            "-Wl,--gc-sections",
+            # Static libstdc++ symbols in .dynsym (STB_GNU_UNIQUE among them) keep glibc from ever unloading the extension.
+            "-Wl,--exclude-libs,ALL",
+        ]
         if cxx.family == "gcc":
             cxx.linkflags += ["-static-libgcc"]
         elif cxx.family == "clang":

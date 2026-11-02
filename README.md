@@ -37,8 +37,6 @@ For **Natives** see: [bsppeek.inc](/include/bsppeek.inc).
 
 ## Build
 
-Produces `build/extension/bsppeek.ext/{platform}-x86/.` containing the ext binary regardless of if Docker or native.
-
 ### Docker
 
 ```bash
