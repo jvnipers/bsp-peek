@@ -1,36 +1,65 @@
 name: Build
 on:
   push:
+    paths-ignore:
+      - "**.md"
+      - "LICENSE*"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "LICENSE*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   build:
     strategy:
       matrix:
-        platform:
-          - { os: windows-latest, os_short: windows, ext: .dll }
         version:
           - { sm_ver: 1.12-dev, sm_label: "1.12" }
           - { sm_ver: master, sm_label: "1.13" }
       fail-fast: false
-    runs-on: ${{ matrix.platform.os }}
-    name: ${{ matrix.platform.os_short }}--sm-${{ matrix.version.sm_label }}
+    runs-on: windows-latest
+    name: windows--sm-${{ matrix.version.sm_label }}
     steps:
       - uses: actions/checkout@v7
         with:
           path: project
 
-      - name: Init HL2SDK (CSGO) submodule
+      - name: Resolve HL2SDK commit
+        id: sdk
         working-directory: project
-        run: git submodule update --init hl2sdk-csgo
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD:hl2sdk-csgo)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout HL2SDK (CSGO)
+        uses: actions/checkout@v7
+        with:
+          repository: alliedmodders/hl2sdk
+          ref: ${{ steps.sdk.outputs.sha }}
+          path: project/hl2sdk-csgo
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /public/
+            /lib/public/tier0.lib
+            /lib/public/tier1.lib
+            /lib/public/mathlib.lib
 
       - name: Checkout SourceMod
         uses: actions/checkout@v7
         with:
           repository: alliedmodders/sourcemod
           ref: ${{ matrix.version.sm_ver }}
-          submodules: recursive
           path: sourcemod
+          sparse-checkout: |
+            public
+            sourcepawn
+
+      - name: Init SourceMod submodules
+        working-directory: sourcemod
+        run: git submodule update --init --depth 1 public/amtl sourcepawn
 
       - uses: actions/setup-python@v6
         name: Setup Python
@@ -38,9 +67,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install AMBuild
-        run: |
-          git clone https://github.com/alliedmodders/ambuild.git
-          pip install ./ambuild
+        run: pip install git+https://github.com/alliedmodders/ambuild@01212cb57c96561f664b6dfb2ee10e66de6f81e4
 
       - name: Build
         working-directory: project
@@ -56,24 +83,24 @@ jobs:
         shell: bash
         run: |
           mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include
-          find project/build -name '*${{ matrix.platform.ext }}' -exec cp {} staging/addons/sourcemod/extensions/ \;
+          find project/build -name '*.dll' -exec cp {} staging/addons/sourcemod/extensions/ \;
           cp project/gamedata/*.txt staging/addons/sourcemod/gamedata/
           cp project/include/*.inc staging/addons/sourcemod/scripting/include/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: bsp-peek-${{ matrix.platform.os_short }}--sm-${{ matrix.version.sm_label }}
+          name: bsp-peek-windows--sm-${{ matrix.version.sm_label }}
           path: staging/*
 
   build-docker:
     strategy:
       matrix:
         runtime:
-          - name: steamrt4
-            image: ghcr.io/femboykz/build-containers:steamrt4
           - name: steamrt3
             image: ghcr.io/femboykz/build-containers:steamrt3
+          - name: steamrt4
+            image: ghcr.io/femboykz/build-containers:steamrt4
         version:
           - { sm_ver: 1.12-dev, sm_label: "1.12" }
           - { sm_ver: master, sm_label: "1.13" }
@@ -85,17 +112,34 @@ jobs:
         with:
           path: project
 
-      - name: Init HL2SDK (CSGO) submodule
+      - name: Resolve HL2SDK commit
+        id: sdk
         working-directory: project
-        run: git submodule update --init hl2sdk-csgo
+        run: echo "sha=$(git rev-parse HEAD:hl2sdk-csgo)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout HL2SDK (CSGO)
+        uses: actions/checkout@v7
+        with:
+          repository: alliedmodders/hl2sdk
+          ref: ${{ steps.sdk.outputs.sha }}
+          path: project/hl2sdk-csgo
+          sparse-checkout: |
+            public
+            lib/linux
 
       - name: Checkout SourceMod
         uses: actions/checkout@v7
         with:
           repository: alliedmodders/sourcemod
           ref: ${{ matrix.version.sm_ver }}
-          submodules: recursive
           path: sourcemod
+          sparse-checkout: |
+            public
+            sourcepawn
+
+      - name: Init SourceMod submodules
+        working-directory: sourcemod
+        run: git submodule update --init --depth 1 public/amtl sourcepawn
 
       - name: Build inside container
         run: |
@@ -112,6 +156,7 @@ jobs:
             '
 
       - name: Stage release files
+        if: matrix.runtime.name == 'steamrt3'
         run: |
           mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include
           find project/build -name '*.so' -exec cp {} staging/addons/sourcemod/extensions/ \;
@@ -119,9 +164,10 @@ jobs:
           cp project/include/*.inc staging/addons/sourcemod/scripting/include/
 
       - name: Upload artifact
+        if: matrix.runtime.name == 'steamrt3'
         uses: actions/upload-artifact@v7
         with:
-          name: bsp-peek-${{ matrix.runtime.name }}--sm-${{ matrix.version.sm_label }}
+          name: bsp-peek-linux--sm-${{ matrix.version.sm_label }}
           path: staging/*
 
   release:
