@@ -31,13 +31,6 @@ parser.options.add_argument(
     help="Path to SourceMod",
 )
 parser.options.add_argument(
-    "--mms-path",
-    type=str,
-    dest="mms_path",
-    default="../metamod-source",
-    help="Metamod:Source source tree folder",
-)
-parser.options.add_argument(
     "--hl2sdk-path",
     type=str,
     dest="hl2sdk_path",

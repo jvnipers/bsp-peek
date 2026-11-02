@@ -14,15 +14,11 @@ jobs:
         run: |
           python3 - << 'PYEOF'
           import json, os
-          VERSIONS = [
-              ("1.12-dev", "1.12-dev"),
-              ("master", "master"),
-          ]
+          VERSIONS = ["1.12-dev", "master"]
           versions = [
-              {"sm_ver": s, "mm_ver": m,
-               "sm_label": s.replace("-dev", "").replace("master", "1.13"),
-               "mm_label": m.replace("-dev", "").replace("master", "2.0"),}
-              for s, m in VERSIONS
+              {"sm_ver": s,
+               "sm_label": s.replace("-dev", "").replace("master", "1.13"),}
+              for s in VERSIONS
           ]
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write("versions=" + json.dumps(versions) + "\n")
@@ -37,7 +33,7 @@ jobs:
         version: ${{ fromJSON(needs.config.outputs.versions) }}
       fail-fast: false
     runs-on: ${{ matrix.platform.os }}
-    name: ${{ matrix.platform.os_short }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
+    name: ${{ matrix.platform.os_short }}--sm-${{ matrix.version.sm_label }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -54,14 +50,6 @@ jobs:
           ref: ${{ matrix.version.sm_ver }}
           submodules: recursive
           path: sourcemod
-
-      - name: Checkout Metamod:Source
-        uses: actions/checkout@v7
-        with:
-          repository: alliedmodders/metamod-source
-          submodules: recursive
-          ref: ${{ matrix.version.mm_ver }}
-          path: metamod-source
 
       - uses: actions/setup-python@v6
         name: Setup Python
@@ -80,14 +68,13 @@ jobs:
           mkdir build && cd build
           python ../configure.py \
             --sm-path="${{ github.workspace }}/sourcemod" \
-            --mms-path="${{ github.workspace }}/metamod-source" \
             --enable-optimize
           ambuild
 
       - name: Stage release files
         shell: bash
         run: |
-          mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include staging/addons/metamod/scripting
+          mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include
           find project/build -name '*${{ matrix.platform.ext }}' -exec cp {} staging/addons/sourcemod/extensions/ \;
           cp project/gamedata/*.txt staging/addons/sourcemod/gamedata/
           cp project/include/*.inc staging/addons/sourcemod/scripting/include/
@@ -95,7 +82,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: bsp-peek-${{ matrix.platform.os_short }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
+          name: bsp-peek-${{ matrix.platform.os_short }}--sm-${{ matrix.version.sm_label }}
           path: staging/*
 
   build-docker:
@@ -110,7 +97,7 @@ jobs:
         version: ${{ fromJSON(needs.config.outputs.versions) }}
       fail-fast: false
     runs-on: ubuntu-latest
-    name: ${{ matrix.runtime.name }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
+    name: ${{ matrix.runtime.name }}--sm-${{ matrix.version.sm_label }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -128,14 +115,6 @@ jobs:
           submodules: recursive
           path: sourcemod
 
-      - name: Checkout Metamod:Source
-        uses: actions/checkout@v7
-        with:
-          repository: alliedmodders/metamod-source
-          submodules: recursive
-          ref: ${{ matrix.version.mm_ver }}
-          path: metamod-source
-
       - name: Build inside container
         run: |
           docker run --rm \
@@ -146,14 +125,13 @@ jobs:
               mkdir -p build && cd build
               python3 ../configure.py \
                 --sm-path=/work/sourcemod \
-                --mms-path=/work/metamod-source \
                 --enable-optimize
               ambuild
             '
 
       - name: Stage release files
         run: |
-          mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include staging/addons/metamod/scripting
+          mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include
           find project/build -name '*.so' -exec cp {} staging/addons/sourcemod/extensions/ \;
           cp project/gamedata/*.txt staging/addons/sourcemod/gamedata/
           cp project/include/*.inc staging/addons/sourcemod/scripting/include/
@@ -161,7 +139,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: bsp-peek-${{ matrix.runtime.name }}--mm-${{ matrix.version.mm_label }}--sm-${{ matrix.version.sm_label }}
+          name: bsp-peek-${{ matrix.runtime.name }}--sm-${{ matrix.version.sm_label }}
           path: staging/*
 
   release:
