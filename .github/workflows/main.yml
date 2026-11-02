@@ -61,7 +61,7 @@ jobs:
         working-directory: sourcemod
         run: git submodule update --init --depth 1 public/amtl sourcepawn
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         name: Setup Python
         with:
           python-version: "3.14"
