@@ -56,5 +56,5 @@ ambuild
 Required toolchain:
 
 - **Windows**: Visual Studio Build Tools 2019+
-- **Linux**: `gcc-multilib g++-multilib libstdc++6:i386`
+- **Linux**: clang or gcc, with 32-bit libc and libstdc++ dev packages (`g++-multilib`, or `libc6-dev:i386 libstdc++-<ver>-dev:i386`)
 - Both: Python 3.9+ and AMBuild 2.2+
