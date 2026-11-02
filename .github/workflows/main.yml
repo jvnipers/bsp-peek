@@ -4,33 +4,14 @@ on:
   pull_request:
 
 jobs:
-  config:
-    runs-on: ubuntu-latest
-    outputs:
-      versions: ${{ steps.set.outputs.versions }}
-    steps:
-      - id: set
-        name: Set version matrix
-        run: |
-          python3 - << 'PYEOF'
-          import json, os
-          VERSIONS = ["1.12-dev", "master"]
-          versions = [
-              {"sm_ver": s,
-               "sm_label": s.replace("-dev", "").replace("master", "1.13"),}
-              for s in VERSIONS
-          ]
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write("versions=" + json.dumps(versions) + "\n")
-          PYEOF
-
   build:
-    needs: config
     strategy:
       matrix:
         platform:
           - { os: windows-latest, os_short: windows, ext: .dll }
-        version: ${{ fromJSON(needs.config.outputs.versions) }}
+        version:
+          - { sm_ver: 1.12-dev, sm_label: "1.12" }
+          - { sm_ver: master, sm_label: "1.13" }
       fail-fast: false
     runs-on: ${{ matrix.platform.os }}
     name: ${{ matrix.platform.os_short }}--sm-${{ matrix.version.sm_label }}
@@ -86,7 +67,6 @@ jobs:
           path: staging/*
 
   build-docker:
-    needs: config
     strategy:
       matrix:
         runtime:
@@ -94,7 +74,9 @@ jobs:
             image: ghcr.io/femboykz/build-containers:steamrt4
           - name: steamrt3
             image: ghcr.io/femboykz/build-containers:steamrt3
-        version: ${{ fromJSON(needs.config.outputs.versions) }}
+        version:
+          - { sm_ver: 1.12-dev, sm_label: "1.12" }
+          - { sm_ver: master, sm_label: "1.13" }
       fail-fast: false
     runs-on: ubuntu-latest
     name: ${{ matrix.runtime.name }}--sm-${{ matrix.version.sm_label }}
