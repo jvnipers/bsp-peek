@@ -570,9 +570,14 @@ namespace BSPLumps
 		return g.loaded;
 	}
 
+	bool IsLoaded(const char *mapname)
+	{
+		return g.loaded && mapname && std::strcmp(g.loadedMap, mapname) == 0;
+	}
+
 	bool LoadFromMap(const char *mapname, const char *bspPath, char *err, size_t errLen)
 	{
-		if (g.loaded && mapname && std::strcmp(g.loadedMap, mapname) == 0)
+		if (IsLoaded(mapname))
 		{
 			return true;
 		}

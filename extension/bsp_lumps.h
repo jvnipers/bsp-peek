@@ -15,6 +15,8 @@ namespace BSPLumps
 	bool LoadFromMap(const char *mapname, const char *bspPath, char *err, size_t errLen);
 	void Clear();
 	bool Loaded();
+	// True if the lumps held are mapname's.
+	bool IsLoaded(const char *mapname);
 
 	// BSP header
 	int BSPVersion();

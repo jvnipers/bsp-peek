@@ -15,12 +15,9 @@
 
 static void EnsureLumpsLoaded()
 {
-	if (BSPLumps::Loaded())
-	{
-		return;
-	}
+	// By name: a load between map end and the next map's OnMapInit holds the previous map.
 	const char *mapname = gamehelpers->GetCurrentMap();
-	if (!mapname || !mapname[0])
+	if (!mapname || !mapname[0] || BSPLumps::IsLoaded(mapname))
 	{
 		return;
 	}
