@@ -43,7 +43,7 @@ static void EnsureLumpsLoaded()
 static void EnsureDispLoaded()
 {
 	const char *mapname = gamehelpers->GetCurrentMap();
-	if (!mapname || !mapname[0])
+	if (!mapname || !mapname[0] || BSPDisp::IsLoaded(mapname))
 	{
 		return;
 	}
@@ -1925,8 +1925,12 @@ cell_t N_SeamCandidates(IPluginContext *pCtx, const cell_t *params)
 	float wall[3], normal[3];
 	cell_to_float3(pCtx, params[1], wall);
 	cell_to_float3(pCtx, params[2], normal);
-	int maxOut = params[6];
-	std::vector<float> zs(maxOut > 0 ? maxOut : 1);
+	int maxOut = out_len(params[6]);
+	if (maxOut <= 0)
+	{
+		return 0;
+	}
+	std::vector<float> zs(maxOut);
 	int n = BSPSeam::Candidates(wall, normal, sp_ctof(params[3]), sp_ctof(params[4]), zs.data(), maxOut);
 	cell_t *out;
 	pCtx->LocalToPhysAddr(params[5], &out);
@@ -2133,10 +2137,14 @@ cell_t N_TriggerPushVelocity(IPluginContext *pCtx, const cell_t *params)
 	{
 		std::sscanf(buf, "%f %f %f", &pitch, &yaw, &roll);
 	}
-	float speed = 40.0f; // trigger_push default
+	float speed = 0.0f;
 	if (BSPLumps::EntityKeyValue(params[1], "speed", buf, sizeof(buf)) > 0)
 	{
 		speed = (float)std::atof(buf);
+	}
+	if (speed == 0.0f)
+	{
+		speed = 100.0f; // CTriggerPush::Spawn
 	}
 	// AngleVectors forward (pitch, yaw): matches the engine's push direction.
 	const float d2r = 3.14159265358979323846f / 180.0f;

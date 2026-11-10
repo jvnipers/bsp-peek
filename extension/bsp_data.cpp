@@ -160,6 +160,7 @@ namespace BSPData
 	static std::vector<uint16_t> g_collideLeafBrushes;
 	static collide::Bsp g_collideBsp;
 	static bool g_collideBuilt = false;
+	static bool g_collideFailed = false;
 	static void BuildBrushCache();
 	static void BuildLeafCache();
 	static void PopulateBrushCache(std::vector<BrushCacheEntry> &out);
@@ -182,8 +183,8 @@ namespace BSPData
 		OFF_MAP_BRUSHSIDES = GetKeyInt(gameconf, "off_map_brushsides", -1);
 		OFF_NUMBRUSHES = GetKeyInt(gameconf, "off_numbrushes", -1);
 		OFF_MAP_BRUSHES = GetKeyInt(gameconf, "off_map_brushes", -1);
-		OFF_NUMLEAFBRUSHES = GetKeyInt(gameconf, "off_numleafbrushes", -1);
-		OFF_MAP_LEAFBRUSHES = GetKeyInt(gameconf, "off_map_leafbrushes", -1);
+		OFF_NUMLEAFBRUSHES = GetKeyInt(gameconf, "off_numleafbrushes", 0);
+		OFF_MAP_LEAFBRUSHES = GetKeyInt(gameconf, "off_map_leafbrushes", 0);
 		OFF_NUMLEAFS = GetKeyInt(gameconf, "off_numleafs", 0);
 		OFF_MAP_LEAFS = GetKeyInt(gameconf, "off_map_leafs", 0);
 		OFF_NUMNODES = GetKeyInt(gameconf, "off_numnodes", 0);
@@ -287,10 +288,16 @@ namespace BSPData
 		g_boxToBrushIdx.clear();
 		g_boxBrushAuthBuiltFor = -1;
 		g_collideBuilt = false;
+		g_collideFailed = false;
 	}
 
-	void OnMapStart()
+	// The engine frees the collision tables right after LevelShutdown, and the worker reads them unlocked.
+	void OnMapEnd()
 	{
+		if (g_asyncBuildThread.joinable())
+		{
+			g_asyncBuildThread.join();
+		}
 		std::lock_guard<std::mutex> lk(g_brushCacheMutex);
 		g_brushCache.clear();
 		g_brushCacheBuilt = false;
@@ -302,15 +309,7 @@ namespace BSPData
 		g_boxToBrushIdx.clear();
 		g_boxBrushAuthBuiltFor = -1;
 		g_collideBuilt = false;
-	}
-
-	// The engine frees the collision tables right after LevelShutdown, and the worker reads them unlocked.
-	void OnMapEnd()
-	{
-		if (g_asyncBuildThread.joinable())
-		{
-			g_asyncBuildThread.join();
-		}
+		g_collideFailed = false;
 	}
 
 	// Debug accessors (used by extension.cpp at load time)
@@ -523,7 +522,11 @@ namespace BSPData
 
 	int GetNumLeafBrushes()
 	{
-		return g_pBSPData ? ReadI32(g_pBSPData, OFF_NUMLEAFBRUSHES) : 0;
+		if (!g_pBSPData || OFF_NUMLEAFBRUSHES == 0)
+		{
+			return 0;
+		}
+		return ReadI32(g_pBSPData, OFF_NUMLEAFBRUSHES);
 	}
 
 	int GetNumLeaves()
@@ -887,42 +890,43 @@ namespace BSPData
 			float ny = ReadF32(plane, OFF_CPLANE_NORMAL + 4);
 			float nz = ReadF32(plane, OFF_CPLANE_NORMAL + 8);
 			float d = ReadF32(plane, OFF_CPLANE_DIST);
-			if (nx > 0.99f)
+			// Exact axial planes only: vbsp bevels give every brush all six, and a near-axial slope's dist is not a bound.
+			if (nx == 1.0f)
 			{
 				if (d > maxs[0])
 				{
 					maxs[0] = d;
 				}
 			}
-			if (nx < -0.99f)
+			if (nx == -1.0f)
 			{
 				if (-d < mins[0])
 				{
 					mins[0] = -d;
 				}
 			}
-			if (ny > 0.99f)
+			if (ny == 1.0f)
 			{
 				if (d > maxs[1])
 				{
 					maxs[1] = d;
 				}
 			}
-			if (ny < -0.99f)
+			if (ny == -1.0f)
 			{
 				if (-d < mins[1])
 				{
 					mins[1] = -d;
 				}
 			}
-			if (nz > 0.99f)
+			if (nz == 1.0f)
 			{
 				if (d > maxs[2])
 				{
 					maxs[2] = d;
 				}
 			}
-			if (nz < -0.99f)
+			if (nz == -1.0f)
 			{
 				if (-d < mins[2])
 				{
@@ -1881,12 +1885,25 @@ namespace BSPData
 		return 0;
 	}
 
+	static const collide::Bsp *BuildCollideBsp();
+
 	const collide::Bsp *CollideBsp()
 	{
 		if (g_collideBuilt)
 		{
 			return &g_collideBsp;
 		}
+		if (g_collideFailed)
+		{
+			return nullptr;
+		}
+		const collide::Bsp *bsp = BuildCollideBsp();
+		g_collideFailed = bsp == nullptr;
+		return bsp;
+	}
+
+	static const collide::Bsp *BuildCollideBsp()
+	{
 		int numNodes = GetNumNodes(), numLeafs = GetNumLeaves();
 		if (!g_pBSPData || numNodes <= 0 || numLeafs <= 0 || OFF_MAP_ROOTNODE < 0)
 		{
@@ -2181,43 +2198,35 @@ namespace BSPData
 
 			float midZ = (mn[2] + mx[2]) * 0.5f;
 
-			// Pick an exposed lateral wall. Two passes:
-			// first prefer the face whose outward normal points toward samplePos (the side the player approaches).
-			// If none of those are exposed, take the first exposed lateral face.
+			// Pick the exposed lateral wall nearest samplePos (the side the player hugs).
+			// samplePos lies within 0.1 of the column, so "the face pointing at it" is the nearest one.
 			int bestFace = -1;
 			float bestCoord = 0.f;
-			for (int pass = 0; pass < 2 && bestFace < 0; ++pass)
+			float bestDist = 0.f;
+			for (int face = 0; face < 4; ++face)
 			{
-				for (int face = 0; face < 4; ++face)
+				int axis = face >> 1; // 0 = X, 1 = Y
+				int otherAxis = axis ^ 1;
+				bool positive = (face & 1); // odd = +axis face
+				float wallCoord = positive ? mx[axis] : mn[axis];
+				float dist = std::fabs(samplePos[axis] - wallCoord);
+				if (bestFace >= 0 && dist >= bestDist)
 				{
-					int axis = face >> 1; // 0 = X, 1 = Y
-					int otherAxis = axis ^ 1;
-					bool positive = (face & 1); // odd = +axis face
-					float wallCoord = positive ? mx[axis] : mn[axis];
-
-					if (pass == 0)
-					{
-						// require the outward normal to point toward samplePos on this axis
-						bool sampleOutward = positive ? (samplePos[axis] > mx[axis]) : (samplePos[axis] < mn[axis]);
-						if (!sampleOutward)
-						{
-							continue;
-						}
-					}
-
-					// probe one unit outside the face center at mid height
-					float probeOut[3];
-					probeOut[axis] = wallCoord + (positive ? PROBE : -PROBE);
-					probeOut[otherAxis] = (mn[otherAxis] + mx[otherAxis]) * 0.5f;
-					probeOut[2] = midZ;
-					if (PointContentsBrushes(probeOut) & CONTENTS_PLAYERCOLLIDE)
-					{
-						continue; // wall buried behind neighbor geometry
-					}
-					bestFace = face;
-					bestCoord = wallCoord;
-					break;
+					continue;
 				}
+
+				// probe one unit outside the face center at mid height
+				float probeOut[3];
+				probeOut[axis] = wallCoord + (positive ? PROBE : -PROBE);
+				probeOut[otherAxis] = (mn[otherAxis] + mx[otherAxis]) * 0.5f;
+				probeOut[2] = midZ;
+				if (PointContentsBrushes(probeOut) & CONTENTS_PLAYERCOLLIDE)
+				{
+					continue; // wall buried behind neighbor geometry
+				}
+				bestFace = face;
+				bestCoord = wallCoord;
+				bestDist = dist;
 			}
 			if (bestFace < 0)
 			{

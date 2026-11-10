@@ -15,7 +15,6 @@ namespace BSPData
 {
 	bool Init(IGameConfig *gameconf, char *error, size_t maxlen);
 	void Shutdown();
-	void OnMapStart();
 	void OnMapEnd();
 
 	void *DebugGetBase();
@@ -206,7 +205,7 @@ namespace BSPData
 	// whose underside (mins.z) is open to air, and which has >=1 exposed vertical wall face.
 	// Open/exposed are tested against brushes only, not displacements or props.
 	// Returns the BOX-TABLE index plus the hugged wall (face axis+sign, world coord), underside z, and height.
-	// Among exposed lateral faces, picks the one whose outward normal points toward samplePos.
+	// Among exposed lateral faces, picks the one nearest samplePos.
 	// Among qualifying boxes in the column, returns the one whose bottom  edge is nearest BELOW samplePos.z
 	// (the next edge a falling player crosses). If none below, nearest above. false if none.
 	bool FindBoxBrushOverhang(const float samplePos[3], int &outBoxIdx, int &outFace, float &outWallCoord, float &outBottomZ, float &outHeight);

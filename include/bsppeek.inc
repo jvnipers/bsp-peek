@@ -266,7 +266,7 @@ native bool BSP_FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
 //   boxIdx    : cboxbrush_t index of the overhang brush.
 //   face      : hugged wall, axis+sign of its OUTWARD normal
 //               (0 = -X, 1 = +X, 2 = -Y, 3 = +Y). The player presses in the -normal direction.
-//               If several lateral faces are exposed, the one facing samplePos is returned.
+//               If several lateral faces are exposed, the one nearest samplePos is returned.
 //   wallCoord : world coord of that wall plane.
 //   bottomZ   : underside z (brush mins.z), the plane the player crosses.
 //   height    : brush vertical extent (maxs.z - mins.z), Ineq(10) numerator.
@@ -726,7 +726,7 @@ native float BSP_WaterSurfaceZAt(const float pos[3]);
 // Chains EntityModelIndex -> CModelBounds + origin (engine padding removed, "angles" not applied).
 // false if entIdx isn't a brush-model entity.
 native bool  BSP_EntityBrushBounds(int entIdx, float mins[3], float maxs[3]);
-// Applied push velocity of a trigger_push: AngleVectors(pushdir) * speed (speed defaults to 40).
+// Applied push velocity of a trigger_push: AngleVectors(pushdir) * speed (a missing or 0 speed is 100, as in the engine).
 // Returns false (and zero vel) if entIdx isn't a trigger_push.
 native bool  BSP_TriggerPushVelocity(int entIdx, float vel[3]);
 // Origin of the entity referenced by entIdx's "target" key (e.g. a trigger_teleport's info_teleport_destination).

@@ -579,7 +579,7 @@ namespace collide
 		std::sort(planes.begin(), planes.end());
 		planes.erase(std::unique(planes.begin(), planes.end()), planes.end());
 
-		// Flips where |d0 + k t| = r0 + s r: grown list box centre origin + 36 z, half extents 17 + r (xy), 55 + r (z).
+		// Flips where |d0 + k t| = r0 + s r: grown list box centre origin + 36 z, half extents 17 + r (xy), 37 + stepsize + r (z).
 		struct Line
 		{
 			double d0, k, r0, s;
@@ -592,7 +592,7 @@ namespace collide
 			double d0 = n[0] * (double)q.origin[0] + n[1] * (double)q.origin[1] + n[2] * ((double)q.origin[2] + 36.0) - p->dist;
 			double k = n[0] * (double)q.along[0] + n[1] * (double)q.along[1] + n[2] * (double)q.along[2];
 			double s = std::fabs(n[0]) + std::fabs(n[1]) + std::fabs(n[2]);
-			double r0 = 17.0 * (std::fabs(n[0]) + std::fabs(n[1])) + 55.0 * std::fabs(n[2]);
+			double r0 = 17.0 * (std::fabs(n[0]) + std::fabs(n[1])) + (37.0 + q.stepsize) * std::fabs(n[2]);
 			lines.push_back({d0, k, r0, s});
 		}
 		auto rOf = [](const Line &l, double t) { return (std::fabs(l.d0 + l.k * t) - l.r0) / l.s; };

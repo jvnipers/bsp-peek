@@ -2,6 +2,7 @@
 #include "bsp_util.h"
 
 #include <cctype>
+#include <climits>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -236,6 +237,11 @@ namespace BSPLumps
 			if (len <= 0)
 			{
 				return true;
+			}
+			// Bound by the file size before allocating: a corrupt header length would throw bad_alloc.
+			if (offset < 0 || std::fseek(f, 0, SEEK_END) != 0 || std::ftell(f) - offset < len)
+			{
+				return false;
 			}
 			out.resize(len);
 			if (std::fseek(f, (long)offset, SEEK_SET) != 0 || std::fread(out.data(), 1, len, f) != (size_t)len)
@@ -1121,8 +1127,8 @@ namespace BSPLumps
 			return -1;
 		}
 		int se = ReadI32(g.surfedgesLump.data(), idx * kSizeofSurfedge);
-		int edgeIdx = se >= 0 ? se : -se;
-		if (edgeIdx >= EdgeCount())
+		int edgeIdx = se >= 0 ? se : (se == INT_MIN ? -1 : -se);
+		if (edgeIdx < 0 || edgeIdx >= EdgeCount())
 		{
 			return -1;
 		}

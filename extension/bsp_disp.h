@@ -17,6 +17,7 @@ namespace BSPDisp
 	bool InitEngine(IGameConfig *gc, char *err, size_t errLen);
 	bool LoadFromMap(const char *bspPath, char *err, size_t errLen);
 	bool EnsureLoaded(const char *mapname, const char *bspPath, char *errOut, size_t errLen);
+	bool IsLoaded(const char *mapname);
 	void Clear();
 	void ShutdownEngine();
 

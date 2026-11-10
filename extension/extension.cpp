@@ -75,19 +75,18 @@ bool BSPPeek::QueryRunning(char *error, size_t maxlen)
 	return true;
 }
 
+// Cleared here, not at map start: OnMapInit and entity spawn of the next map run before OnCoreMapStart.
 void BSPPeek::OnCoreMapEnd()
 {
 	BSPData::OnMapEnd();
-}
-
-void BSPPeek::OnCoreMapStart(edict_t *pEdictList, int edictCount, int clientMax)
-{
-	BSPData::OnMapStart();
 	BSPProps::OnMapClear();
 	// The disk loaders skip a map name they already hold, even if its .bsp changed.
 	BSPDisp::Clear();
 	BSPLumps::Clear();
+}
 
+void BSPPeek::OnCoreMapStart(edict_t *pEdictList, int edictCount, int clientMax)
+{
 	const char *mapname = gamehelpers->GetCurrentMap();
 	if (!mapname || !mapname[0])
 	{

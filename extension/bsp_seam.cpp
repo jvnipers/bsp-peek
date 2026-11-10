@@ -26,6 +26,7 @@ namespace BSPSeam
 	namespace
 	{
 		// CTraceFilterSimple with COLLISION_GROUP_PLAYER_MOVEMENT, minus players.
+		// Groups: CCSGameRules::ShouldCollide and its base in CS:GO server.dll (CCSGameRules vtable slot 28).
 		class MovementFilter : public ITraceFilter
 		{
 		public:
@@ -48,9 +49,12 @@ namespace BSPSeam
 					case COLLISION_GROUP_PLAYER:
 					case COLLISION_GROUP_IN_VEHICLE:
 					case COLLISION_GROUP_WEAPON:
+					case COLLISION_GROUP_PROJECTILE:
 					case COLLISION_GROUP_DOOR_BLOCKER:
-					case COLLISION_GROUP_PASSABLE_DOOR:
 					case COLLISION_GROUP_DISSOLVING:
+					case COLLISION_GROUP_PUSHAWAY:
+					case COLLISION_GROUP_VEHICLE_CLIP:
+					case COLLISION_GROUP_DEBRIS_BLOCK_PROJECTILE:
 						return false;
 					default:
 						return true;
@@ -102,7 +106,7 @@ namespace BSPSeam
 			collide::MovementListBox(origin, vel, maxspeed, frametime, 18.0f, mn, mx);
 			BSPProps::EngineTrace()->SetupLeafAndEntityListBox(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), mt.list);
 
-			float add = (std::min)((std::max)(30.0f - vin, 0.0f), airaccelerate * 250.0f * frametime);
+			float add = (std::min)((std::max)(30.0f - vin, 0.0f), airaccelerate * maxspeed * frametime);
 			Vector v(vel[0] - normal[0] * add, vel[1] - normal[1] * add, vz - gravity * 0.5f * frametime);
 			CGameTrace tr;
 			mt.Run(start, start + v * frametime, tr);
@@ -260,6 +264,9 @@ namespace BSPSeam
 
 	int Candidates(const float wallPos[3], const float normal[3], float zMin, float zMax, float *out, int maxOut)
 	{
+		// Past the map the 1-unit scan below runs for ever (z + 1 == z from 2^24).
+		zMin = (std::max)(zMin, -32768.0f);
+		zMax = (std::min)(zMax, 32768.0f);
 		std::vector<float> zs;
 		float along[2] = {-normal[1], normal[0]};
 		float mn[3] = {wallPos[0] - 24.0f, wallPos[1] - 24.0f, zMin};

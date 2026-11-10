@@ -198,6 +198,11 @@ namespace BSPDisp
 				out.clear();
 				return true;
 			}
+			// Bound by the file size before allocating: a corrupt header length would throw bad_alloc.
+			if (std::fseek(f, 0, SEEK_END) != 0 || std::ftell(f) - fileofs < filelen)
+			{
+				return false;
+			}
 			out.resize(filelen);
 			if (std::fseek(f, fileofs, SEEK_SET) != 0)
 			{
@@ -459,7 +464,7 @@ namespace BSPDisp
 		{
 			return false;
 		}
-		if (disk::g_loadedMap[0] && std::strncmp(disk::g_loadedMap, mapname, sizeof(disk::g_loadedMap)) == 0)
+		if (IsLoaded(mapname))
 		{
 			return true;
 		}
@@ -470,6 +475,11 @@ namespace BSPDisp
 			disk::g_loadedMap[sizeof(disk::g_loadedMap) - 1] = 0;
 		}
 		return ok;
+	}
+
+	bool IsLoaded(const char *mapname)
+	{
+		return mapname && disk::g_loadedMap[0] && std::strncmp(disk::g_loadedMap, mapname, sizeof(disk::g_loadedMap)) == 0;
 	}
 
 	bool LoadFromMap(const char *bspPath, char *err, size_t errLen)
@@ -739,8 +749,6 @@ namespace BSPDisp
 		return found ? std::sqrt(bestSq) : kNoHit;
 	}
 
-	// EngineDistToSurface + the nearest tri's stored normal (CDispCollTri::m_vecNormal) and 3 world-space verts.
-	// kNoHit if none in range.
 	void EngineVertexZsInBox(const float mins[3], const float maxs[3], std::vector<float> &out)
 	{
 		if (!EngineReady())
@@ -776,6 +784,8 @@ namespace BSPDisp
 		}
 	}
 
+	// EngineDistToSurface + the nearest tri's stored normal (CDispCollTri::m_vecNormal) and 3 world-space verts.
+	// kNoHit if none in range.
 	float EngineNearestTri(const float pos[3], float maxDist, float outNormal[3], float outV0[3], float outV1[3], float outV2[3])
 	{
 		outNormal[0] = outNormal[1] = outNormal[2] = 0.0f;

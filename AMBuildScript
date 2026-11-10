@@ -135,7 +135,8 @@ class ExtensionConfig(object):
             "-fdata-sections",
         ]
         if cxx.target.arch in ["x86", "x86_64"]:
-            cxx.cflags += ["-msse"]
+            # sse2: collide.cpp's double steps must not run on x87.
+            cxx.cflags += ["-msse2"]
         cxx.cxxflags += [
             "-fno-threadsafe-statics",
             "-fno-rtti",
