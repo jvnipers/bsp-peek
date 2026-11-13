@@ -127,6 +127,44 @@ namespace BSPSeam
 			return tr.startsolid || tr.fraction >= 1.0f || tr.plane.normal.z < 0.7f;
 		}
 
+		// A start whose straight rise meets a ceiling (an overhang) sets underCeiling instead.
+		bool CaughtHead(MoveTrace &mt, const Vector &start, const float normal[3], float vin, float vz, float frametime, float gravity,
+						float airaccelerate, float maxspeed, bool &wallNonAxial, bool &underCeiling)
+		{
+			float vel[3] = {-normal[0] * vin, -normal[1] * vin, vz};
+			float origin[3] = {start.x, start.y, start.z}, mn[3], mx[3];
+			collide::MovementListBox(origin, vel, maxspeed, frametime, 18.0f, mn, mx);
+			BSPProps::EngineTrace()->SetupLeafAndEntityListBox(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), mt.list);
+
+			// CategorizePosition leaves friction 0.25 after a slow rise.
+			for (float friction : {1.0f, 0.25f})
+			{
+				float add = (std::min)((std::max)(30.0f - vin, 0.0f), airaccelerate * maxspeed * frametime * friction);
+				Vector v(vel[0] - normal[0] * add, vel[1] - normal[1] * add, vz - gravity * 0.5f * frametime);
+				CGameTrace tr;
+				mt.Run(start, start + v * frametime, tr);
+				if (tr.startsolid || tr.fraction >= 0.0001f || tr.plane.normal.z >= -0.7f)
+				{
+					continue;
+				}
+				v.z = 0.0f;
+				mt.Run(start, start + v * frametime, tr);
+				if (tr.startsolid || (tr.fraction < 1.0f && tr.plane.normal.z > 0.001f))
+				{
+					continue;
+				}
+				wallNonAxial = tr.fraction < 0.0001f && tr.plane.type >= PLANE_Z;
+				// From the start: the second bump can leave an overhang.
+				mt.Run(start, start + Vector(0.0f, 0.0f, 2.0f), tr);
+				if (tr.startsolid || tr.fraction >= 1.0f || tr.plane.normal.z > -0.7f)
+				{
+					return true;
+				}
+				underCeiling = true;
+			}
+			return false;
+		}
+
 		// A vcollide's box stands 0.25 off its surface.
 		void AddBounds(ICollideable *c, std::vector<float> &zs)
 		{
@@ -155,7 +193,7 @@ namespace BSPSeam
 	} // namespace
 
 	int Catch(const float wallPos[3], const float normal[3], float seamZ, float frametime, float gravity, float airaccelerate, float maxspeed,
-			  float outSpeed[2], float outStart[6])
+			  float outSpeed[2], float outStart[6], bool head)
 	{
 		std::fill(outStart, outStart + 6, 0.0f);
 		outSpeed[0] = 0.0f;
@@ -170,6 +208,7 @@ namespace BSPSeam
 			return -1;
 		}
 		int flags = 0;
+		bool underCeiling = false;
 		bool speedHit[std::size(kCatchSpeeds)] = {};
 		float reach = 16.0f * (std::fabs(normal[0]) + std::fabs(normal[1]));
 		MoveTrace mt;
@@ -180,7 +219,7 @@ namespace BSPSeam
 			mt.maxs.Init(16.0f, 16.0f, duck ? 54.0f : 72.0f);
 			for (float dz : kCatchHeights)
 			{
-				float z = seamZ + dz;
+				float z = head ? seamZ - mt.maxs.z - dz : seamZ + dz;
 				// A side wall can fill the far start.
 				CGameTrace hit;
 				bool found = false;
@@ -222,7 +261,9 @@ namespace BSPSeam
 						for (float vin : kCatchIn)
 						{
 							bool nonAxial = false;
-							if (Caught(mt, start, normal, vin, -kCatchSpeeds[s], frametime, gravity, airaccelerate, maxspeed, nonAxial))
+							if (head ? CaughtHead(mt, start, normal, vin, kCatchSpeeds[s], frametime, gravity, airaccelerate, maxspeed, nonAxial,
+												  underCeiling)
+									 : Caught(mt, start, normal, vin, -kCatchSpeeds[s], frametime, gravity, airaccelerate, maxspeed, nonAxial))
 							{
 								if (!flags)
 								{
@@ -231,7 +272,7 @@ namespace BSPSeam
 									outStart[2] = start.z;
 									outStart[3] = -normal[0] * vin;
 									outStart[4] = -normal[1] * vin;
-									outStart[5] = -kCatchSpeeds[s];
+									outStart[5] = head ? kCatchSpeeds[s] : -kCatchSpeeds[s];
 								}
 								speedHit[s] = true;
 								flags |= (duck ? CATCH_DUCKED : CATCH_STANDING) | (nonAxial ? CATCH_WALL_NON_AXIAL : 0);
@@ -245,7 +286,7 @@ namespace BSPSeam
 		BSPProps::EngineTrace()->FreeTraceListData(list);
 		if (!flags)
 		{
-			return 0;
+			return underCeiling ? CATCH_UNDER_CEILING : 0;
 		}
 		// To the next grid speed with no catch.
 		size_t first = 0, last = std::size(kCatchSpeeds) - 1;
@@ -259,7 +300,7 @@ namespace BSPSeam
 		}
 		outSpeed[0] = first == 0 ? 0.0f : kCatchSpeeds[first - 1];
 		outSpeed[1] = last + 1 == std::size(kCatchSpeeds) ? kSpeedMax : kCatchSpeeds[last + 1];
-		return flags;
+		return flags | (underCeiling ? CATCH_UNDER_CEILING : 0);
 	}
 
 	int Candidates(const float wallPos[3], const float normal[3], float zMin, float zMax, float *out, int maxOut)

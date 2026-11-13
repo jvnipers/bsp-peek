@@ -164,12 +164,17 @@ native int  BSP_BrushSideOrder(int brushIdx, char[] buf, int maxlen);
 #define BSPP_CATCH_STANDING       1
 #define BSPP_CATCH_DUCKED         2
 #define BSPP_CATCH_WALL_NON_AXIAL 4    // the wall stopping the hull has plane type >= PLANE_Z
+#define BSPP_CATCH_UNDER_CEILING  8    // BSP_HeadSeamCatch: an overhang or displacement edge over the hull
 
 // Whether a seam at seamZ catches a player against the wall, by movement's own traces over a grid of arrivals.
 // wallPos: on the face. wallNorm: horizontal unit normal. speed: total speed range of the catches.
 // start: origin and velocity of the first catch. Returns 0, BSPP_CATCH_* bits, or -1 unavailable.
 native int BSP_SeamCatch(const float wallPos[3], const float wallNorm[3], float seamZ, float frametime, float gravity,
                          float airaccelerate, float maxspeed, float speed[2], float start[6]);
+
+// BSP_SeamCatch for a rising player's head.
+native int BSP_HeadSeamCatch(const float wallPos[3], const float wallNorm[3], float seamZ, float frametime, float gravity,
+                             float airaccelerate, float maxspeed, float speed[2], float start[6]);
 
 // Sorted heights in zMin..zMax where the wall column changes, for BSP_SeamCatch. Returns the count.
 native int BSP_SeamCandidates(const float wallPos[3], const float wallNorm[3], float zMin, float zMax, float[] out, int maxOut);
@@ -800,6 +805,7 @@ public void __ext_bsppeek_SetNTVOptional()
     MarkNativeAsOptional("BSP_BrushSideOrder");
     MarkNativeAsOptional("BSP_SeamOrder");
     MarkNativeAsOptional("BSP_SeamCatch");
+    MarkNativeAsOptional("BSP_HeadSeamCatch");
     MarkNativeAsOptional("BSP_SeamCandidates");
     MarkNativeAsOptional("BSP_LeafBrushes");
     MarkNativeAsOptional("BSP_LeafContents");

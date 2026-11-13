@@ -1898,13 +1898,13 @@ cell_t N_StaticPropTraceHull(IPluginContext *pCtx, const cell_t *params)
 	return rc;
 }
 
-cell_t N_SeamCatch(IPluginContext *pCtx, const cell_t *params)
+static cell_t SeamCatch(IPluginContext *pCtx, const cell_t *params, bool head)
 {
 	float wall[3], normal[3], speed[2], start[6];
 	cell_to_float3(pCtx, params[1], wall);
 	cell_to_float3(pCtx, params[2], normal);
 	int r = BSPSeam::Catch(wall, normal, sp_ctof(params[3]), sp_ctof(params[4]), sp_ctof(params[5]), sp_ctof(params[6]), sp_ctof(params[7]), speed,
-						   start);
+						   start, head);
 	cell_t *out;
 	pCtx->LocalToPhysAddr(params[8], &out);
 	out[0] = sp_ftoc(speed[0]);
@@ -1915,6 +1915,16 @@ cell_t N_SeamCatch(IPluginContext *pCtx, const cell_t *params)
 		out[i] = sp_ftoc(start[i]);
 	}
 	return r;
+}
+
+cell_t N_SeamCatch(IPluginContext *pCtx, const cell_t *params)
+{
+	return SeamCatch(pCtx, params, false);
+}
+
+cell_t N_HeadSeamCatch(IPluginContext *pCtx, const cell_t *params)
+{
+	return SeamCatch(pCtx, params, true);
 }
 
 cell_t N_SeamCandidates(IPluginContext *pCtx, const cell_t *params)
@@ -2433,6 +2443,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 	// Unified world trace
 	{"BSP_TraceHull", N_WorldTraceHull},
 	{"BSP_SeamCatch", N_SeamCatch},
+	{"BSP_HeadSeamCatch", N_HeadSeamCatch},
 	{"BSP_SeamCandidates", N_SeamCandidates},
 
 	// Surface physics properties (friction / surfaceprop)

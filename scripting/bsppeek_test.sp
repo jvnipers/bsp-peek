@@ -690,12 +690,14 @@ void Section_Trace()
         for (int k = 0; k < 3; k++)
             wall[k] = ep[k] - n[k] * 16.0;
         int count  = BSP_SeamCandidates(wall, n, wall[2] - 64.0, wall[2] + 64.0, heights, sizeof(heights));
-        int caught = 0;
+        int caught = 0, headCaught = 0;
         for (int k = 0; k < count; k++)
         {
             if (BSP_SeamCatch(wall, n, heights[k], GetTickInterval(), 800.0, 12.0, 250.0, speed, first) > 0) caught++;
+            int h = BSP_HeadSeamCatch(wall, n, heights[k], GetTickInterval(), 800.0, 12.0, 250.0, speed, first);
+            if (h > 0 && (h & (BSPP_CATCH_STANDING | BSPP_CATCH_DUCKED))) headCaught++;
         }
-        P("SeamCandidates     : %d heights, SeamCatch caught %d", count, caught);
+        P("SeamCandidates     : %d heights, SeamCatch caught %d, HeadSeamCatch %d", count, caught, headCaught);
     }
     P("  startSolid=%d allSolid=%d contents=0x%X dispFlags=0x%X", ss, allSolid, contents, dispFlags);
     P("  surfaceProps=%d surfaceFlags=0x%X material=%s", sprops, sflags, sname);
