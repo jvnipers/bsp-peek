@@ -9,7 +9,7 @@ namespace BSPSeam
 		CATCH_STANDING = 1,
 		CATCH_DUCKED = 2,
 		CATCH_WALL_NON_AXIAL = 4, // the wall stopping the hull has plane type >= PLANE_Z
-		CATCH_UNDER_CEILING = 8,  // head: an overhang over the hull
+		CATCH_UNDER_CEILING = 8,  // head: a flat overhang over the hull
 	};
 
 	// Runs movement's traces, through its trace list, over a grid of arrivals at the wall:

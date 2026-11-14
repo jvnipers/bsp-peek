@@ -164,7 +164,7 @@ native int  BSP_BrushSideOrder(int brushIdx, char[] buf, int maxlen);
 #define BSPP_CATCH_STANDING       1
 #define BSPP_CATCH_DUCKED         2
 #define BSPP_CATCH_WALL_NON_AXIAL 4    // the wall stopping the hull has plane type >= PLANE_Z
-#define BSPP_CATCH_UNDER_CEILING  8    // BSP_HeadSeamCatch: an overhang or displacement edge over the hull
+#define BSPP_CATCH_UNDER_CEILING  8    // BSP_HeadSeamCatch: a flat overhang or displacement edge over the hull
 
 // Whether a seam at seamZ catches a player against the wall, by movement's own traces over a grid of arrivals.
 // wallPos: on the face. wallNorm: horizontal unit normal. speed: total speed range of the catches.

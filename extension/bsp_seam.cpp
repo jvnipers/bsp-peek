@@ -160,7 +160,11 @@ namespace BSPSeam
 			{
 				return true;
 			}
-			underCeiling = true;
+			// Only a flat one: under a slope the head hit depends on the speed along it and where the hull is.
+			if (tr.plane.normal.z <= -0.99999f)
+			{
+				underCeiling = true;
+			}
 			return false;
 		}
 
