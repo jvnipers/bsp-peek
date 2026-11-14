@@ -73,6 +73,10 @@ namespace BSPSeam
 		const float kCatchSpeeds[] = {2.0f, 20.0f, 100.0f, 300.0f, 700.0f, 1500.0f, 3000.0f};
 		const float kCatchIn[] = {5.0f, 60.0f, -20.0f}; // away: a hull pushed off a tilted face
 		const float kSpeedMax = 6062.0f;                // sqrt(3) * sv_maxvelocity
+		// Texturebug grid: tops as shares of the tick's drop, pushes as shares of the fall speed (window gap / top to eps / (H_brush + H_hull)).
+		const float kTbSpeeds[] = {150.0f, 400.0f, 1000.0f, 2500.0f};
+		const float kTbTops[] = {0.25f, 0.5f, 0.75f};
+		const float kTbPushes[] = {1e-6f, 3e-6f, 1e-5f, 3e-5f, 1e-4f, 2e-4f, 4e-4f};
 
 		struct MoveTrace
 		{
@@ -305,6 +309,111 @@ namespace BSPSeam
 		outSpeed[0] = first == 0 ? 0.0f : kCatchSpeeds[first - 1];
 		outSpeed[1] = last + 1 == std::size(kCatchSpeeds) ? kSpeedMax : kCatchSpeeds[last + 1];
 		return flags | (underCeiling ? CATCH_UNDER_CEILING : 0);
+	}
+
+	int TexturebugCatch(const float wallPos[3], const float normal[3], float edgeZ, float frametime, float gravity, float maxspeed, float outInfo[2])
+	{
+		outInfo[0] = 0.0f;
+		outInfo[1] = 0.0f;
+		if (!BSPProps::EngineTrace())
+		{
+			return -1;
+		}
+		int axis = std::fabs(normal[0]) > 0.999f ? 0 : (std::fabs(normal[1]) > 0.999f ? 1 : -1);
+		if (axis < 0)
+		{
+			return 0; // box brushes are axial
+		}
+		float sign = normal[axis] > 0.0f ? 1.0f : -1.0f;
+		ITraceListData *list = BSPProps::EngineTrace()->AllocTraceListData();
+		if (!list)
+		{
+			return -1;
+		}
+		int flags = 0;
+		float halfG = gravity * 0.5f * frametime;
+		MoveTrace mt;
+		mt.list = list;
+		mt.mins.Init(-16.0f, -16.0f, 0.0f);
+		for (int duck = 0; duck < 2; ++duck)
+		{
+			mt.maxs.Init(16.0f, 16.0f, duck ? 54.0f : 72.0f);
+			bool caught = false;
+			for (float vz : kTbSpeeds)
+			{
+				float vm = vz + halfG;
+				for (float top : kTbTops)
+				{
+					float z = edgeZ - mt.maxs.z + top * vm * frametime;
+					CGameTrace hit;
+					bool found = false;
+					for (float out : {48.0f, 18.0f})
+					{
+						Vector from(wallPos[0] + normal[0] * out, wallPos[1] + normal[1] * out, z);
+						Vector to(wallPos[0] - normal[0] * 8.0f, wallPos[1] - normal[1] * 8.0f, z);
+						Ray_t ray;
+						ray.Init(from, to, mt.mins, mt.maxs);
+						BSPProps::EngineTrace()->TraceRay(ray, MASK_PLAYERSOLID, &mt.filter, &hit);
+						if (!hit.startsolid && hit.fraction < 1.0f && hit.plane.normal[axis] * sign > 0.999f)
+						{
+							found = true;
+							break;
+						}
+					}
+					if (!found)
+					{
+						continue;
+					}
+					// One float step off, the closest a hug gets; at 0 the clip takes the hull as inside.
+					float face = hit.plane.dist * sign;
+					Vector start = hit.endpos;
+					start[axis] = std::nextafter(face + 16.0f * sign, face + 64.0f * sign);
+					CGameTrace at;
+					Ray_t still;
+					still.Init(start, start, mt.mins, mt.maxs);
+					BSPProps::EngineTrace()->TraceRay(still, MASK_PLAYERSOLID, &mt.filter, &at);
+					if (at.startsolid)
+					{
+						continue;
+					}
+					float gap = (start[axis] - face) * sign - 16.0f;
+					for (float k : kTbPushes)
+					{
+						float vel[3] = {-normal[0] * k * vm, -normal[1] * k * vm, -vm};
+						float origin[3] = {start.x, start.y, start.z}, mn[3], mx[3];
+						collide::MovementListBox(origin, vel, maxspeed, frametime, 18.0f, mn, mx);
+						BSPProps::EngineTrace()->SetupLeafAndEntityListBox(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), mt.list);
+						CGameTrace tr;
+						mt.Run(start, start + Vector(vel[0], vel[1], vel[2]) * frametime, tr);
+						// A floor at fraction 0 above the feet is the box's top.
+						if (!tr.startsolid && tr.fraction < 0.0001f && tr.plane.normal.z > 0.7f && tr.plane.dist > start.z + 1.0f)
+						{
+							if (!flags)
+							{
+								outInfo[0] = tr.plane.dist - edgeZ;
+								outInfo[1] = gap;
+							}
+							caught = true;
+							break;
+						}
+					}
+					if (caught)
+					{
+						break;
+					}
+				}
+				if (caught)
+				{
+					break;
+				}
+			}
+			if (caught)
+			{
+				flags |= duck ? CATCH_DUCKED : CATCH_STANDING;
+			}
+		}
+		BSPProps::EngineTrace()->FreeTraceListData(list);
+		return flags;
 	}
 
 	int Candidates(const float wallPos[3], const float normal[3], float zMin, float zMax, float *out, int maxOut)

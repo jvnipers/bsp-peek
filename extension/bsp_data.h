@@ -200,29 +200,6 @@ namespace BSPData
 	// Caller applies the contents/order policy.
 	bool FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ, int &outLower, int &outUpper);
 
-	// Texturebug overhang.
-	// Scans cboxbrush_t for a player-collidable (MASK_PLAYERSOLID) box brush whose XY AABB contains samplePos,
-	// whose underside (mins.z) is open to air, and which has >=1 exposed vertical wall face.
-	// Open/exposed are tested against brushes only, not displacements or props.
-	// Returns the BOX-TABLE index plus the hugged wall (face axis+sign, world coord), underside z, and height.
-	// Among exposed lateral faces, picks the one nearest samplePos.
-	// Among qualifying boxes in the column, returns the one whose bottom  edge is nearest BELOW samplePos.z
-	// (the next edge a falling player crosses). If none below, nearest above. false if none.
-	bool FindBoxBrushOverhang(const float samplePos[3], int &outBoxIdx, int &outFace, float &outWallCoord, float &outBottomZ, float &outHeight);
-
-	// FindBoxBrushOverhang + the face-selection velocity window (the "texturebug" condition).
-	// Tests whether vel satisfies the topside-misreport window for the overhang at playerPos
-	// (cmodel.cpp IntersectRayWithBoxBrush Ineq 7/10):
-	//   |v_perp| < (|v_z| * DIST_EPSILON) / (H_brush + hullHeight)
-	// where v_perp = vel component along the hugged wall's normal axis.
-	//   hullHeight : player hull height (72 standing, 54 ducked in CSGO)
-	//   outMaxVPerp: window width, max |v_perp| that still triggers the bug
-	//   outVPerp   : actual |v_perp| from vel
-	// Geometry outputs mirror FindBoxBrushOverhang.
-	// Returns true iff overhang found AND v_z < 0 (falling) AND |v_perp| < maxVPerp.
-	bool BoxBrushOverhangWindow(const float playerPos[3], const float vel[3], float hullHeight, int &outBoxIdx, int &outFace, float &outWallCoord,
-								float &outBottomZ, float &outHeight, float &outMaxVPerp, float &outVPerp);
-
 	// FindBrushPairAtSeam + leaf-visit-order check.
 	// Roverhang at playerPos brushes at the seam,
 	// then walks to the leaf just below seamZ and finds each brush's position in that leaf's brush list.

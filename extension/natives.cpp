@@ -803,55 +803,6 @@ cell_t N_FindBoxBrushPairAtSeam(IPluginContext *pCtx, const cell_t *params)
 	return ok ? 1 : 0;
 }
 
-cell_t N_FindBoxBrushOverhang(IPluginContext *pCtx, const cell_t *params)
-{
-	float p[3];
-	cell_to_float3(pCtx, params[1], p);
-	int boxIdx = -1, face = -1;
-	float wallCoord = 0.f, bottomZ = 0.f, height = 0.f;
-	bool ok = BSPData::FindBoxBrushOverhang(p, boxIdx, face, wallCoord, bottomZ, height);
-	cell_t *o = nullptr;
-	pCtx->LocalToPhysAddr(params[2], &o);
-	*o = boxIdx;
-	pCtx->LocalToPhysAddr(params[3], &o);
-	*o = face;
-	pCtx->LocalToPhysAddr(params[4], &o);
-	*o = sp_ftoc(wallCoord);
-	pCtx->LocalToPhysAddr(params[5], &o);
-	*o = sp_ftoc(bottomZ);
-	pCtx->LocalToPhysAddr(params[6], &o);
-	*o = sp_ftoc(height);
-	return ok ? 1 : 0;
-}
-
-cell_t N_BoxBrushOverhangWindow(IPluginContext *pCtx, const cell_t *params)
-{
-	float p[3], v[3];
-	cell_to_float3(pCtx, params[1], p);
-	cell_to_float3(pCtx, params[2], v);
-	float hullHeight = sp_ctof(params[3]);
-	int boxIdx = -1, face = -1;
-	float wallCoord = 0.f, bottomZ = 0.f, height = 0.f;
-	float maxVPerp = 0.f, vPerp = 0.f;
-	bool ok = BSPData::BoxBrushOverhangWindow(p, v, hullHeight, boxIdx, face, wallCoord, bottomZ, height, maxVPerp, vPerp);
-	cell_t *o = nullptr;
-	pCtx->LocalToPhysAddr(params[4], &o);
-	*o = boxIdx;
-	pCtx->LocalToPhysAddr(params[5], &o);
-	*o = face;
-	pCtx->LocalToPhysAddr(params[6], &o);
-	*o = sp_ftoc(wallCoord);
-	pCtx->LocalToPhysAddr(params[7], &o);
-	*o = sp_ftoc(bottomZ);
-	pCtx->LocalToPhysAddr(params[8], &o);
-	*o = sp_ftoc(height);
-	pCtx->LocalToPhysAddr(params[9], &o);
-	*o = sp_ftoc(maxVPerp);
-	pCtx->LocalToPhysAddr(params[10], &o);
-	*o = sp_ftoc(vPerp);
-	return ok ? 1 : 0;
-}
-
 cell_t N_LeafBrushPairAtSeam(IPluginContext *pCtx, const cell_t *params)
 {
 	float p[3];
@@ -1927,6 +1878,19 @@ cell_t N_HeadSeamCatch(IPluginContext *pCtx, const cell_t *params)
 	return SeamCatch(pCtx, params, true);
 }
 
+cell_t N_TexturebugCatch(IPluginContext *pCtx, const cell_t *params)
+{
+	float wall[3], normal[3], info[2];
+	cell_to_float3(pCtx, params[1], wall);
+	cell_to_float3(pCtx, params[2], normal);
+	int r = BSPSeam::TexturebugCatch(wall, normal, sp_ctof(params[3]), sp_ctof(params[4]), sp_ctof(params[5]), sp_ctof(params[6]), info);
+	cell_t *out;
+	pCtx->LocalToPhysAddr(params[7], &out);
+	out[0] = sp_ftoc(info[0]);
+	out[1] = sp_ftoc(info[1]);
+	return r;
+}
+
 cell_t N_SeamCandidates(IPluginContext *pCtx, const cell_t *params)
 {
 	float wall[3], normal[3];
@@ -2292,8 +2256,6 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 	// "pixelsurf"
 	{"BSP_FindBrushPairAtSeam", N_FindBrushPairAtSeam},
 	{"BSP_FindBoxBrushPairAtSeam", N_FindBoxBrushPairAtSeam},
-	{"BSP_FindBoxBrushOverhang", N_FindBoxBrushOverhang},
-	{"BSP_BoxBrushOverhangWindow", N_BoxBrushOverhangWindow},
 	{"BSP_LeafBrushPairAtSeam", N_LeafBrushPairAtSeam},
 
 	// Brush cache
@@ -2445,6 +2407,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 	{"BSP_SeamCatch", N_SeamCatch},
 	{"BSP_HeadSeamCatch", N_HeadSeamCatch},
 	{"BSP_SeamCandidates", N_SeamCandidates},
+	{"BSP_TexturebugCatch", N_TexturebugCatch},
 
 	// Surface physics properties (friction / surfaceprop)
 	{"BSP_SurfacePropsReady", N_SurfacePropsReady},

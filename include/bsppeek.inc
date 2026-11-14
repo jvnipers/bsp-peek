@@ -179,6 +179,11 @@ native int BSP_HeadSeamCatch(const float wallPos[3], const float wallNorm[3], fl
 // Sorted heights in zMin..zMax where the wall column changes, for BSP_SeamCatch. Returns the count.
 native int BSP_SeamCandidates(const float wallPos[3], const float wallNorm[3], float zMin, float zMax, float[] out, int maxOut);
 
+// Whether a box brush's bottom edge at edgeZ gives a falling player a texturebug, by movement's own traces (brush order counts).
+// Returns BSPP_CATCH_STANDING / BSPP_CATCH_DUCKED bits, or -1 unavailable. info: the brush's height, the smallest gap at the wall.
+native int BSP_TexturebugCatch(const float wallPos[3], const float wallNorm[3], float edgeZ, float frametime, float gravity,
+                               float maxspeed, float info[2]);
+
 // Order bits returned by BSP_SeamOrder (1 << value).
 #define BSPP_SEAM_LOWER_FIRST   0
 #define BSPP_SEAM_UPPER_FIRST   1
@@ -262,51 +267,6 @@ native bool BSP_FindBrushPairAtSeam(const float samplePos[3], float seamZ,
 // outLower w/ maxs.z == seamZ, outUpper w/ mins.z == seamZ. true if both found.
 native bool BSP_FindBoxBrushPairAtSeam(const float samplePos[3], float seamZ,
                                        int &outLowerBox, int &outUpperBox);
-
-// Texturebug overhang geometry.
-// Finds a player-collidable (BSPP_MASK_PLAYERCOLLIDE) box brush at samplePos' XY column whose underside (-Z) is open
-// AND which has an exposed vertical wall the player can hug. Box-table index space.
-// Open/exposed are tested against brushes only, not displacements or props.
-//   samplePos : probe location (player pos / aim point).
-//   boxIdx    : cboxbrush_t index of the overhang brush.
-//   face      : hugged wall, axis+sign of its OUTWARD normal
-//               (0 = -X, 1 = +X, 2 = -Y, 3 = +Y). The player presses in the -normal direction.
-//               If several lateral faces are exposed, the one nearest samplePos is returned.
-//   wallCoord : world coord of that wall plane.
-//   bottomZ   : underside z (brush mins.z), the plane the player crosses.
-//   height    : brush vertical extent (maxs.z - mins.z), Ineq(10) numerator.
-// Returns true if an overhang was found.
-// Among qualifying boxes in the column, returns the one whose bottom edge is nearest BELOW samplePos.z
-// (the next edge a falling player crosses), else nearest above.
-native bool BSP_FindBoxBrushOverhang(const float samplePos[3], int &boxIdx,
-                                     int &face, float &wallCoord, float &bottomZ,
-                                     float &height);
-
-// CSGO player hull heights (g_CSViewVectors).
-#define BSP_CSGO_HULL_STAND 72.0
-#define BSP_CSGO_HULL_DUCK  54.0
-// Engine trace epsilon (cmodel.cpp DIST_EPSILON).
-#define BSP_DIST_EPSILON    0.03125
-
-// BSP_FindBoxBrushOverhang + the face-selection velocity window in one call (the "texturebug" condition).
-// Tests whether vel satisfies the topside-misreport window (cmodel.cpp IntersectRayWithBoxBrush Ineq 7/10):
-//   |v_perp| < (|v_z| * DIST_EPSILON) / (H_brush + hullHeight)
-// where v_perp is the velocity component along the hugged wall's normal axis.
-//   playerPos  : player origin (trace start).
-//   vel        : player velocity at the trace tick.
-//   hullHeight : player hull height. 72.0 standing, 54.0 ducked (CSGO).
-//   boxIdx     : cboxbrush_t index of the overhang brush.
-//   face       : hugged wall (0=-X, 1=+X, 2=-Y, 3=+Y).
-//   wallCoord  : world coord of that wall plane.
-//   bottomZ    : brush underside z (brush mins.z), the crossing plane.
-//   height     : brush vertical extent (maxs.z - mins.z).
-//   maxVPerp   : window width, max |v_perp| that triggers the bug.
-//   vPerp      : actual |v_perp| from vel (compare to maxVPerp for margin).
-// Returns true iff overhang found AND v_z < 0 AND |v_perp| < maxVPerp.
-native bool BSP_BoxBrushOverhangWindow(const float playerPos[3], const float vel[3],
-                                       float hullHeight, int &boxIdx, int &face,
-                                       float &wallCoord, float &bottomZ, float &height,
-                                       float &maxVPerp, float &vPerp);
 
 // BSP_FindBrushPairAtSeam + the leaf-visit-order gate in one call.
 // Resolves the lower/upper brushes at the seam, then samples the leaf just below seamZ and reports each brush's position in that leaf's brush list.
@@ -807,6 +767,7 @@ public void __ext_bsppeek_SetNTVOptional()
     MarkNativeAsOptional("BSP_SeamCatch");
     MarkNativeAsOptional("BSP_HeadSeamCatch");
     MarkNativeAsOptional("BSP_SeamCandidates");
+    MarkNativeAsOptional("BSP_TexturebugCatch");
     MarkNativeAsOptional("BSP_LeafBrushes");
     MarkNativeAsOptional("BSP_LeafContents");
     MarkNativeAsOptional("BSP_LeafCluster");
@@ -831,8 +792,6 @@ public void __ext_bsppeek_SetNTVOptional()
     MarkNativeAsOptional("BSP_CModelHeadnode");
     MarkNativeAsOptional("BSP_FindBrushPairAtSeam");
     MarkNativeAsOptional("BSP_FindBoxBrushPairAtSeam");
-    MarkNativeAsOptional("BSP_FindBoxBrushOverhang");
-    MarkNativeAsOptional("BSP_BoxBrushOverhangWindow");
     MarkNativeAsOptional("BSP_LeafBrushPairAtSeam");
     MarkNativeAsOptional("BSP_RebuildCache");
     MarkNativeAsOptional("BSP_RebuildCacheAsync");

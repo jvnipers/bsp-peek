@@ -19,6 +19,10 @@ namespace BSPSeam
 	int Catch(const float wallPos[3], const float normal[3], float seamZ, float frametime, float gravity, float airaccelerate, float maxspeed,
 			  float outSpeed[2], float outStart[6], bool head);
 
+	// Texturebug at a box brush's bottom edge: a hull one float step off the face, its top passing the edge, gets the box's top at fraction 0.
+	// Movement's trace list, so brush order counts. -1 unavailable, else CATCH_STANDING / CATCH_DUCKED; outInfo: height, gap.
+	int TexturebugCatch(const float wallPos[3], const float normal[3], float edgeZ, float frametime, float gravity, float maxspeed, float outInfo[2]);
+
 	// Sorted heights where the wall column changes:
 	// brush edges, displacement vertices, prop and entity bounds, and where a ray into the wall meets another surface, entity or depth.
 	int Candidates(const float wallPos[3], const float normal[3], float zMin, float zMax, float *out, int maxOut);
