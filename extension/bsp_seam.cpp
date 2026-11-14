@@ -136,32 +136,31 @@ namespace BSPSeam
 			collide::MovementListBox(origin, vel, maxspeed, frametime, 18.0f, mn, mx);
 			BSPProps::EngineTrace()->SetupLeafAndEntityListBox(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), mt.list);
 
-			// CategorizePosition leaves friction 0.25 after a slow rise.
-			for (float friction : {1.0f, 0.25f})
+			// CategorizePosition leaves friction 0.25 after a rise of 140 u/s or less; the last tick moved at vz + halfG.
+			float halfG = gravity * 0.5f * frametime;
+			float friction = (vz + halfG > 0.0f && vz + halfG <= 140.0f) ? 0.25f : 1.0f;
+			float add = (std::min)((std::max)(30.0f - vin, 0.0f), airaccelerate * maxspeed * frametime * friction);
+			Vector v(vel[0] - normal[0] * add, vel[1] - normal[1] * add, vz - halfG);
+			CGameTrace tr;
+			mt.Run(start, start + v * frametime, tr);
+			if (tr.startsolid || tr.fraction >= 0.0001f || tr.plane.normal.z >= -0.7f)
 			{
-				float add = (std::min)((std::max)(30.0f - vin, 0.0f), airaccelerate * maxspeed * frametime * friction);
-				Vector v(vel[0] - normal[0] * add, vel[1] - normal[1] * add, vz - gravity * 0.5f * frametime);
-				CGameTrace tr;
-				mt.Run(start, start + v * frametime, tr);
-				if (tr.startsolid || tr.fraction >= 0.0001f || tr.plane.normal.z >= -0.7f)
-				{
-					continue;
-				}
-				v.z = 0.0f;
-				mt.Run(start, start + v * frametime, tr);
-				if (tr.startsolid || (tr.fraction < 1.0f && tr.plane.normal.z > 0.001f))
-				{
-					continue;
-				}
-				wallNonAxial = tr.fraction < 0.0001f && tr.plane.type >= PLANE_Z;
-				// From the start: the second bump can leave an overhang.
-				mt.Run(start, start + Vector(0.0f, 0.0f, 2.0f), tr);
-				if (tr.startsolid || tr.fraction >= 1.0f || tr.plane.normal.z > -0.7f)
-				{
-					return true;
-				}
-				underCeiling = true;
+				return false;
 			}
+			v.z = 0.0f;
+			mt.Run(start, start + v * frametime, tr);
+			if (tr.startsolid || (tr.fraction < 1.0f && tr.plane.normal.z > 0.001f))
+			{
+				return false;
+			}
+			wallNonAxial = tr.fraction < 0.0001f && tr.plane.type >= PLANE_Z;
+			// From the start: the second bump can leave an overhang.
+			mt.Run(start, start + Vector(0.0f, 0.0f, 2.0f), tr);
+			if (tr.startsolid || tr.fraction >= 1.0f || tr.plane.normal.z > -0.7f)
+			{
+				return true;
+			}
+			underCeiling = true;
 			return false;
 		}
 
