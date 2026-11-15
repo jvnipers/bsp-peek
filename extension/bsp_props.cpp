@@ -12,7 +12,6 @@
 #include "engine/ivmodelinfo.h"
 #include "gametrace.h" // CGameTrace (trace_t) -> pulls cmodel.h/CBaseTrace (Ray_t)
 #include "iserverunknown.h"
-#include "model_types.h" // mod_brush
 #include "tier1/utlvector.h"
 #include "vcollide.h"
 #include "vphysics_interface.h"
@@ -42,6 +41,27 @@ namespace BSPProps
 		IEngineTrace *g_enginetrace = nullptr;
 		IStaticPropMgrServer *g_staticpropmgr = nullptr;
 		IPhysicsSurfaceProps *g_physprops = nullptr;
+
+		// hl2sdk-csgo's IVModelInfo doesn't match CS:GO's CModelInfoServer vtable (engine.so / engine.dll, build 740):
+		// it lacks a method after GetAnimBlock, and on Linux the engine has the GetVCollide(..., float) overloads near the end, where GCC places the SDK's
+		// beside the other two. So GetModelType is off on Linux and FindOrLoadModel on both; GetModelName and GetVCollide are in place.
+		bool IsBrushModel(const model_t *m)
+		{
+			const char *name = m ? g_modelinfo->GetModelName(m) : nullptr;
+			return name && name[0] == '*';
+		}
+
+		const model_t *FindOrLoadModel(const char *name)
+		{
+#ifdef _WIN32
+			using Fn = const model_t *(__thiscall *)(IVModelInfo *, const char *);
+			constexpr int kSlot = 43;
+#else
+			using Fn = const model_t *(*)(IVModelInfo *, const char *);
+			constexpr int kSlot = 42;
+#endif
+			return (*reinterpret_cast<Fn **>(g_modelinfo))[kSlot](g_modelinfo, name);
+		}
 
 		// Byte offsets of surfacedata_t::game.* in the live struct.
 		// The hl2sdk-csgo header mislocates `game` (CSGO's audio block is larger and surfacegameprops_t has two extra floats before `material`),
@@ -130,7 +150,7 @@ namespace BSPProps
 					return false;
 				}
 				ICollideable *c = static_cast<IServerUnknown *>(ent)->GetCollideable();
-				return c && g_modelinfo->GetModelType(c->GetCollisionModel()) == mod_brush;
+				return c && IsBrushModel(c->GetCollisionModel());
 			}
 
 			TraceType_t GetTraceType() const override
@@ -152,10 +172,8 @@ namespace BSPProps
 				return it->second;
 			}
 			vcollide_t *vc = nullptr;
-			const model_t *m = g_modelinfo->FindOrLoadModel(name);
-			// FindOrLoadModel returns null or (model_t*)-1 for unloadable names (e.g. prop-combine placeholders).
-			// GetVCollide on that sentinel crashes.
-			if (m == nullptr || m == reinterpret_cast<const model_t *>(~uintptr_t(0)))
+			const model_t *m = FindOrLoadModel(name);
+			if (m == nullptr)
 			{
 				g_vcollideCache[name] = nullptr;
 				return nullptr;

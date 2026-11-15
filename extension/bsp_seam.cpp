@@ -876,7 +876,7 @@ namespace BSPSeam
 			for (ICollideable *c : ents.found)
 			{
 				const model_t *m = c->GetCollisionModel();
-				// Brush models are "*N", cmodel N. GetModelType answers 0 for them on CS:GO 1575.
+				// Brush models are "*N", cmodel N.
 				const char *name = m ? mi->GetModelName(m) : nullptr;
 				if (!name || name[0] != '*')
 				{
