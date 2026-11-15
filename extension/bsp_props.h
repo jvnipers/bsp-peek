@@ -6,6 +6,7 @@
 
 class IEngineTrace;
 class IStaticPropMgrServer;
+class IVModelInfo;
 
 // Static prop collision.
 // TraceHull: resolves one prop's collision by model name (IVModelInfo -> vcollide_t) and sweeps an AABB against it via IPhysicsCollision.
@@ -60,6 +61,7 @@ namespace BSPProps
 
 	IEngineTrace *EngineTrace();
 	IStaticPropMgrServer *StaticPropMgr();
+	IVModelInfo *ModelInfo();
 
 	// Surface physics properties (friction / elasticity / movement modifiers).
 	// Resolved from the live IPhysicsSurfaceProps singleton in the already-loaded vphysics module.

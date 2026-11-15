@@ -51,6 +51,8 @@ namespace BSPDisp
 	int EngineVertCount(int idx);
 	int EngineTriCount(int idx);
 	bool EngineGetVert(int idx, int vertIdx, float pos[3]);
+	// Tree idx's triangles, 12 floats each: the three vertices, then the triangle's normal. false if the tree is unreadable.
+	bool EngineTriangles(int idx, std::vector<float> &out);
 
 	int DiskCount();
 	bool DiskGetBounds(int idx, float mins[3], float maxs[3]);

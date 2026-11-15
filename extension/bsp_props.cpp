@@ -1137,4 +1137,9 @@ namespace BSPProps
 		return g_staticpropmgr;
 	}
 
+	IVModelInfo *ModelInfo()
+	{
+		return g_modelinfo;
+	}
+
 } // namespace BSPProps

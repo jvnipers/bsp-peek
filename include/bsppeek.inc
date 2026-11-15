@@ -190,9 +190,14 @@ native int BSP_TexturebugCatch(const float wallPos[3], const float wallNorm[3], 
 #define BSPP_EDGE_NONWORLD  4    // that face is a displacement's, a prop's or an entity's
 #define BSPP_EDGE_FLOATS    11
 
-// Points every `spacing` units along the horizontal edges of world brushes' wall faces where a seam can be, for map-wide seam tests:
-// bottom edges unless a floor meets them, top edges only under a displacement, prop or entity (a world brush above has its own bottom edge).
-// Seams with no world brush on either side (displacement on displacement, props, brush entities) aren't in it.
+// Points every `spacing` units along the horizontal edges of wall faces where a seam can be, for map-wide seam tests, from world brushes,
+// the brushes of func_brush, func_wall and func_wall_toggle entities that are solid, and displacements:
+// - brushes: bottom edges unless a floor meets them; top edges under a displacement, prop or entity,
+//   or inside a world face that goes on lower (a world brush starting at the edge has its own bottom edge there);
+// - vphysics brush entities collide 0.5u inside their faces: their edges are where movement meets them, a top edge carries the seam
+//   (bits TOP | CONTINUES when a face flush with it goes on above), a bottom edge gets no CONTINUES;
+// - displacements: top edges under another displacement, a prop or an entity.
+// Seams between props aren't in it.
 // Per point BSPP_EDGE_FLOATS floats: x, y, z on the face, flat normal x, y, edge index (points of one edge are consecutive), BSPP_EDGE_* bits,
 // then the ends (x, y, x, y) of the stretch of edge the point stands for: touching stretches make one line.
 // Built on the first call per map and spacing (main thread). Copies points from `first`, as many as fit; returns the total.
