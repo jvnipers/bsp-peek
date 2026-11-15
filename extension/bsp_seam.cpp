@@ -19,6 +19,8 @@
 #include <cstdint>
 #include <cstring>
 #include <iterator>
+#include <map>
+#include <tuple>
 #include <vector>
 
 namespace BSPSeam
@@ -581,33 +583,53 @@ namespace BSPSeam
 			return flush(te) ? (EDGE_CONTINUES | EDGE_NONWORLD) : 0;
 		}
 
-		void SampleEdge(IEngineTrace *et, const float a[2], const float c[2], float z, const float fn[2], bool top, float spacing, int edge)
+		struct WallEdge
 		{
-			float span = std::sqrt((c[0] - a[0]) * (c[0] - a[0]) + (c[1] - a[1]) * (c[1] - a[1]));
-			if (span < 1.0f)
-			{
-				return;
-			}
-			float past = top ? 1.0f : -1.0f;
-			int samples = (std::max)(1, (int)(span / spacing));
+			float a[2], c[2], z, fn[2];
+			bool top;
+		};
+
+		// Faces on one plane share it: flat normal to 1/1000, distance to 1/64u.
+		std::tuple<int, int, int> PlaneKey(const WallEdge &e)
+		{
+			float d = e.fn[0] * e.a[0] + e.fn[1] * e.a[1];
+			return std::make_tuple((int)std::lround(e.fn[0] * 1000.0f), (int)std::lround(e.fn[1] * 1000.0f), (int)std::lround(d * 64.0f));
+		}
+
+		// Samples e between s0 and s1 units along it from a.
+		void SampleSpan(IEngineTrace *et, const WallEdge &e, float s0, float s1, float spacing, int edge)
+		{
+			float span = std::sqrt((e.c[0] - e.a[0]) * (e.c[0] - e.a[0]) + (e.c[1] - e.a[1]) * (e.c[1] - e.a[1]));
+			float dir[2] = {(e.c[0] - e.a[0]) / span, (e.c[1] - e.a[1]) / span};
+			float past = e.top ? 1.0f : -1.0f;
+			int samples = (std::max)(1, (int)((s1 - s0) / spacing));
 			for (int k = 0; k < samples; ++k)
 			{
-				float t = (k + 0.5f) / samples;
-				float p[3] = {a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t, z + past};
+				float at = s0 + (s1 - s0) * (k + 0.5f) / samples;
+				float p[3] = {e.a[0] + dir[0] * at, e.a[1] + dir[1] * at, e.z + past};
 				// Solid in front, just past the edge: a floor or ceiling meets the face here.
-				Vector front(p[0] + fn[0], p[1] + fn[1], p[2]);
+				Vector front(p[0] + e.fn[0], p[1] + e.fn[1], p[2]);
 				if (et->GetPointContents(front, MASK_PLAYERSOLID) & MASK_PLAYERSOLID)
 				{
 					continue;
 				}
-				int bits = (top ? EDGE_TOP : 0) | Continuation(et, p, fn);
-				if (top && !(bits & EDGE_NONWORLD))
+				int bits = (e.top ? EDGE_TOP : 0) | Continuation(et, p, e.fn);
+				if (e.top && !(bits & EDGE_NONWORLD))
 				{
 					continue;
 				}
-				const float pt[7] = {p[0], p[1], z, fn[0], fn[1], (float)edge, (float)bits};
+				const float pt[7] = {p[0], p[1], e.z, e.fn[0], e.fn[1], (float)edge, (float)bits};
 				s_edgePoints.insert(s_edgePoints.end(), pt, pt + 7);
 			}
+		}
+
+		void AddEdge(std::vector<WallEdge> &edges, const float a[2], const float c[2], float z, const float fn[2], bool top)
+		{
+			if ((c[0] - a[0]) * (c[0] - a[0]) + (c[1] - a[1]) * (c[1] - a[1]) < 1.0f)
+			{
+				return;
+			}
+			edges.push_back({{a[0], a[1]}, {c[0], c[1]}, z, {fn[0], fn[1]}, top});
 		}
 
 		void BuildEdgePoints(float spacing)
@@ -619,7 +641,7 @@ namespace BSPSeam
 			{
 				return;
 			}
-			int edge = 0;
+			std::vector<WallEdge> edges;
 			int count = BSPData::GetNumBrushes();
 			for (int b = 0; b < count; ++b)
 			{
@@ -637,7 +659,7 @@ namespace BSPSeam
 						continue;
 					}
 					const float faces[4][6] = {
-						// normal x, y, then the edge from (x, y) to (x, y), seen from outside left to right
+						// normal x, y, then the edge from (x, y) to (x, y)
 						{1.0f, 0.0f, mx[0], mn[1], mx[0], mx[1]},
 						{-1.0f, 0.0f, mn[0], mx[1], mn[0], mn[1]},
 						{0.0f, 1.0f, mx[0], mx[1], mn[0], mx[1]},
@@ -645,8 +667,8 @@ namespace BSPSeam
 					};
 					for (const float *f : faces)
 					{
-						SampleEdge(et, &f[2], &f[4], mn[2], f, false, spacing, edge++);
-						SampleEdge(et, &f[2], &f[4], mx[2], f, true, spacing, edge++);
+						AddEdge(edges, &f[2], &f[4], mn[2], f, false);
+						AddEdge(edges, &f[2], &f[4], mx[2], f, true);
 					}
 					continue;
 				}
@@ -681,8 +703,54 @@ namespace BSPSeam
 						bool bottom = std::fabs(a[2] - zMin) < 0.01f && std::fabs(c[2] - zMin) < 0.01f;
 						if (top || bottom)
 						{
-							SampleEdge(et, a, c, top ? zMax : zMin, fn, top, spacing, edge++);
+							AddEdge(edges, a, c, top ? zMax : zMin, fn, top);
 						}
+					}
+				}
+			}
+
+			// A flush face below can cover only part of a bottom edge, a few units at its end:
+			// cut the edge where those faces start and end, so even a short flush stretch gets a point of its own.
+			std::map<std::tuple<int, int, int>, std::vector<int>> tops;
+			for (int i = 0; i < (int)edges.size(); ++i)
+			{
+				if (edges[i].top)
+				{
+					tops[PlaneKey(edges[i])].push_back(i);
+				}
+			}
+			for (int i = 0; i < (int)edges.size(); ++i)
+			{
+				const WallEdge &e = edges[i];
+				float span = std::sqrt((e.c[0] - e.a[0]) * (e.c[0] - e.a[0]) + (e.c[1] - e.a[1]) * (e.c[1] - e.a[1]));
+				std::vector<float> cuts = {0.0f, span};
+				auto found = e.top ? tops.end() : tops.find(PlaneKey(e));
+				if (found != tops.end())
+				{
+					float dir[2] = {(e.c[0] - e.a[0]) / span, (e.c[1] - e.a[1]) / span};
+					for (int j : found->second)
+					{
+						const WallEdge &t = edges[j];
+						if (std::fabs(t.z - e.z) > 0.01f)
+						{
+							continue;
+						}
+						for (const float *q : {t.a, t.c})
+						{
+							float at = (q[0] - e.a[0]) * dir[0] + (q[1] - e.a[1]) * dir[1];
+							if (at > 0.5f && at < span - 0.5f)
+							{
+								cuts.push_back(at);
+							}
+						}
+					}
+					std::sort(cuts.begin(), cuts.end());
+				}
+				for (size_t k = 0; k + 1 < cuts.size(); ++k)
+				{
+					if (cuts[k + 1] - cuts[k] >= 0.5f)
+					{
+						SampleSpan(et, e, cuts[k], cuts[k + 1], spacing, i);
 					}
 				}
 			}
