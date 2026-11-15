@@ -605,7 +605,7 @@ namespace BSPSeam
 			int samples = (std::max)(1, (int)((s1 - s0) / spacing));
 			for (int k = 0; k < samples; ++k)
 			{
-				float at = s0 + (s1 - s0) * (k + 0.5f) / samples;
+				float c0 = s0 + (s1 - s0) * k / samples, c1 = s0 + (s1 - s0) * (k + 1) / samples, at = (c0 + c1) * 0.5f;
 				float p[3] = {e.a[0] + dir[0] * at, e.a[1] + dir[1] * at, e.z + past};
 				// Solid in front, just past the edge: a floor or ceiling meets the face here.
 				Vector front(p[0] + e.fn[0], p[1] + e.fn[1], p[2]);
@@ -618,8 +618,18 @@ namespace BSPSeam
 				{
 					continue;
 				}
-				const float pt[7] = {p[0], p[1], e.z, e.fn[0], e.fn[1], (float)edge, (float)bits};
-				s_edgePoints.insert(s_edgePoints.end(), pt, pt + 7);
+				const float pt[EDGE_POINT_FLOATS] = {p[0],
+													 p[1],
+													 e.z,
+													 e.fn[0],
+													 e.fn[1],
+													 (float)edge,
+													 (float)bits,
+													 e.a[0] + dir[0] * c0,
+													 e.a[1] + dir[1] * c0,
+													 e.a[0] + dir[0] * c1,
+													 e.a[1] + dir[1] * c1};
+				s_edgePoints.insert(s_edgePoints.end(), pt, pt + EDGE_POINT_FLOATS);
 			}
 		}
 
@@ -763,10 +773,10 @@ namespace BSPSeam
 		{
 			BuildEdgePoints(spacing);
 		}
-		int total = (int)(s_edgePoints.size() / 7);
+		int total = (int)(s_edgePoints.size() / EDGE_POINT_FLOATS);
 		for (int i = 0; i < maxOut && first + i < total; ++i)
 		{
-			std::memcpy(out + 7 * i, &s_edgePoints[7 * (first + i)], 7 * sizeof(float));
+			std::memcpy(out + EDGE_POINT_FLOATS * i, &s_edgePoints[EDGE_POINT_FLOATS * (first + i)], EDGE_POINT_FLOATS * sizeof(float));
 		}
 		return total;
 	}

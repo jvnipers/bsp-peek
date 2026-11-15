@@ -1921,12 +1921,12 @@ cell_t N_WallEdgePoints(IPluginContext *pCtx, const cell_t *params)
 	{
 		return pCtx->ThrowNativeError("spacing %f must be at least 1, first %d and maxOut %d not negative", spacing, first, maxOut);
 	}
-	std::vector<float> pts((size_t)maxOut * 7);
+	std::vector<float> pts((size_t)maxOut * BSPSeam::EDGE_POINT_FLOATS);
 	int total = BSPSeam::WallEdgePoints(spacing, first, pts.data(), maxOut);
 	int n = (std::min)(maxOut, (std::max)(0, total - first));
 	cell_t *out;
 	pCtx->LocalToPhysAddr(params[3], &out);
-	for (int i = 0; i < n * 7; i++)
+	for (int i = 0; i < n * BSPSeam::EDGE_POINT_FLOATS; i++)
 	{
 		out[i] = sp_ftoc(pts[i]);
 	}

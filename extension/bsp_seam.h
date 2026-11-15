@@ -30,8 +30,10 @@ namespace BSPSeam
 		EDGE_NONWORLD = 4,  // that face is a displacement's, a prop's or an entity's
 	};
 
-	// 7 floats a point: x, y, z, flat normal x, y, edge index, EDGE_* bits. Top edges only under a displacement, prop or entity:
+	// EDGE_POINT_FLOATS a point: x, y, z, flat normal x, y, edge index, EDGE_* bits, then the ends (x, y) of the stretch of edge
+	// it stands for, so touching stretches can be drawn as one line. Top edges only under a displacement, prop or entity:
 	// a world brush above has its own bottom edge. Built on the first call per map and spacing; returns the total.
+	constexpr int EDGE_POINT_FLOATS = 11;
 	int WallEdgePoints(float spacing, int first, float *out, int maxOut);
 	void OnMapEnd();
 
