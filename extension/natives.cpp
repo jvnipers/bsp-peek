@@ -1912,6 +1912,27 @@ cell_t N_SeamCandidates(IPluginContext *pCtx, const cell_t *params)
 	return n;
 }
 
+cell_t N_WallEdgePoints(IPluginContext *pCtx, const cell_t *params)
+{
+	float spacing = sp_ctof(params[1]);
+	int first = params[2];
+	int maxOut = out_len(params[4]);
+	if (!(spacing >= 1.0f) || first < 0 || maxOut < 0)
+	{
+		return pCtx->ThrowNativeError("spacing %f must be at least 1, first %d and maxOut %d not negative", spacing, first, maxOut);
+	}
+	std::vector<float> pts((size_t)maxOut * 7);
+	int total = BSPSeam::WallEdgePoints(spacing, first, pts.data(), maxOut);
+	int n = (std::min)(maxOut, (std::max)(0, total - first));
+	cell_t *out;
+	pCtx->LocalToPhysAddr(params[3], &out);
+	for (int i = 0; i < n * 7; i++)
+	{
+		out[i] = sp_ftoc(pts[i]);
+	}
+	return total;
+}
+
 cell_t N_WorldTraceHull(IPluginContext *pCtx, const cell_t *params)
 {
 	float start[3], end[3], mins[3], maxs[3];
@@ -2408,6 +2429,7 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 	{"BSP_HeadSeamCatch", N_HeadSeamCatch},
 	{"BSP_SeamCandidates", N_SeamCandidates},
 	{"BSP_TexturebugCatch", N_TexturebugCatch},
+	{"BSP_WallEdgePoints", N_WallEdgePoints},
 
 	// Surface physics properties (friction / surfaceprop)
 	{"BSP_SurfacePropsReady", N_SurfacePropsReady},

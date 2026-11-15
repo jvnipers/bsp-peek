@@ -23,6 +23,18 @@ namespace BSPSeam
 	// Movement's trace list, so brush order counts. -1 unavailable, else CATCH_STANDING / CATCH_DUCKED; outInfo: height, gap.
 	int TexturebugCatch(const float wallPos[3], const float normal[3], float edgeZ, float frametime, float gravity, float maxspeed, float outInfo[2]);
 
+	enum
+	{
+		EDGE_TOP = 1,       // else a bottom edge
+		EDGE_CONTINUES = 2, // a face flush with this one goes on past the edge
+		EDGE_NONWORLD = 4,  // that face is a displacement's, a prop's or an entity's
+	};
+
+	// 7 floats a point: x, y, z, flat normal x, y, edge index, EDGE_* bits. Top edges only under a displacement, prop or entity:
+	// a world brush above has its own bottom edge. Built on the first call per map and spacing; returns the total.
+	int WallEdgePoints(float spacing, int first, float *out, int maxOut);
+	void OnMapEnd();
+
 	// Sorted heights where the wall column changes:
 	// brush edges, displacement vertices, prop and entity bounds, and where a ray into the wall meets another surface, entity or depth.
 	int Candidates(const float wallPos[3], const float normal[3], float zMin, float zMax, float *out, int maxOut);

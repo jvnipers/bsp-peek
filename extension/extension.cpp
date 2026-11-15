@@ -3,6 +3,7 @@
 #include "bsp_disp.h"
 #include "bsp_lumps.h"
 #include "bsp_props.h"
+#include "bsp_seam.h"
 #include <IGameHelpers.h>
 
 BSPPeek g_BSPPeek;
@@ -79,6 +80,7 @@ bool BSPPeek::QueryRunning(char *error, size_t maxlen)
 void BSPPeek::OnCoreMapEnd()
 {
 	BSPData::OnMapEnd();
+	BSPSeam::OnMapEnd();
 	BSPProps::OnMapClear();
 	// The disk loaders skip a map name they already hold, even if its .bsp changed.
 	BSPDisp::Clear();

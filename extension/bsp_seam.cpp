@@ -536,4 +536,176 @@ namespace BSPSeam
 		}
 		return n;
 	}
+
+	namespace
+	{
+		std::vector<float> s_edgePoints;
+		float s_edgeSpacing = 0.0f;
+
+		class NothingFilter : public ITraceFilter
+		{
+		public:
+			bool ShouldHitEntity(IHandleEntity *, int) override
+			{
+				return false;
+			}
+
+			TraceType_t GetTraceType() const override
+			{
+				return TRACE_WORLD_ONLY;
+			}
+		};
+
+		// Flush: plane within 1/4u, facing the same way. World first: displacements are world, props and entities need the movement filter.
+		int Continuation(IEngineTrace *et, const float p[3], const float fn[2])
+		{
+			Vector from(p[0] + fn[0], p[1] + fn[1], p[2]), to(p[0] - fn[0], p[1] - fn[1], p[2]);
+			Ray_t ray;
+			ray.Init(from, to);
+			auto flush = [&](const CGameTrace &tr)
+			{
+				float depth = (tr.endpos.x - p[0]) * fn[0] + (tr.endpos.y - p[1]) * fn[1];
+				return tr.fraction < 1.0f && !tr.startsolid && tr.plane.normal.x * fn[0] + tr.plane.normal.y * fn[1] > 0.9f
+					   && std::fabs(depth) < 0.25f;
+			};
+			NothingFilter world;
+			CGameTrace tr;
+			et->TraceRay(ray, MASK_PLAYERSOLID, &world, &tr);
+			if (flush(tr))
+			{
+				return EDGE_CONTINUES | (tr.dispFlags ? EDGE_NONWORLD : 0);
+			}
+			MovementFilter movement;
+			CGameTrace te;
+			et->TraceRay(ray, MASK_PLAYERSOLID, &movement, &te);
+			return flush(te) ? (EDGE_CONTINUES | EDGE_NONWORLD) : 0;
+		}
+
+		void SampleEdge(IEngineTrace *et, const float a[2], const float c[2], float z, const float fn[2], bool top, float spacing, int edge)
+		{
+			float span = std::sqrt((c[0] - a[0]) * (c[0] - a[0]) + (c[1] - a[1]) * (c[1] - a[1]));
+			if (span < 1.0f)
+			{
+				return;
+			}
+			float past = top ? 1.0f : -1.0f;
+			int samples = (std::max)(1, (int)(span / spacing));
+			for (int k = 0; k < samples; ++k)
+			{
+				float t = (k + 0.5f) / samples;
+				float p[3] = {a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t, z + past};
+				// Solid in front, just past the edge: a floor or ceiling meets the face here.
+				Vector front(p[0] + fn[0], p[1] + fn[1], p[2]);
+				if (et->GetPointContents(front, MASK_PLAYERSOLID) & MASK_PLAYERSOLID)
+				{
+					continue;
+				}
+				int bits = (top ? EDGE_TOP : 0) | Continuation(et, p, fn);
+				if (top && !(bits & EDGE_NONWORLD))
+				{
+					continue;
+				}
+				const float pt[7] = {p[0], p[1], z, fn[0], fn[1], (float)edge, (float)bits};
+				s_edgePoints.insert(s_edgePoints.end(), pt, pt + 7);
+			}
+		}
+
+		void BuildEdgePoints(float spacing)
+		{
+			s_edgePoints.clear();
+			s_edgeSpacing = spacing;
+			IEngineTrace *et = BSPProps::EngineTrace();
+			if (!et || !BSPData::CollideBsp())
+			{
+				return;
+			}
+			int edge = 0;
+			int count = BSPData::GetNumBrushes();
+			for (int b = 0; b < count; ++b)
+			{
+				if (!(BSPData::GetBrushContents(b) & MASK_PLAYERSOLID))
+				{
+					continue;
+				}
+				// A box brush has no side list (its solid is in the cboxbrush_t table): its four walls are the bounds' faces.
+				int sides = BSPData::BrushNumSides(b);
+				if (sides <= 0)
+				{
+					float mn[3], mx[3];
+					if (!BSPData::GetBrushBounds(b, mn, mx) || mx[2] - mn[2] < 0.01f)
+					{
+						continue;
+					}
+					const float faces[4][6] = {
+						// normal x, y, then the edge from (x, y) to (x, y), seen from outside left to right
+						{1.0f, 0.0f, mx[0], mn[1], mx[0], mx[1]},
+						{-1.0f, 0.0f, mn[0], mx[1], mn[0], mn[1]},
+						{0.0f, 1.0f, mx[0], mx[1], mn[0], mx[1]},
+						{0.0f, -1.0f, mn[0], mn[1], mx[0], mn[1]},
+					};
+					for (const float *f : faces)
+					{
+						SampleEdge(et, &f[2], &f[4], mn[2], f, false, spacing, edge++);
+						SampleEdge(et, &f[2], &f[4], mx[2], f, true, spacing, edge++);
+					}
+					continue;
+				}
+				for (int s = 0; s < sides; ++s)
+				{
+					float n[3], d, v[64 * 3];
+					if (BSPData::BrushSideBevel(b, s) || !BSPData::BrushSidePlane(b, s, n, d) || std::fabs(n[2]) > 0.3f)
+					{
+						continue;
+					}
+					int nv = BSPData::BrushSideWinding(b, s, v, 64);
+					if (nv < 3)
+					{
+						continue;
+					}
+					float len = std::sqrt(n[0] * n[0] + n[1] * n[1]);
+					float fn[2] = {n[0] / len, n[1] / len};
+					float zMin = v[2], zMax = v[2];
+					for (int i = 1; i < nv; ++i)
+					{
+						zMin = (std::min)(zMin, v[3 * i + 2]);
+						zMax = (std::max)(zMax, v[3 * i + 2]);
+					}
+					if (zMax - zMin < 0.01f)
+					{
+						continue;
+					}
+					for (int i = 0; i < nv; ++i)
+					{
+						const float *a = &v[3 * i], *c = &v[3 * ((i + 1) % nv)];
+						bool top = std::fabs(a[2] - zMax) < 0.01f && std::fabs(c[2] - zMax) < 0.01f;
+						bool bottom = std::fabs(a[2] - zMin) < 0.01f && std::fabs(c[2] - zMin) < 0.01f;
+						if (top || bottom)
+						{
+							SampleEdge(et, a, c, top ? zMax : zMin, fn, top, spacing, edge++);
+						}
+					}
+				}
+			}
+		}
+	} // namespace
+
+	int WallEdgePoints(float spacing, int first, float *out, int maxOut)
+	{
+		if (s_edgePoints.empty() || s_edgeSpacing != spacing)
+		{
+			BuildEdgePoints(spacing);
+		}
+		int total = (int)(s_edgePoints.size() / 7);
+		for (int i = 0; i < maxOut && first + i < total; ++i)
+		{
+			std::memcpy(out + 7 * i, &s_edgePoints[7 * (first + i)], 7 * sizeof(float));
+		}
+		return total;
+	}
+
+	void OnMapEnd()
+	{
+		s_edgePoints.clear();
+		s_edgeSpacing = 0.0f;
+	}
 } // namespace BSPSeam
