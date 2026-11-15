@@ -562,11 +562,11 @@ namespace BSPSeam
 			}
 		};
 
-		// Flush: plane within 1/4u, facing the same way. World first: displacements are world, props and entities need the movement filter.
-		// box: a small box instead of a ray, which meets a vphysics model where movement does (SettleEdge).
-		int Continuation(IEngineTrace *et, const float p[3], const float fn[2], bool box)
+		// Flush: within 1/4u of where the face would be at p (expect, for a leaning face), facing the same way. World first:
+		// displacements are world. A box, not a ray: it meets a vphysics model where movement does, a ray meets the brush.
+		int Continuation(IEngineTrace *et, const float p[3], const float fn[2], float expect)
 		{
-			const float h = box ? 0.0625f : 0.0f;
+			const float h = 0.0625f;
 			Vector from(p[0] + fn[0], p[1] + fn[1], p[2]), to(p[0] - fn[0], p[1] - fn[1], p[2]);
 			Ray_t ray;
 			ray.Init(from, to, Vector(-h, -h, -h), Vector(h, h, h));
@@ -574,7 +574,7 @@ namespace BSPSeam
 			{
 				float depth = (tr.endpos.x - p[0]) * fn[0] + (tr.endpos.y - p[1]) * fn[1] - h * (std::fabs(fn[0]) + std::fabs(fn[1]));
 				return tr.fraction < 1.0f && !tr.startsolid && tr.plane.normal.x * fn[0] + tr.plane.normal.y * fn[1] > 0.9f
-					   && std::fabs(depth) < 0.25f;
+					   && std::fabs(depth - expect) < 0.25f;
 			};
 			NothingFilter world;
 			CGameTrace tr;
@@ -589,11 +589,13 @@ namespace BSPSeam
 			return flush(te) ? (EDGE_CONTINUES | EDGE_NONWORLD) : 0;
 		}
 
+		// lean: the face normal's z over its flat length, how far the face moves in per unit up.
 		// shrunk: moved down or up with a vphysics brush entity's collision model (SettleEdge).
+		// prop: a prop's top edge, kept only under a displacement, prop or entity (a prop under the world never hovers).
 		struct WallEdge
 		{
-			float a[2], c[2], z, fn[2];
-			bool top, shrunk;
+			float a[2], c[2], z, fn[2], lean;
+			bool top, shrunk, prop;
 		};
 
 		// Faces on one plane share it: flat normal to 1/1000, distance to 1/64u.
@@ -610,7 +612,7 @@ namespace BSPSeam
 			float dir[2] = {(e.c[0] - e.a[0]) / span, (e.c[1] - e.a[1]) / span};
 			// Above a shrunk top edge a shrunk brush starts up to 1u higher.
 			float past = e.top ? (e.shrunk ? 1.5f : 1.0f) : -1.0f;
-			int samples = (std::max)(1, (int)((s1 - s0) / spacing));
+			int samples = (std::max)(1, (int)std::lround((s1 - s0) / spacing));
 			for (int k = 0; k < samples; ++k)
 			{
 				float c0 = s0 + (s1 - s0) * k / samples, c1 = s0 + (s1 - s0) * (k + 1) / samples, at = (c0 + c1) * 0.5f;
@@ -624,7 +626,7 @@ namespace BSPSeam
 				int bits = e.top ? EDGE_TOP : 0;
 				if (!e.shrunk)
 				{
-					bits |= Continuation(et, p, e.fn, false);
+					bits |= Continuation(et, p, e.fn, -e.lean * past);
 					// Under a world face only inside it, the brush above reaching lower: else that brush's bottom edge has the seam.
 					if (e.top && !(bits & EDGE_NONWORLD) && (ownAbove || !(bits & EDGE_CONTINUES)))
 					{
@@ -634,7 +636,7 @@ namespace BSPSeam
 				else if (e.top)
 				{
 					// Its own floor carries the seam, with any face flush above: a world brush's bottom edge is higher.
-					bits |= Continuation(et, p, e.fn, true);
+					bits |= Continuation(et, p, e.fn, -e.lean * past);
 					if (!(bits & EDGE_CONTINUES))
 					{
 						continue;
@@ -656,13 +658,14 @@ namespace BSPSeam
 			}
 		}
 
-		void AddEdge(std::vector<WallEdge> &edges, const float a[2], const float c[2], float z, const float fn[2], bool top, bool shrunk)
+		void AddEdge(std::vector<WallEdge> &edges, const float a[2], const float c[2], float z, const float fn[2], float lean, bool top, bool shrunk,
+					 bool prop = false)
 		{
 			if ((c[0] - a[0]) * (c[0] - a[0]) + (c[1] - a[1]) * (c[1] - a[1]) < 1.0f)
 			{
 				return;
 			}
-			edges.push_back({{a[0], a[1]}, {c[0], c[1]}, z, {fn[0], fn[1]}, top, shrunk});
+			edges.push_back({{a[0], a[1]}, {c[0], c[1]}, z, {fn[0], fn[1]}, lean, top, shrunk, prop});
 		}
 
 		// Horizontal edges of brush b's wall faces, moved by xf (a brush entity's collision transform) when given.
@@ -714,11 +717,22 @@ namespace BSPSeam
 				}
 				faces.push_back({Vector(n[0], n[1], n[2]), w});
 			}
-			for (const auto &f : faces)
+			for (auto &f : faces)
 			{
-				const Vector &n = f.first;
-				const std::vector<Vector> &w = f.second;
-				if (std::fabs(n.z) > 0.3f)
+				Vector n = f.first;
+				std::vector<Vector> &w = f.second;
+				if (xf)
+				{
+					Vector t;
+					for (Vector &q : w)
+					{
+						VectorTransform(q, *xf, t);
+						q = t;
+					}
+					VectorRotate(f.first, *xf, n);
+				}
+				float len = std::sqrt(n.x * n.x + n.y * n.y);
+				if (std::fabs(n.z) > 0.3f || len < 0.5f)
 				{
 					continue;
 				}
@@ -741,24 +755,8 @@ namespace BSPSeam
 					{
 						continue;
 					}
-					a.z = c.z = top ? zMax : zMin;
-					Vector wn = n;
-					if (xf)
-					{
-						Vector t;
-						VectorTransform(a, *xf, t);
-						a = t;
-						VectorTransform(c, *xf, t);
-						c = t;
-						VectorRotate(n, *xf, wn);
-					}
-					float len = std::sqrt(wn.x * wn.x + wn.y * wn.y);
-					if (std::fabs(a.z - c.z) > 0.01f || len < 0.5f)
-					{
-						continue;
-					}
-					const float ea[2] = {a.x, a.y}, ec[2] = {c.x, c.y}, fn[2] = {wn.x / len, wn.y / len};
-					AddEdge(edges, ea, ec, a.z, fn, top, false);
+					const float ea[2] = {a.x, a.y}, ec[2] = {c.x, c.y}, fn[2] = {n.x / len, n.y / len};
+					AddEdge(edges, ea, ec, top ? zMax : zMin, fn, n.z / len, top, false);
 				}
 			}
 		}
@@ -905,7 +903,7 @@ namespace BSPSeam
 		}
 
 		// Top edges of displacement walls: a triangle side no other triangle of the displacement has, with the third corner below.
-		// A brush above has the seam on its bottom edge.
+		// Kept under a brush face too, unless that brush's bottom edge is on the same plane at the same height.
 		void DispEdges(std::vector<WallEdge> &edges)
 		{
 			std::vector<float> tris;
@@ -951,8 +949,140 @@ namespace BSPSeam
 							continue;
 						}
 						const float fn[2] = {n[0] / len, n[1] / len};
-						AddEdge(edges, a, c, (std::max)(a[2], c[2]), fn, true, false);
+						AddEdge(edges, a, c, (std::max)(a[2], c[2]), fn, n[2] / len, true, false);
 					}
+				}
+			}
+		}
+
+		// Top edges of a prop mesh's wall faces: a triangle side no coplanar triangle shares, third corner below. The winding isn't
+		// reliable and combined props hide faces inside: the front is the side a ray meets the face from; neither side, inside.
+		void MeshTopEdges(IEngineTrace *et, ICollideable *c, const std::vector<float> &m, std::vector<WallEdge> &edges)
+		{
+			size_t count = m.size() / 9;
+			std::vector<Vector> normal(count);
+			std::vector<std::pair<std::array<int, 6>, size_t>> sides; // triangle sides by their corners, sorted
+			auto key = [&](size_t t, int i, int j)
+			{
+				const float *p = &m[9 * t + 3 * i], *q = &m[9 * t + 3 * j];
+				std::array<int, 6> k = {(int)std::lround(p[0] * 256.0f), (int)std::lround(p[1] * 256.0f), (int)std::lround(p[2] * 256.0f),
+										(int)std::lround(q[0] * 256.0f), (int)std::lround(q[1] * 256.0f), (int)std::lround(q[2] * 256.0f)};
+				if (std::lexicographical_compare(k.begin() + 3, k.end(), k.begin(), k.begin() + 3))
+				{
+					std::rotate(k.begin(), k.begin() + 3, k.end());
+				}
+				return k;
+			};
+			for (size_t t = 0; t < count; ++t)
+			{
+				Vector a(m[9 * t], m[9 * t + 1], m[9 * t + 2]), b(m[9 * t + 3], m[9 * t + 4], m[9 * t + 5]),
+					cc(m[9 * t + 6], m[9 * t + 7], m[9 * t + 8]);
+				normal[t] = (b - a).Cross(cc - a);
+				normal[t].NormalizeInPlace();
+				for (int i = 0; i < 3; ++i)
+				{
+					sides.push_back({key(t, i, (i + 1) % 3), t});
+				}
+			}
+			std::sort(sides.begin(), sides.end());
+			for (size_t t = 0; t < count; ++t)
+			{
+				const Vector &n = normal[t];
+				float len = std::sqrt(n.x * n.x + n.y * n.y);
+				if (std::fabs(n.z) > 0.3f || len < 0.5f)
+				{
+					continue;
+				}
+				for (int i = 0; i < 3; ++i)
+				{
+					const float *a = &m[9 * t + 3 * i], *b = &m[9 * t + 3 * ((i + 1) % 3)], *o = &m[9 * t + 3 * ((i + 2) % 3)];
+					if (std::fabs(a[2] - b[2]) > 0.01f || o[2] > a[2] - 0.01f)
+					{
+						continue;
+					}
+					bool split = false;
+					std::pair<std::array<int, 6>, size_t> first = {key(t, i, (i + 1) % 3), 0};
+					for (auto it = std::lower_bound(sides.begin(), sides.end(), first); it != sides.end() && it->first == first.first; ++it)
+					{
+						split |= it->second != t && std::fabs(normal[it->second].Dot(n)) > 0.99f;
+					}
+					if (split)
+					{
+						continue;
+					}
+					float z = (std::max)(a[2], b[2]);
+					Vector q((a[0] + b[0]) * 0.5f, (a[1] + b[1]) * 0.5f, z - (std::min)(1.0f, (z - o[2]) * 0.5f));
+					float side = 0.0f;
+					for (float s : {1.0f, -1.0f})
+					{
+						Ray_t ray;
+						CGameTrace tr;
+						ray.Init(q + n * (2.0f * s), q - n * (2.0f * s));
+						et->ClipRayToCollideable(ray, MASK_PLAYERSOLID, c, &tr);
+						// This face, at half way: not another one of the prop in front of it.
+						if (!tr.startsolid && std::fabs(tr.fraction - 0.5f) < 0.05f && tr.plane.normal.Dot(n) * s > 0.7f)
+						{
+							side = s;
+							break;
+						}
+					}
+					if (side != 0.0f)
+					{
+						const float fn[2] = {n.x / len * side, n.y / len * side};
+						AddEdge(edges, a, b, z, fn, n.z / len * side, true, false, true);
+					}
+				}
+			}
+		}
+
+		// prop_dynamic entities that block movement.
+		class PropEntities : public IEntityEnumerator
+		{
+		public:
+			std::vector<ICollideable *> found;
+
+			bool EnumEntity(IHandleEntity *ent) override
+			{
+				MovementFilter movement;
+				if ((BSPProps::StaticPropMgr() && BSPProps::StaticPropMgr()->IsStaticProp(ent)) || !movement.ShouldHitEntity(ent, MASK_PLAYERSOLID))
+				{
+					return true;
+				}
+				IServerNetworkable *net = static_cast<IServerUnknown *>(ent)->GetNetworkable();
+				const char *cls = net ? net->GetClassName() : nullptr;
+				if (cls && (!std::strcmp(cls, "prop_dynamic") || !std::strcmp(cls, "prop_dynamic_override")))
+				{
+					found.push_back(static_cast<IServerUnknown *>(ent)->GetCollideable());
+				}
+				return true;
+			}
+		};
+
+		void PropEdges(IEngineTrace *et, std::vector<WallEdge> &edges)
+		{
+			std::vector<float> m;
+			for (int i = 0; i < BSPProps::RtCount(); ++i)
+			{
+				ICollideable *c = BSPProps::StaticProp(i);
+				if (c && c->GetSolid() != SOLID_NONE && !(c->GetSolidFlags() & FSOLID_NOT_SOLID))
+				{
+					BSPProps::CollisionMesh(c, m);
+					MeshTopEdges(et, c, m, edges);
+				}
+			}
+			float mn[3], mx[3];
+			if (!BSPData::CModelBounds(0, mn, mx))
+			{
+				return;
+			}
+			PropEntities ents;
+			et->EnumerateEntities(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), &ents);
+			for (ICollideable *c : ents.found)
+			{
+				if (c)
+				{
+					BSPProps::CollisionMesh(c, m);
+					MeshTopEdges(et, c, m, edges);
 				}
 			}
 		}
@@ -981,6 +1111,7 @@ namespace BSPSeam
 			{
 				DispEdges(edges);
 			}
+			PropEdges(et, edges);
 
 			// A flush face can cover only part of a seam edge, a few units at its end:
 			// cut the edge where those faces start and end, so even a short flush stretch gets a point of its own.
@@ -1031,7 +1162,7 @@ namespace BSPSeam
 						float mid = (cuts[k] + cuts[k + 1]) * 0.5f;
 						bool ownAbove = std::any_of(above.begin(), above.end(),
 													[&](const std::pair<float, float> &r) { return r.first <= mid && mid <= r.second; });
-						SampleSpan(et, e, cuts[k], cuts[k + 1], spacing, i, ownAbove);
+						SampleSpan(et, e, cuts[k], cuts[k + 1], spacing, i, ownAbove || e.prop);
 					}
 				}
 			}

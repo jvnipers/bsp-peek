@@ -3,10 +3,12 @@
 
 #include "smsdk_ext.h"
 #include <cstddef>
+#include <vector>
 
 class IEngineTrace;
 class IStaticPropMgrServer;
 class IVModelInfo;
+class ICollideable;
 
 // Static prop collision.
 // TraceHull: resolves one prop's collision by model name (IVModelInfo -> vcollide_t) and sweeps an AABB against it via IPhysicsCollision.
@@ -106,9 +108,12 @@ namespace BSPProps
 	// Confirms the mesh is reachable (esp. on prop-combine maps). Returns length.
 	int ProbeMesh(int idx, char *buf, size_t buflen);
 
-	// Runtime prop collision mesh, world-space triangles (CreateDebugMesh transformed by the prop's collision->world matrix).
-	// Props with no .phy fall back to 12 OBB tris.
-	// Built + cached per prop on first access.
+	// World-space collision triangles of c (9 floats each) as the engine traces it: its vcollide's first solid at the collision
+	// scale, a SOLID_BBOX's unrotated box, nothing for SOLID_VPHYSICS without a vcollide, else its OBB.
+	void CollisionMesh(ICollideable *c, std::vector<float> &out);
+	ICollideable *StaticProp(int idx);
+
+	// Runtime prop collision mesh, CollisionMesh's triangles, built on first access and cached.
 	int TriCount(int idx);
 	bool Triangle(int idx, int triIdx, float v0[3], float v1[3], float v2[3]);
 	// Nearest collision triangle to pos across the props within maxDist.

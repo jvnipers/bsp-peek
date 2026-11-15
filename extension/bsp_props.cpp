@@ -42,9 +42,8 @@ namespace BSPProps
 		IStaticPropMgrServer *g_staticpropmgr = nullptr;
 		IPhysicsSurfaceProps *g_physprops = nullptr;
 
-		// hl2sdk-csgo's IVModelInfo doesn't match CS:GO's CModelInfoServer vtable (engine.so / engine.dll, build 740):
-		// it lacks a method after GetAnimBlock, and on Linux the engine has the GetVCollide(..., float) overloads near the end, where GCC places the SDK's
-		// beside the other two. So GetModelType is off on Linux and FindOrLoadModel on both; GetModelName and GetVCollide are in place.
+		// hl2sdk-csgo's IVModelInfo is off from CS:GO 740's (a method missing after GetAnimBlock; on Linux the float GetVCollide
+		// overloads sit near the end): GetModelType is wrong on Linux, FindOrLoadModel on both.
 		bool IsBrushModel(const model_t *m)
 		{
 			const char *name = m ? g_modelinfo->GetModelName(m) : nullptr;
@@ -682,6 +681,17 @@ namespace BSPProps
 
 	namespace
 	{
+		// ICollideable slot 19, past hl2sdk-csgo's last method: the scale the engine traces a prop's vcollide at.
+		float CollisionScale(ICollideable *c)
+		{
+#ifdef _WIN32
+			using Fn = float(__thiscall *)(ICollideable *);
+#else
+			using Fn = float (*)(ICollideable *);
+#endif
+			return (*reinterpret_cast<Fn **>(c))[19](c);
+		}
+
 		ICollideable *RtProp(int idx)
 		{
 			if (!g_staticpropmgr || idx < 0 || idx >= RtCount())
@@ -887,8 +897,9 @@ namespace BSPProps
 		}
 		return std::snprintf(buf, buflen,
 							 "prop %d: model=%p solid=%d vcollide=%p solidCount=%d solid0verts=%d "
-							 "tris=%d model='%s'",
-							 idx, (void *)m, solid, (void *)vc, solidCount, vertCount, vertCount > 0 ? vertCount / 3 : 0, mdl ? mdl : "");
+							 "tris=%d scale=%g model='%s'",
+							 idx, (void *)m, solid, (void *)vc, solidCount, vertCount, vertCount > 0 ? vertCount / 3 : 0, CollisionScale(c),
+							 mdl ? mdl : "");
 	}
 
 	// Collision mesh (world-space triangles), via CreateDebugMesh
@@ -909,6 +920,70 @@ namespace BSPProps
 			out.push_back(c.z);
 		}
 
+		void BuildMesh(ICollideable *c, std::vector<float> &mesh)
+		{
+			mesh.clear();
+			const matrix3x4_t &xform = c->CollisionToWorldTransform();
+			SolidType_t solid = c->GetSolid();
+			const Vector &mn = c->OBBMins();
+			const Vector &mx = c->OBBMaxs();
+			Vector w[8];
+			if (solid == SOLID_BBOX)
+			{
+				// An axis-aligned box at the origin, whatever the angles.
+				const Vector &o = c->GetCollisionOrigin();
+				for (int i = 0; i < 8; ++i)
+				{
+					w[i].Init(o.x + ((i & 1) ? mx.x : mn.x), o.y + ((i & 2) ? mx.y : mn.y), o.z + ((i & 4) ? mx.z : mn.z));
+				}
+			}
+			else
+			{
+				const model_t *model = c->GetCollisionModel();
+				vcollide_t *vc = (model && g_modelinfo) ? g_modelinfo->GetVCollide(model) : nullptr;
+				if (vc && vc->solidCount > 0 && vc->solids && vc->solids[0] && g_physcollision)
+				{
+					// The engine traces the first solid only; a scale of 0 or less means unscaled.
+					float scale = CollisionScale(c);
+					if (scale <= 0.0f)
+					{
+						scale = 1.0f;
+					}
+					Vector *verts = nullptr;
+					int n = g_physcollision->CreateDebugMesh(vc->solids[0], &verts);
+					for (int i = 0; verts && i + 2 < n; i += 3)
+					{
+						Vector a, b, cc;
+						VectorTransform(verts[i] * scale, xform, a);
+						VectorTransform(verts[i + 1] * scale, xform, b);
+						VectorTransform(verts[i + 2] * scale, xform, cc);
+						AppendTri(mesh, a, b, cc);
+					}
+					if (verts)
+					{
+						g_physcollision->DestroyDebugMesh(n, verts);
+					}
+					return;
+				}
+				if (solid == SOLID_VPHYSICS)
+				{
+					return;
+				}
+				for (int i = 0; i < 8; ++i)
+				{
+					Vector l((i & 1) ? mx.x : mn.x, (i & 2) ? mx.y : mn.y, (i & 4) ? mx.z : mn.z);
+					VectorTransform(l, xform, w[i]);
+				}
+			}
+			// Corner i has bit 0 = max x, bit 1 = max y, bit 2 = max z; wound outward.
+			static const int f[12][3] = {{0, 3, 1}, {0, 2, 3}, {4, 5, 7}, {4, 7, 6}, {0, 1, 5}, {0, 5, 4},
+										 {1, 3, 7}, {1, 7, 5}, {3, 2, 6}, {3, 6, 7}, {2, 0, 4}, {2, 4, 6}};
+			for (int i = 0; i < 12; ++i)
+			{
+				AppendTri(mesh, w[f[i][0]], w[f[i][1]], w[f[i][2]]);
+			}
+		}
+
 		// Build (and cache) prop idx's world-space collision triangles.
 		// Returns nullptr only if the prop index is invalid, a prop with no geometry caches an empty list.
 		const std::vector<float> *GetPropMesh(int idx)
@@ -923,63 +998,8 @@ namespace BSPProps
 			{
 				return nullptr;
 			}
-
-			std::vector<float> mesh;
-			const matrix3x4_t &xform = c->CollisionToWorldTransform();
-			const model_t *model = c->GetCollisionModel();
-			vcollide_t *vc = (model && g_modelinfo) ? g_modelinfo->GetVCollide(model) : nullptr;
-			bool built = false;
-			if (vc && vc->solidCount > 0 && vc->solids && g_physcollision)
-			{
-				for (int s = 0; s < vc->solidCount; ++s)
-				{
-					CPhysCollide *col = vc->solids[s];
-					if (!col)
-					{
-						continue;
-					}
-					Vector *verts = nullptr;
-					int n = g_physcollision->CreateDebugMesh(col, &verts);
-					if (verts && n >= 3)
-					{
-						for (int i = 0; i + 2 < n; i += 3)
-						{
-							Vector a, b, cc;
-							VectorTransform(verts[i], xform, a);
-							VectorTransform(verts[i + 1], xform, b);
-							VectorTransform(verts[i + 2], xform, cc);
-							AppendTri(mesh, a, b, cc);
-						}
-						built = true;
-					}
-					if (verts)
-					{
-						g_physcollision->DestroyDebugMesh(n, verts);
-					}
-				}
-			}
-			if (!built)
-			{
-				// No vcollide (SOLID_BBOX / non-physics): 12 triangles from the local OBB.
-				const Vector &mn = c->OBBMins();
-				const Vector &mx = c->OBBMaxs();
-				Vector lc[8] = {Vector(mn.x, mn.y, mn.z), Vector(mx.x, mn.y, mn.z), Vector(mx.x, mx.y, mn.z), Vector(mn.x, mx.y, mn.z),
-								Vector(mn.x, mn.y, mx.z), Vector(mx.x, mn.y, mx.z), Vector(mx.x, mx.y, mx.z), Vector(mn.x, mx.y, mx.z)};
-				Vector w[8];
-				for (int i = 0; i < 8; ++i)
-				{
-					VectorTransform(lc[i], xform, w[i]);
-				}
-				static const int f[12][3] = {{0, 2, 1}, {0, 3, 2}, {4, 5, 6}, {4, 6, 7}, {0, 1, 5}, {0, 5, 4},
-											 {1, 2, 6}, {1, 6, 5}, {2, 3, 7}, {2, 7, 6}, {3, 0, 4}, {3, 4, 7}};
-				for (int i = 0; i < 12; ++i)
-				{
-					AppendTri(mesh, w[f[i][0]], w[f[i][1]], w[f[i][2]]);
-				}
-			}
-
 			auto &stored = g_meshCache[idx];
-			stored = std::move(mesh);
+			BuildMesh(c, stored);
 			return &stored;
 		}
 
@@ -1035,6 +1055,16 @@ namespace BSPProps
 		}
 
 	} // namespace
+
+	void CollisionMesh(ICollideable *c, std::vector<float> &out)
+	{
+		BuildMesh(c, out);
+	}
+
+	ICollideable *StaticProp(int idx)
+	{
+		return RtProp(idx);
+	}
 
 	int TriCount(int idx)
 	{

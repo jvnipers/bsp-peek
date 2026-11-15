@@ -31,8 +31,8 @@ namespace BSPSeam
 	};
 
 	// EDGE_POINT_FLOATS a point: x, y, z, flat normal x, y, edge index, EDGE_* bits, then the ends (x, y) of the stretch of edge
-	// it stands for, so touching stretches can be drawn as one line. Edges of world brushes, static brush entities and displacements
-	// (bsppeek.inc has which). Built on the first call per map and spacing; returns the total.
+	// it stands for, so touching stretches can be drawn as one line. Edges of world brushes, static brush entities, displacements and
+	// props (bsppeek.inc has which). Built on the first call per map and spacing; returns the total.
 	constexpr int EDGE_POINT_FLOATS = 11;
 	int WallEdgePoints(float spacing, int first, float *out, int maxOut);
 	void OnMapEnd();

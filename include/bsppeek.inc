@@ -190,14 +190,17 @@ native int BSP_TexturebugCatch(const float wallPos[3], const float wallNorm[3], 
 #define BSPP_EDGE_NONWORLD  4    // that face is a displacement's, a prop's or an entity's
 #define BSPP_EDGE_FLOATS    11
 
-// Points every `spacing` units along the horizontal edges of wall faces where a seam can be, for map-wide seam tests, from world brushes,
-// the brushes of func_brush, func_wall and func_wall_toggle entities that are solid, and displacements:
+// Points about every `spacing` units along the horizontal edges of wall faces where a seam can be, for map-wide seam tests, from world
+// brushes, the brushes of func_brush, func_wall and func_wall_toggle entities that are solid, displacements and props.
+// "Flush" is measured with a small box, which meets a vphysics model where movement does:
 // - brushes: bottom edges unless a floor meets them; top edges under a displacement, prop or entity,
 //   or inside a world face that goes on lower (a world brush starting at the edge has its own bottom edge there);
-// - vphysics brush entities collide 0.5u inside their faces: their edges are where movement meets them, a top edge carries the seam
-//   (bits TOP | CONTINUES when a face flush with it goes on above), a bottom edge gets no CONTINUES;
-// - displacements: top edges under another displacement, a prop or an entity.
-// Seams between props aren't in it.
+// - vphysics brush entities collide 0.5u inside some faces: their edges are where movement meets them; a top edge moved down carries
+//   the seam (bits TOP | CONTINUES when a face flush with it goes on above), a bottom edge moved up gets no CONTINUES;
+// - displacements: top edges with a face flush above, unless a world brush's bottom edge is on the same plane there;
+// - solid static props and prop_dynamic: top edges of their collision mesh under a displacement, prop or entity
+//   (under a world brush a prop never hovers).
+// Built once per map: entities that move, toggle or go away later aren't followed.
 // Per point BSPP_EDGE_FLOATS floats: x, y, z on the face, flat normal x, y, edge index (points of one edge are consecutive), BSPP_EDGE_* bits,
 // then the ends (x, y, x, y) of the stretch of edge the point stands for: touching stretches make one line.
 // Built on the first call per map and spacing (main thread). Copies points from `first`, as many as fit; returns the total.
@@ -590,12 +593,13 @@ native int   BSP_StaticPropAtRay(const float start[3], const float end[3]);
 
 // Diagnostic:
 // Runs the collision-mesh pipeline (GetCollisionModel -> GetVCollide -> CreateDebugMesh) for runtime prop `idx`,
-// writes model/vcollide/solid/vert counts into buf.
+// writes model/vcollide/solid/vert counts and the collision scale into buf.
 // Confirms the mesh is reachable (esp. on prop-combine maps). Returns length.
 native int   BSP_StaticPropProbe(int idx, char[] buf, int maxlen);
 
-// Runtime prop collision mesh, world-space triangles (engine CreateDebugMesh transformed to world).
-// Props with no .phy collision fall back to 12 OBB tris.
+// Runtime prop collision mesh, world-space triangles, as the engine traces the prop: the first solid of its collision model at its
+// collision scale (CreateDebugMesh, transformed to world); a SOLID_BBOX prop's unrotated box; none for a vphysics prop without one;
+// else 12 OBB tris.
 // Built + cached per prop on first access, works on prop-combine maps.
 native int   BSP_StaticPropTriCount(int idx);
 native bool  BSP_StaticPropTri(int idx, int triIdx, float v0[3], float v1[3], float v2[3]);
@@ -608,7 +612,7 @@ native float BSP_StaticPropNearestTri(const float pos[3], float maxDist, int &pr
 // isolated to this prop by its model's vcollide.
 // Fills fraction (1.0 = no hit), endpos, normal, startSolid.
 // Returns: -1 = unavailable (interfaces unresolved or no collision model), 0 = no hit, 1 = hit.
-// NOTE: by-name resolution, does NOT work for prop-combine (autocombine) models.
+// NOTE: by-name resolution, does NOT work for prop-combine (autocombine) models, and ignores the prop's scale.
 // Prefer BSP_StaticPropHullSweep, which uses the runtime props.
 native int   BSP_StaticPropTraceHull(int idx, const float start[3], const float end[3],
                                      const float mins[3], const float maxs[3],
