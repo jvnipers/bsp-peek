@@ -627,40 +627,29 @@ namespace BSPProps
 		Vector vorg(po[0], po[1], po[2]);
 		QAngle vang(pa[0], pa[1], pa[2]); // QAngle(pitch, yaw, roll)
 
-		// Sweep against each convex solid, keep the earliest contact.
-		// OR start-solid across solids (box began inside any piece).
-		float bestFrac = 1.0f;
-		bool haveHit = false;
-		for (int i = 0; i < vc->solidCount; ++i)
+		// The engine traces the first solid only.
+		if (!vc->solids[0])
 		{
-			CPhysCollide *collide = vc->solids[i];
-			if (!collide)
-			{
-				continue;
-			}
-			CGameTrace tr;
-			tr.fraction = 1.0f;
-			tr.startsolid = false;
-			tr.allsolid = false;
-			g_physcollision->TraceBox(vstart, vend, vmins, vmaxs, collide, vorg, vang, &tr);
-			if (tr.startsolid)
-			{
-				outStartSolid = true;
-			}
-			if (tr.fraction < bestFrac)
-			{
-				bestFrac = tr.fraction;
-				haveHit = true;
-				outEndPos[0] = tr.endpos.x;
-				outEndPos[1] = tr.endpos.y;
-				outEndPos[2] = tr.endpos.z;
-				outNormal[0] = tr.plane.normal.x;
-				outNormal[1] = tr.plane.normal.y;
-				outNormal[2] = tr.plane.normal.z;
-			}
+			return 0;
 		}
-		outFraction = bestFrac;
-		return haveHit ? 1 : 0;
+		CGameTrace tr;
+		tr.fraction = 1.0f;
+		tr.startsolid = false;
+		tr.allsolid = false;
+		g_physcollision->TraceBox(vstart, vend, vmins, vmaxs, vc->solids[0], vorg, vang, &tr);
+		outStartSolid = tr.startsolid;
+		if (tr.fraction >= 1.0f)
+		{
+			return 0;
+		}
+		outFraction = tr.fraction;
+		outEndPos[0] = tr.endpos.x;
+		outEndPos[1] = tr.endpos.y;
+		outEndPos[2] = tr.endpos.z;
+		outNormal[0] = tr.plane.normal.x;
+		outNormal[1] = tr.plane.normal.y;
+		outNormal[2] = tr.plane.normal.z;
+		return 1;
 	}
 
 	// Runtime (post-combine) static props, via IStaticPropMgr + ICollideable

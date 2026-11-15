@@ -598,10 +598,10 @@ namespace BSPSeam
 			bool top, shrunk, prop;
 		};
 
-		// Faces on one plane share it: flat normal to 1/1000, distance to 1/64u.
-		std::tuple<int, int, int> PlaneKey(const WallEdge &e)
+		// Faces on one plane share it: flat normal to 1/1000, distance to 1/64u, up units above e (a leaning face moves in going up).
+		std::tuple<int, int, int> PlaneKey(const WallEdge &e, float up = 0.0f)
 		{
-			float d = e.fn[0] * e.a[0] + e.fn[1] * e.a[1];
+			float d = e.fn[0] * e.a[0] + e.fn[1] * e.a[1] - e.lean * up;
 			return std::make_tuple((int)std::lround(e.fn[0] * 1000.0f), (int)std::lround(e.fn[1] * 1000.0f), (int)std::lround(d * 64.0f));
 		}
 
@@ -777,8 +777,10 @@ namespace BSPSeam
 			et->ClipRayToEntity(ray, MASK_PLAYERSOLID, ent, &tr);
 			if (tr.fraction < 1.0f && !tr.startsolid)
 			{
-				// A box stops DIST_EPSILON off a face.
-				float side = in(-((tr.endpos - mid).Dot(fn) - h * (std::fabs(fn.x) + std::fabs(fn.y)) - collide::DIST_EPSILON));
+				// A box stops DIST_EPSILON off a face. A side moves 0.5u along its own normal: across, by k on a leaning face.
+				float k = std::sqrt(1.0f + e.lean * e.lean), brush = -e.lean * (mid.z - e.z);
+				float hit = (tr.endpos - mid).Dot(fn) - h * (std::fabs(fn.x) + std::fabs(fn.y)) - collide::DIST_EPSILON;
+				float side = in((brush - hit) / k) * k;
 				for (float *q : {e.a, e.c})
 				{
 					q[0] -= fn.x * side;
@@ -794,6 +796,12 @@ namespace BSPSeam
 				float dz = in(sign * (e.z - (tr.endpos.z - sign * (h + collide::DIST_EPSILON))));
 				e.z -= sign * dz;
 				e.shrunk = dz > 0.0f;
+				// A leaning face is lean * dz across at the new height.
+				for (float *v : {e.a, e.c})
+				{
+					v[0] += fn.x * e.lean * sign * dz;
+					v[1] += fn.y * e.lean * sign * dz;
+				}
 			}
 		}
 
@@ -1019,8 +1027,9 @@ namespace BSPSeam
 						CGameTrace tr;
 						ray.Init(q + n * (2.0f * s), q - n * (2.0f * s));
 						et->ClipRayToCollideable(ray, MASK_PLAYERSOLID, c, &tr);
-						// This face, at half way: not another one of the prop in front of it.
-						if (!tr.startsolid && std::fabs(tr.fraction - 0.5f) < 0.05f && tr.plane.normal.Dot(n) * s > 0.7f)
+						// This face: not another one of the prop in front of it.
+						bool onFace = std::fabs(n.Dot(tr.endpos - Vector(a[0], a[1], a[2]))) < 0.1f;
+						if (tr.fraction < 1.0f && !tr.startsolid && onFace && tr.plane.normal.Dot(n) * s > 0.7f)
 						{
 							side = s;
 							break;
@@ -1130,7 +1139,19 @@ namespace BSPSeam
 				if (e.top || !e.shrunk)
 				{
 					float dir[2] = {(e.c[0] - e.a[0]) / span, (e.c[1] - e.a[1]) / span};
-					for (int j : onPlane[PlaneKey(e)])
+					// A shrunk top edge's are 0.49 to 1.01u above it: on a leaning plane, under the keys of that whole stretch.
+					auto lo = PlaneKey(e, e.shrunk ? 0.49f : 0.0f);
+					int d0 = std::get<2>(lo), d1 = std::get<2>(PlaneKey(e, e.shrunk ? 1.01f : 0.0f));
+					std::vector<int> coplanar;
+					for (int d = (std::min)(d0, d1); d <= (std::max)(d0, d1); ++d)
+					{
+						auto it = onPlane.find({std::get<0>(lo), std::get<1>(lo), d});
+						if (it != onPlane.end())
+						{
+							coplanar.insert(coplanar.end(), it->second.begin(), it->second.end());
+						}
+					}
+					for (int j : coplanar)
 					{
 						const WallEdge &t = edges[j];
 						float up = t.z - e.z;

@@ -187,7 +187,7 @@ native int BSP_TexturebugCatch(const float wallPos[3], const float wallNorm[3], 
 // BSP_WallEdgePoints bits, the 7th float of a point.
 #define BSPP_EDGE_TOP       1    // a face's top edge, else its bottom edge
 #define BSPP_EDGE_CONTINUES 2    // a face goes on past the edge, flush with this one, else the wall ends there
-#define BSPP_EDGE_NONWORLD  4    // that face is a displacement's, a prop's or an entity's
+#define BSPP_EDGE_NONWORLD  4    // with CONTINUES: the face past the edge is a displacement's, a prop's or an entity's
 #define BSPP_EDGE_FLOATS    11
 
 // Points about every `spacing` units along the horizontal edges of wall faces where a seam can be, for map-wide seam tests, from world
@@ -198,12 +198,14 @@ native int BSP_TexturebugCatch(const float wallPos[3], const float wallNorm[3], 
 // - vphysics brush entities collide 0.5u inside some faces: their edges are where movement meets them; a top edge moved down carries
 //   the seam (bits TOP | CONTINUES when a face flush with it goes on above), a bottom edge moved up gets no CONTINUES;
 // - displacements: top edges with a face flush above, unless a world brush's bottom edge is on the same plane there;
-// - solid static props and prop_dynamic: top edges of their collision mesh under a displacement, prop or entity
+// - solid static props, prop_dynamic and prop_dynamic_override: top edges of their collision mesh under a displacement, prop or entity
 //   (under a world brush a prop never hovers).
 // Built once per map: entities that move, toggle or go away later aren't followed.
 // Per point BSPP_EDGE_FLOATS floats: x, y, z on the face, flat normal x, y, edge index (points of one edge are consecutive), BSPP_EDGE_* bits,
 // then the ends (x, y, x, y) of the stretch of edge the point stands for: touching stretches make one line.
-// Built on the first call per map and spacing (main thread). Copies points from `first`, as many as fit; returns the total.
+// Built on the first call per map and spacing (main thread). Copies up to maxOut points from `first`: `out` must hold
+// maxOut * BSPP_EDGE_FLOATS floats (maxOut 0 returns only the total). Returns the total. Throws for spacing under 1 or a
+// negative first or maxOut.
 native int BSP_WallEdgePoints(float spacing, int first, float[] out, int maxOut);
 
 // Order bits returned by BSP_SeamOrder (1 << value).
@@ -593,8 +595,9 @@ native int   BSP_StaticPropAtRay(const float start[3], const float end[3]);
 
 // Diagnostic:
 // Runs the collision-mesh pipeline (GetCollisionModel -> GetVCollide -> CreateDebugMesh) for runtime prop `idx`,
-// writes model/vcollide/solid/vert counts and the collision scale into buf.
-// Confirms the mesh is reachable (esp. on prop-combine maps). Returns length.
+// writes the model and vcollide pointers, SOLID_* type, solid count, first solid's vertex and triangle counts, collision scale
+// and model name into buf.
+// Confirms the mesh is reachable (esp. on prop-combine maps). Returns the full text's length, which can exceed maxlen.
 native int   BSP_StaticPropProbe(int idx, char[] buf, int maxlen);
 
 // Runtime prop collision mesh, world-space triangles, as the engine traces the prop: the first solid of its collision model at its
@@ -603,8 +606,9 @@ native int   BSP_StaticPropProbe(int idx, char[] buf, int maxlen);
 // Built + cached per prop on first access, works on prop-combine maps.
 native int   BSP_StaticPropTriCount(int idx);
 native bool  BSP_StaticPropTri(int idx, int triIdx, float v0[3], float v1[3], float v2[3]);
-// Nearest collision triangle to pos across props within maxDist.
-// Returns distance (-1.0 if none), sets propIdx + the tri's plane normal + 3 world-space verts.
+// Nearest collision triangle of a runtime static prop to pos, within maxDist (must be positive).
+// Returns distance (-1.0 if none), sets propIdx (runtime index), the normal of v0, v1, v2 by their winding (may face into the
+// prop), and the 3 world-space verts.
 native float BSP_StaticPropNearestTri(const float pos[3], float maxDist, int &propIdx,
                                       float normal[3], float v0[3], float v1[3], float v2[3]);
 
@@ -612,7 +616,8 @@ native float BSP_StaticPropNearestTri(const float pos[3], float maxDist, int &pr
 // isolated to this prop by its model's vcollide.
 // Fills fraction (1.0 = no hit), endpos, normal, startSolid.
 // Returns: -1 = unavailable (interfaces unresolved or no collision model), 0 = no hit, 1 = hit.
-// NOTE: by-name resolution, does NOT work for prop-combine (autocombine) models, and ignores the prop's scale.
+// NOTE: `idx` is the sprp-lump index (as BSP_StaticPropOrigin), not the runtime one. By-name resolution, does NOT work for
+// prop-combine (autocombine) models, and ignores the prop's scale.
 // Prefer BSP_StaticPropHullSweep, which uses the runtime props.
 native int   BSP_StaticPropTraceHull(int idx, const float start[3], const float end[3],
                                      const float mins[3], const float maxs[3],
@@ -788,6 +793,7 @@ public void __ext_bsppeek_SetNTVOptional()
     MarkNativeAsOptional("BSP_BrushSideOrder");
     MarkNativeAsOptional("BSP_SeamOrder");
     MarkNativeAsOptional("BSP_SeamCatch");
+    MarkNativeAsOptional("BSP_WallEdgePoints");
     MarkNativeAsOptional("BSP_HeadSeamCatch");
     MarkNativeAsOptional("BSP_SeamCandidates");
     MarkNativeAsOptional("BSP_TexturebugCatch");
