@@ -605,6 +605,22 @@ namespace BSPSeam
 			return std::make_tuple((int)std::lround(e.fn[0] * 1000.0f), (int)std::lround(e.fn[1] * 1000.0f), (int)std::lround(d * 64.0f));
 		}
 
+		// A wall face, for cutting the edges of other faces on its plane where it crosses their height.
+		struct WallFace
+		{
+			float zMin, zMax;
+			std::vector<Vector> w;
+		};
+
+		std::map<std::tuple<int, int, int>, std::vector<WallFace>> s_wallFaces;
+
+		// A plane's key at z 0: flat normal to 1/1000, distance to 1/64u.
+		std::tuple<int, int, int> FaceKey(const float fn[2], float lean, float x, float y, float z)
+		{
+			float d = fn[0] * x + fn[1] * y + lean * z;
+			return std::make_tuple((int)std::lround(fn[0] * 1000.0f), (int)std::lround(fn[1] * 1000.0f), (int)std::lround(d * 64.0f));
+		}
+
 		// Samples e between s0 and s1 units along it from a. ownAbove: a bottom edge at this height covers the stretch.
 		void SampleSpan(IEngineTrace *et, const WallEdge &e, float s0, float s1, float spacing, int edge, bool ownAbove)
 		{
@@ -746,6 +762,8 @@ namespace BSPSeam
 				{
 					continue;
 				}
+				const float fn[2] = {n.x / len, n.y / len};
+				s_wallFaces[FaceKey(fn, n.z / len, w[0].x, w[0].y, w[0].z)].push_back({zMin, zMax, w});
 				for (size_t i = 0; i < w.size(); ++i)
 				{
 					Vector a = w[i], c = w[(i + 1) % w.size()];
@@ -755,7 +773,7 @@ namespace BSPSeam
 					{
 						continue;
 					}
-					const float ea[2] = {a.x, a.y}, ec[2] = {c.x, c.y}, fn[2] = {n.x / len, n.y / len};
+					const float ea[2] = {a.x, a.y}, ec[2] = {c.x, c.y};
 					AddEdge(edges, ea, ec, top ? zMax : zMin, fn, n.z / len, top, false);
 				}
 			}
@@ -1106,6 +1124,7 @@ namespace BSPSeam
 				return;
 			}
 			std::vector<WallEdge> edges;
+			s_wallFaces.clear();
 			std::vector<int> world;
 			ModelBrushes(0, world);
 			for (int b : world)
@@ -1174,6 +1193,32 @@ namespace BSPSeam
 							above.push_back({(std::min)(at[0], at[1]), (std::max)(at[0], at[1])});
 						}
 					}
+					// So does a face on the plane that crosses the edge's height: a pillar through a trim.
+					auto crossing = s_wallFaces.find(FaceKey(e.fn, e.lean, e.a[0], e.a[1], e.z));
+					if (crossing != s_wallFaces.end())
+					{
+						for (const WallFace &f : crossing->second)
+						{
+							if (f.zMin > e.z - 0.01f || f.zMax < e.z + 0.01f)
+							{
+								continue;
+							}
+							for (size_t k = 0; k < f.w.size(); ++k)
+							{
+								const Vector &p = f.w[k], &q = f.w[(k + 1) % f.w.size()];
+								if (p.z == q.z || (p.z - e.z) * (q.z - e.z) > 0.0f)
+								{
+									continue;
+								}
+								Vector x = p + (q - p) * ((e.z - p.z) / (q.z - p.z));
+								float at = (x.x - e.a[0]) * dir[0] + (x.y - e.a[1]) * dir[1];
+								if (at > 0.5f && at < span - 0.5f)
+								{
+									cuts.push_back(at);
+								}
+							}
+						}
+					}
 					std::sort(cuts.begin(), cuts.end());
 				}
 				for (size_t k = 0; k + 1 < cuts.size(); ++k)
@@ -1187,6 +1232,7 @@ namespace BSPSeam
 					}
 				}
 			}
+			s_wallFaces.clear();
 		}
 	} // namespace
 
