@@ -82,7 +82,10 @@ namespace BSPSeam
 		// Texturebug grid: tops as shares of the tick's drop, pushes as shares of the fall speed (window gap / top to eps / (H_brush + H_hull)).
 		const float kTbSpeeds[] = {150.0f, 400.0f, 1000.0f, 2500.0f};
 		const float kTbTops[] = {0.25f, 0.5f, 0.75f};
+		// Pushes as a fraction of the fall, and over the window's lower bound g v / o (the hull reaches the wall before its
+		// top passes the edge): the upper, v (eps - g) / (H_b + H_h - o + eps), is under twice that for a tall brush.
 		const float kTbPushes[] = {1e-6f, 3e-6f, 1e-5f, 3e-5f, 1e-4f, 2e-4f, 4e-4f};
+		const float kTbOverLow[] = {1.05f, 1.3f, 2.0f, 4.0f};
 
 		struct MoveTrace
 		{
@@ -383,9 +386,19 @@ namespace BSPSeam
 						continue;
 					}
 					float gap = (start[axis] - face) * sign - 16.0f;
+					float pushes[std::size(kTbPushes) + std::size(kTbOverLow)];
+					size_t n = 0;
 					for (float k : kTbPushes)
 					{
-						float vel[3] = {-normal[0] * k * vm, -normal[1] * k * vm, -vm};
+						pushes[n++] = k * vm;
+					}
+					for (float k : kTbOverLow)
+					{
+						pushes[n++] = k * gap / (top * frametime);
+					}
+					for (float push : pushes)
+					{
+						float vel[3] = {-normal[0] * push, -normal[1] * push, -vm};
 						float origin[3] = {start.x, start.y, start.z}, mn[3], mx[3];
 						collide::MovementListBox(origin, vel, maxspeed, frametime, 18.0f, mn, mx);
 						BSPProps::EngineTrace()->SetupLeafAndEntityListBox(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), mt.list);
