@@ -24,8 +24,8 @@ namespace BSPSeam
 	// Movement's trace list, so brush order counts. -1 unavailable, else CATCH_STANDING / CATCH_DUCKED; outInfo: height, gap.
 	int TexturebugCatch(const float wallPos[3], const float normal[3], float edgeZ, float frametime, float gravity, float maxspeed, float outInfo[2]);
 
-	// Pixelwalk at a top edge: a hull pressed against the face, feet at edgeZ + 1/32, stands where 1u further out it doesn't:
-	// one float step off (a creep), else only exactly on the face with the top not standable 1u further in (CATCH_EXACT).
+	// Pixelwalk at a top edge: a hull pressed against the face (up to 1u behind wallPos), feet at edgeZ + 1/32, stands where 1u further out it doesn't:
+	// one float step off (a creep), else only exactly on the face (CATCH_EXACT).
 	// -1 unavailable, else CATCH_STANDING / CATCH_DUCKED (| CATCH_EXACT);
 	// outInfo: the strip's width, the feet's height, the standing origin's x and y.
 	int PixelwalkCatch(const float wallPos[3], const float normal[3], float edgeZ, float outInfo[4]);

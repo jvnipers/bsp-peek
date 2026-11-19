@@ -490,7 +490,9 @@ namespace BSPSeam
 				VectorMax(from, to, hi);
 				et->SetupLeafAndEntityListBox(lo + mt.mins - pad, hi + mt.maxs + pad, mt.list);
 				mt.Run(from, to, hit);
-				if (!hit.startsolid && hit.fraction < 1.0f && hit.plane.normal[axis] * sign > 0.999f)
+				// Up to 1u behind the point (a ledge's wall); a face further out is another strip's.
+				float behind = (wallPos[axis] - hit.plane.dist * sign) * sign;
+				if (!hit.startsolid && hit.fraction < 1.0f && hit.plane.normal[axis] * sign > 0.999f && behind > -0.1f && behind < 1.0f)
 				{
 					found = true;
 					break;
@@ -526,7 +528,7 @@ namespace BSPSeam
 				}
 				outInfo[0] = (std::max)(outInfo[0], lo);
 			}
-			else if (!creep && stands(at(0.0f), groundZ) && !stands(at(-1.0f), groundZ))
+			else if (!creep && stands(at(0.0f), groundZ))
 			{
 				Vector on = at(0.0f);
 				stands(on, groundZ);
@@ -575,7 +577,8 @@ namespace BSPSeam
 			et->SetupLeafAndEntityListBox(lo + mt.mins - pad, hi + mt.maxs + pad, mt.list);
 			CGameTrace hit;
 			mt.Run(from, to, hit);
-			if (hit.startsolid || hit.fraction >= 1.0f || hit.plane.normal[axis] * sign <= 0.999f)
+			if (hit.startsolid || hit.fraction >= 1.0f || hit.plane.normal[axis] * sign <= 0.999f
+				|| std::fabs((endPos[axis] - hit.plane.dist * sign) * sign) > 0.1f)
 			{
 				continue;
 			}

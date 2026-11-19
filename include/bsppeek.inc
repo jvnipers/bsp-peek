@@ -163,9 +163,9 @@ native int  BSP_BrushSideOrder(int brushIdx, char[] buf, int maxlen);
 // Bits returned by BSP_SeamCatch.
 #define BSPP_CATCH_STANDING       1
 #define BSPP_CATCH_DUCKED         2
-#define BSPP_CATCH_WALL_NON_AXIAL 4    // the wall stopping the hull has plane type >= PLANE_Z
-#define BSPP_CATCH_UNDER_CEILING  8    // BSP_HeadSeamCatch: a flat overhang or displacement edge over the hull
-#define BSPP_CATCH_EXACT          16   // BSP_PixelwalkCatch: only with the hull exactly on the face (setpos, a teleport)
+#define BSPP_CATCH_WALL_NON_AXIAL 4     // the wall stopping the hull has plane type >= PLANE_Z
+#define BSPP_CATCH_UNDER_CEILING  8     // BSP_HeadSeamCatch: a flat overhang or displacement edge over the hull
+#define BSPP_CATCH_EXACT          16    // BSP_PixelwalkCatch: only with the hull exactly on the face (setpos, a teleport)
 
 // Whether a seam at seamZ catches a player against the wall, by movement's own traces over a grid of arrivals.
 // wallPos: on the face. wallNorm: horizontal unit normal. speed: total speed range of the catches.
@@ -187,8 +187,8 @@ native int BSP_TexturebugCatch(const float wallPos[3], const float wallNorm[3], 
                                float maxspeed, float info[2]);
 
 // Whether a hull pressed against an axial wall stands on a strip at edgeZ that it doesn't 1u further out (a pixelwalk),
-// by movement's own traces: one float step off the face (as close as a creep gets),
-// else only exactly on it (BSPP_CATCH_EXACT, and the top isn't standable 1u further in). Feet at edgeZ + 1/32.
+// by movement's own traces, against the face the hull meets 1u up, at most 1u behind wallPos: one float step off it (as close as a creep gets),
+// else only exactly on it (BSPP_CATCH_EXACT). Feet at edgeZ + 1/32.
 // Returns BSPP_CATCH_STANDING / BSPP_CATCH_DUCKED bits (| BSPP_CATCH_EXACT), 0 none or a non-axial wall, -1 unavailable
 // info: the strip's width (0 when exact), the feet's height, the standing origin's x and y.
 native int BSP_PixelwalkCatch(const float wallPos[3], const float wallNorm[3], float edgeZ, float info[4]);
@@ -200,12 +200,12 @@ native int BSP_PixelwalkCatch(const float wallPos[3], const float wallNorm[3], f
 native int BSP_PixelwalkEnd(const float endPos[3], const float wallNorm[3], const float along[3], float edgeZ, float out[3]);
 
 // BSP_WallEdgePoints bits, the 7th float of a point.
-#define BSPP_EDGE_TOP       1    // a face's top edge, else its bottom edge
-#define BSPP_EDGE_CONTINUES 2    // a face goes on past the edge, flush with this one, else the wall ends there
-#define BSPP_EDGE_NONWORLD  4    // with CONTINUES: the face past the edge is a displacement's, a prop's or an entity's
-#define BSPP_EDGE_LEDGE     8    // top edge: the face above is set back 0.25 to 1u (a ledge, BSP_PixelwalkCatch)
-#define BSPP_EDGE_END       16   // a covered top edge's end; its stretch runs 1u from it along the edge (BSP_PixelwalkEnd)
-#define BSPP_EDGE_RAMP      32   // top edge of a face leaning back (a ramp), nothing flush above (BSP_PixelwalkCatch only)
+#define BSPP_EDGE_TOP       1     // a face's top edge, else its bottom edge
+#define BSPP_EDGE_CONTINUES 2     // a face goes on past the edge, flush with this one, else the wall ends there
+#define BSPP_EDGE_NONWORLD  4     // with CONTINUES: the face past the edge is a displacement's, a prop's or an entity's
+#define BSPP_EDGE_LEDGE     8     // top edge: the face above is set back 0.25 to 1u (a ledge, BSP_PixelwalkCatch)
+#define BSPP_EDGE_END       16    // a covered top edge's end; its stretch runs 1u from it along the edge (BSP_PixelwalkEnd)
+#define BSPP_EDGE_RAMP      32    // top edge of a face leaning back (a ramp), nothing flush above (BSP_PixelwalkCatch only)
 #define BSPP_EDGE_FLOATS    11
 
 // Points about every `spacing` units along the horizontal edges of wall faces where a seam can be, for map-wide seam tests, from world
@@ -221,8 +221,9 @@ native int BSP_PixelwalkEnd(const float endPos[3], const float wallNorm[3], cons
 // - pixelwalks: top edges with the face above set back 0.25 to 1u (LEDGE); top edges of faces leaning back, walls and ramps
 //   (normal z 0.3 to 0.7, only their top edges), with no face flush above (RAMP); both ends of a covered top edge (END).
 // Built once per map: entities that move, toggle or go away later aren't followed.
-// Per point BSPP_EDGE_FLOATS floats: x, y, z on the face, flat normal x, y, edge index (points of one edge are consecutive), BSPP_EDGE_* bits,
-// then the ends (x, y, x, y) of the stretch of edge the point stands for: touching stretches make one line.
+// Per point BSPP_EDGE_FLOATS floats: x, y, z on the face, flat normal x, y, edge index (points of one edge are consecutive,
+// its END points after all edges), BSPP_EDGE_* bits, then the ends (x, y, x, y) of the stretch of edge the point stands for:
+// touching stretches make one line.
 // Built on the first call per map and spacing (main thread). Copies up to maxOut points from `first`: `out` must hold
 // maxOut * BSPP_EDGE_FLOATS floats (maxOut 0 returns only the total). Returns the total. Throws for spacing under 1 or a
 // negative first or maxOut.
