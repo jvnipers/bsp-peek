@@ -435,6 +435,225 @@ namespace BSPSeam
 		return flags;
 	}
 
+	int PixelwalkCatch(const float wallPos[3], const float normal[3], float edgeZ, float outInfo[4])
+	{
+		outInfo[0] = outInfo[1] = outInfo[2] = outInfo[3] = 0.0f;
+		IEngineTrace *et = BSPProps::EngineTrace();
+		if (!et)
+		{
+			return -1;
+		}
+		int axis = std::fabs(normal[0]) > 0.999f ? 0 : (std::fabs(normal[1]) > 0.999f ? 1 : -1);
+		if (axis < 0)
+		{
+			return 0;
+		}
+		float sign = normal[axis] > 0.0f ? 1.0f : -1.0f;
+		ITraceListData *list = et->AllocTraceListData();
+		if (!list)
+		{
+			return -1;
+		}
+		MoveTrace mt;
+		mt.list = list;
+		mt.mins.Init(-16.0f, -16.0f, 0.0f);
+		// CategorizePosition's 2u trace can start clear where a zero-length one starts solid (touching a cover): stuck, not standing.
+		auto stands = [&](const Vector &p, float &groundZ)
+		{
+			Vector down(p.x, p.y, p.z - 2.0f), pad(18.0f, 18.0f, 18.0f);
+			et->SetupLeafAndEntityListBox(down + mt.mins - pad, p + mt.maxs + pad, mt.list);
+			CGameTrace tr;
+			mt.Run(p, p, tr);
+			if (tr.startsolid)
+			{
+				return false;
+			}
+			mt.Run(p, down, tr);
+			groundZ = tr.endpos.z;
+			return !tr.startsolid && tr.fraction < 1.0f && tr.plane.normal.z >= 0.7f;
+		};
+		int creep = 0, exact = 0;
+		for (int duck = 0; duck < 2; ++duck)
+		{
+			mt.maxs.Init(16.0f, 16.0f, duck ? 54.0f : 72.0f);
+			float z = edgeZ + 0.03125f;
+			// The face the hull rests against (over a ledge, the wall above it), 1u up: a ramp rising into the wall is in the way lower.
+			CGameTrace hit;
+			bool found = false;
+			for (float out : {48.0f, 18.0f})
+			{
+				Vector from(wallPos[0] + normal[0] * out, wallPos[1] + normal[1] * out, z + 1.0f);
+				Vector to(wallPos[0] - normal[0] * 8.0f, wallPos[1] - normal[1] * 8.0f, z + 1.0f);
+				// Movement pads its list box (MovementListBox): a brush only touching the hull's box is in it.
+				Vector lo, hi, pad(18.0f, 18.0f, 18.0f);
+				VectorMin(from, to, lo);
+				VectorMax(from, to, hi);
+				et->SetupLeafAndEntityListBox(lo + mt.mins - pad, hi + mt.maxs + pad, mt.list);
+				mt.Run(from, to, hit);
+				if (!hit.startsolid && hit.fraction < 1.0f && hit.plane.normal[axis] * sign > 0.999f)
+				{
+					found = true;
+					break;
+				}
+			}
+			if (!found)
+			{
+				continue;
+			}
+			float face = hit.plane.dist * sign, onFace = face + 16.0f * sign, groundZ;
+			Vector p(hit.endpos.x, hit.endpos.y, z);
+			auto at = [&](float gap)
+			{
+				Vector q = p;
+				q[axis] = onFace + sign * gap;
+				return q;
+			};
+			Vector crept = p;
+			crept[axis] = std::nextafter(onFace, onFace + 64.0f * sign);
+			int bit = duck ? CATCH_DUCKED : CATCH_STANDING;
+			if (stands(crept, groundZ) && !stands(at(1.0f), groundZ))
+			{
+				stands(crept, groundZ);
+				creep |= bit;
+				outInfo[1] = groundZ;
+				outInfo[2] = crept.x;
+				outInfo[3] = crept.y;
+				float lo = (crept[axis] - onFace) * sign, hi = 1.0f;
+				for (int k = 0; k < 16; ++k)
+				{
+					float mid = (lo + hi) * 0.5f, g;
+					(stands(at(mid), g) ? lo : hi) = mid;
+				}
+				outInfo[0] = (std::max)(outInfo[0], lo);
+			}
+			else if (!creep && stands(at(0.0f), groundZ) && !stands(at(-1.0f), groundZ))
+			{
+				Vector on = at(0.0f);
+				stands(on, groundZ);
+				exact |= bit;
+				outInfo[1] = groundZ;
+				outInfo[2] = on.x;
+				outInfo[3] = on.y;
+			}
+		}
+		et->FreeTraceListData(list);
+		return creep ? creep : (exact ? exact | CATCH_EXACT : 0);
+	}
+
+	int PixelwalkEnd(const float endPos[3], const float normal[3], const float along[2], float edgeZ, float out[3])
+	{
+		out[0] = out[1] = out[2] = 0.0f;
+		IEngineTrace *et = BSPProps::EngineTrace();
+		if (!et)
+		{
+			return -1;
+		}
+		int axis = std::fabs(normal[0]) > 0.999f ? 0 : (std::fabs(normal[1]) > 0.999f ? 1 : -1);
+		if (axis < 0)
+		{
+			return 0;
+		}
+		float sign = normal[axis] > 0.0f ? 1.0f : -1.0f, z = edgeZ + 0.03125f;
+		ITraceListData *list = et->AllocTraceListData();
+		if (!list)
+		{
+			return -1;
+		}
+		MoveTrace mt;
+		mt.list = list;
+		mt.mins.Init(-16.0f, -16.0f, 0.0f);
+		Vector pad(18.0f, 18.0f, 18.0f);
+		int flags = 0;
+		for (int duck = 0; duck < 2; ++duck)
+		{
+			mt.maxs.Init(16.0f, 16.0f, duck ? 54.0f : 72.0f);
+			Vector in(endPos[0] + along[0] * 17.0f, endPos[1] + along[1] * 17.0f, z);
+			Vector from(in.x + normal[0] * 48.0f, in.y + normal[1] * 48.0f, z), to(in.x - normal[0] * 8.0f, in.y - normal[1] * 8.0f, z);
+			Vector lo, hi;
+			VectorMin(from, to, lo);
+			VectorMax(from, to, hi);
+			et->SetupLeafAndEntityListBox(lo + mt.mins - pad, hi + mt.maxs + pad, mt.list);
+			CGameTrace hit;
+			mt.Run(from, to, hit);
+			if (hit.startsolid || hit.fraction >= 1.0f || hit.plane.normal[axis] * sign <= 0.999f)
+			{
+				continue;
+			}
+			float onFace = hit.plane.dist * sign + 16.0f * sign;
+			auto origin = [&](float s, float gap)
+			{
+				Vector q(endPos[0] + along[0] * s, endPos[1] + along[1] * s, z);
+				q[axis] = onFace + sign * gap;
+				return q;
+			};
+			auto down = [&](const Vector &p, CGameTrace &tr)
+			{
+				Vector d(p.x, p.y, p.z - 2.0f);
+				et->SetupLeafAndEntityListBox(d + mt.mins - pad, p + mt.maxs + pad, mt.list);
+				mt.Run(p, d, tr);
+			};
+			// Held: on ground or stuck; inside: stuck (a zero-length trace starts solid). Both only grow from off the end along the edge.
+			auto stuck = [&](const Vector &p)
+			{
+				CGameTrace tr;
+				mt.Run(p, p, tr);
+				return tr.startsolid;
+			};
+			auto held = [&](float s)
+			{
+				CGameTrace tr;
+				down(origin(s, 0.0f), tr);
+				return tr.startsolid || stuck(origin(s, 0.0f)) || (tr.fraction < 1.0f && tr.plane.normal.z >= 0.7f);
+			};
+			auto inside = [&](float s)
+			{
+				CGameTrace tr;
+				down(origin(s, 0.0f), tr);
+				return tr.startsolid || stuck(origin(s, 0.0f));
+			};
+			if (held(-17.0f) || !inside(17.0f))
+			{
+				continue;
+			}
+			auto bisect = [&](auto test)
+			{
+				float a = -17.0f, b = 17.0f;
+				for (int k = 0; k < 24; ++k)
+				{
+					float m = (a + b) * 0.5f;
+					(test(m) ? b : a) = m;
+				}
+				return b;
+			};
+			float sa = bisect(held), sb = bisect(inside);
+			if (sb <= sa)
+			{
+				continue;
+			}
+			float mid = (sa + sb) * 0.5f;
+			CGameTrace tr;
+			down(origin(mid, 0.0f), tr);
+			bool stands = !tr.startsolid && !stuck(origin(mid, 0.0f)) && tr.fraction < 1.0f && tr.plane.normal.z >= 0.7f;
+			// Not a floor 1u into the wall either (the top past the cover), nor 1u out.
+			CGameTrace tin, tout;
+			down(origin(mid, -1.0f), tin);
+			down(origin(mid, 1.0f), tout);
+			bool floorIn = !tin.startsolid && tin.fraction < 1.0f && tin.plane.normal.z >= 0.7f;
+			bool floorOut = !tout.startsolid && tout.fraction < 1.0f && tout.plane.normal.z >= 0.7f;
+			if (!stands || floorIn || floorOut)
+			{
+				continue;
+			}
+			flags |= duck ? CATCH_DUCKED : CATCH_STANDING;
+			Vector m = origin(mid, 0.0f);
+			out[0] = m.x;
+			out[1] = m.y;
+			out[2] = sb - sa;
+		}
+		et->FreeTraceListData(list);
+		return flags ? flags | CATCH_EXACT : 0;
+	}
+
 	int Candidates(const float wallPos[3], const float normal[3], float zMin, float zMax, float *out, int maxOut)
 	{
 		// Past the map the 1-unit scan below runs for ever (z + 1 == z from 2^24).
@@ -465,6 +684,26 @@ namespace BSPSeam
 					{
 						zs.push_back(top);
 						zs.push_back(bottom);
+					}
+				}
+				// The top of a face leaning back the way the wall faces: where the wall rises from a ramp, outside the column.
+				for (int s = 0, sides = BSPData::BrushNumSides(b); s < sides; ++s)
+				{
+					float n[3], d, v[3 * 64];
+					if (BSPData::BrushSideBevel(b, s) || !BSPData::BrushSidePlane(b, s, n, d) || n[2] <= 0.001f || n[2] >= 0.7f
+						|| n[0] * normal[0] + n[1] * normal[1] < 0.999f * std::sqrt(n[0] * n[0] + n[1] * n[1]))
+					{
+						continue;
+					}
+					int nv = BSPData::BrushSideWinding(b, s, v, 64);
+					float zTop = -FLT_MAX;
+					for (int i = 0; i < nv; ++i)
+					{
+						zTop = (std::max)(zTop, v[3 * i + 2]);
+					}
+					if (nv >= 3)
+					{
+						zs.push_back(zTop);
 					}
 				}
 			}
@@ -559,6 +798,8 @@ namespace BSPSeam
 	namespace
 	{
 		std::vector<float> s_edgePoints;
+		// End points, after every edge's cells: in among them they'd split neighbouring cells of one edge.
+		std::vector<float> s_edgeEnds;
 		float s_edgeSpacing = 0.0f;
 
 		class NothingFilter : public ITraceFilter
@@ -577,7 +818,8 @@ namespace BSPSeam
 
 		// Flush: within 1/4u of where the face would be at p (expect, for a leaning face), facing the same way. World first:
 		// displacements are world. A box, not a ray: it meets a vphysics model where movement does, a ray meets the brush.
-		int Continuation(IEngineTrace *et, const float p[3], const float fn[2], float expect)
+		// back: how far behind where it would be a face facing the same way is (world first), 0 if none.
+		int Continuation(IEngineTrace *et, const float p[3], const float fn[2], float expect, float *back = nullptr)
 		{
 			const float h = 0.0625f;
 			Vector from(p[0] + fn[0], p[1] + fn[1], p[2]), to(p[0] - fn[0], p[1] - fn[1], p[2]);
@@ -592,6 +834,10 @@ namespace BSPSeam
 			NothingFilter world;
 			CGameTrace tr;
 			et->TraceRay(ray, MASK_PLAYERSOLID, &world, &tr);
+			if (back && tr.fraction < 1.0f && !tr.startsolid && tr.plane.normal.x * fn[0] + tr.plane.normal.y * fn[1] > 0.9f)
+			{
+				*back = expect - ((tr.endpos.x - p[0]) * fn[0] + (tr.endpos.y - p[1]) * fn[1] - h * (std::fabs(fn[0]) + std::fabs(fn[1])));
+			}
 			if (flush(tr))
 			{
 				return EDGE_CONTINUES | (tr.dispFlags ? EDGE_NONWORLD : 0);
@@ -608,7 +854,7 @@ namespace BSPSeam
 		struct WallEdge
 		{
 			float a[2], c[2], z, fn[2], lean;
-			bool top, shrunk, prop;
+			bool top, shrunk, prop, ramp;
 		};
 
 		// Faces on one plane share it: flat normal to 1/1000, distance to 1/64u, up units above e (a leaning face moves in going up).
@@ -653,11 +899,51 @@ namespace BSPSeam
 					continue;
 				}
 				int bits = e.top ? EDGE_TOP : 0;
-				if (!e.shrunk)
+				if (e.ramp)
 				{
-					bits |= Continuation(et, p, e.fn, -e.lean * past);
+					bits |= EDGE_RAMP;
+				}
+				else if (!e.shrunk)
+				{
+					float back = 0.0f;
+					bits |= Continuation(et, p, e.fn, -e.lean * past, &back);
+					// A ledge: the face above set back 0.25 to 1u.
+					if (e.top && !(bits & EDGE_CONTINUES) && back > 0.25f && back < 1.0f)
+					{
+						bits |= EDGE_LEDGE;
+					}
+					// A covered top edge's ends (exact pixelwalks), before the skip: the cover's bottom edge carrying the seam has other ends.
+					if (e.top && !e.prop && (bits & EDGE_CONTINUES))
+					{
+						for (int end = 0; end < 2; ++end)
+						{
+							if (end ? (k != samples - 1 || std::fabs(s1 - span) > 0.001f) : (k != 0 || s0 > 0.001f))
+							{
+								continue;
+							}
+							const float *q = end ? e.c : e.a;
+							float in = end ? -1.0f : 1.0f;
+							const float ept[EDGE_POINT_FLOATS] = {q[0],
+																  q[1],
+																  e.z,
+																  e.fn[0],
+																  e.fn[1],
+																  (float)edge,
+																  (float)(bits | EDGE_END),
+																  q[0],
+																  q[1],
+																  q[0] + dir[0] * in,
+																  q[1] + dir[1] * in};
+							s_edgeEnds.insert(s_edgeEnds.end(), ept, ept + EDGE_POINT_FLOATS);
+						}
+					}
+					// A wall leaning back is a ramp too.
+					if (e.top && e.lean > 0.001f && !(bits & (EDGE_CONTINUES | EDGE_LEDGE)))
+					{
+						bits |= EDGE_RAMP;
+					}
 					// Under a world face only inside it, the brush above reaching lower: else that brush's bottom edge has the seam.
-					if (e.top && !(bits & EDGE_NONWORLD) && (ownAbove || !(bits & EDGE_CONTINUES)))
+					if (e.top && !(bits & (EDGE_NONWORLD | EDGE_LEDGE | EDGE_RAMP)) && (ownAbove || !(bits & EDGE_CONTINUES)))
 					{
 						continue;
 					}
@@ -688,13 +974,13 @@ namespace BSPSeam
 		}
 
 		void AddEdge(std::vector<WallEdge> &edges, const float a[2], const float c[2], float z, const float fn[2], float lean, bool top, bool shrunk,
-					 bool prop = false)
+					 bool prop = false, bool ramp = false)
 		{
 			if ((c[0] - a[0]) * (c[0] - a[0]) + (c[1] - a[1]) * (c[1] - a[1]) < 1.0f)
 			{
 				return;
 			}
-			edges.push_back({{a[0], a[1]}, {c[0], c[1]}, z, {fn[0], fn[1]}, lean, top, shrunk, prop});
+			edges.push_back({{a[0], a[1]}, {c[0], c[1]}, z, {fn[0], fn[1]}, lean, top, shrunk, prop, ramp});
 		}
 
 		// Horizontal edges of brush b's wall faces, moved by xf (a brush entity's collision transform) when given.
@@ -761,7 +1047,9 @@ namespace BSPSeam
 					VectorRotate(f.first, *xf, n);
 				}
 				float len = std::sqrt(n.x * n.x + n.y * n.y);
-				if (std::fabs(n.z) > 0.3f || len < 0.5f)
+				// A ramp: only its top edge, where a wall rising from it gives a pixelwalk.
+				bool ramp = n.z > 0.3f && n.z < 0.7f;
+				if ((std::fabs(n.z) > 0.3f && !ramp) || len < 0.5f)
 				{
 					continue;
 				}
@@ -776,18 +1064,21 @@ namespace BSPSeam
 					continue;
 				}
 				const float fn[2] = {n.x / len, n.y / len};
-				s_wallFaces[FaceKey(fn, n.z / len, w[0].x, w[0].y, w[0].z)].push_back({zMin, zMax, w});
+				if (!ramp)
+				{
+					s_wallFaces[FaceKey(fn, n.z / len, w[0].x, w[0].y, w[0].z)].push_back({zMin, zMax, w});
+				}
 				for (size_t i = 0; i < w.size(); ++i)
 				{
 					Vector a = w[i], c = w[(i + 1) % w.size()];
 					bool top = std::fabs(a.z - zMax) < 0.01f && std::fabs(c.z - zMax) < 0.01f;
 					bool bottom = std::fabs(a.z - zMin) < 0.01f && std::fabs(c.z - zMin) < 0.01f;
-					if (!top && !bottom)
+					if (!top && (ramp || !bottom))
 					{
 						continue;
 					}
 					const float ea[2] = {a.x, a.y}, ec[2] = {c.x, c.y};
-					AddEdge(edges, ea, ec, top ? zMax : zMin, fn, n.z / len, top, false);
+					AddEdge(edges, ea, ec, top ? zMax : zMin, fn, n.z / len, top, false, false, ramp);
 				}
 			}
 		}
@@ -1138,6 +1429,7 @@ namespace BSPSeam
 			}
 			std::vector<WallEdge> edges;
 			s_wallFaces.clear();
+			s_edgeEnds.clear();
 			std::vector<int> world;
 			ModelBrushes(0, world);
 			for (int b : world)
@@ -1246,6 +1538,8 @@ namespace BSPSeam
 				}
 			}
 			s_wallFaces.clear();
+			s_edgePoints.insert(s_edgePoints.end(), s_edgeEnds.begin(), s_edgeEnds.end());
+			s_edgeEnds.clear();
 		}
 	} // namespace
 

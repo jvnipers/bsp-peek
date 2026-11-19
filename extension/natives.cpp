@@ -1891,6 +1891,37 @@ cell_t N_TexturebugCatch(IPluginContext *pCtx, const cell_t *params)
 	return r;
 }
 
+cell_t N_PixelwalkCatch(IPluginContext *pCtx, const cell_t *params)
+{
+	float wall[3], normal[3], info[4];
+	cell_to_float3(pCtx, params[1], wall);
+	cell_to_float3(pCtx, params[2], normal);
+	int r = BSPSeam::PixelwalkCatch(wall, normal, sp_ctof(params[3]), info);
+	cell_t *out;
+	pCtx->LocalToPhysAddr(params[4], &out);
+	for (int k = 0; k < 4; ++k)
+	{
+		out[k] = sp_ftoc(info[k]);
+	}
+	return r;
+}
+
+cell_t N_PixelwalkEnd(IPluginContext *pCtx, const cell_t *params)
+{
+	float end[3], normal[3], along[3], out[3];
+	cell_to_float3(pCtx, params[1], end);
+	cell_to_float3(pCtx, params[2], normal);
+	cell_to_float3(pCtx, params[3], along);
+	int r = BSPSeam::PixelwalkEnd(end, normal, along, sp_ctof(params[4]), out);
+	cell_t *o;
+	pCtx->LocalToPhysAddr(params[5], &o);
+	for (int k = 0; k < 3; ++k)
+	{
+		o[k] = sp_ftoc(out[k]);
+	}
+	return r;
+}
+
 cell_t N_SeamCandidates(IPluginContext *pCtx, const cell_t *params)
 {
 	float wall[3], normal[3];
@@ -2429,6 +2460,8 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 	{"BSP_HeadSeamCatch", N_HeadSeamCatch},
 	{"BSP_SeamCandidates", N_SeamCandidates},
 	{"BSP_TexturebugCatch", N_TexturebugCatch},
+	{"BSP_PixelwalkCatch", N_PixelwalkCatch},
+	{"BSP_PixelwalkEnd", N_PixelwalkEnd},
 	{"BSP_WallEdgePoints", N_WallEdgePoints},
 
 	// Surface physics properties (friction / surfaceprop)

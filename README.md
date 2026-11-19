@@ -9,7 +9,8 @@ Engine-internal:
 - `CDispCollTree` (displacements)
 - static props (runtime VPhysics collision)
 - world collision tracing (`BSP_TraceHull` - brushes + displacements + props)
-- pixelsurf, head seam and texturebug tests through movement's trace list (`BSP_SeamCatch`, `BSP_HeadSeamCatch`, `BSP_TexturebugCatch`),
+- pixelsurf, head seam, texturebug and pixelwalk tests through movement's trace list (`BSP_SeamCatch`, `BSP_HeadSeamCatch`, `BSP_TexturebugCatch`,
+  `BSP_PixelwalkCatch`, `BSP_PixelwalkEnd`),
   the heights to test on a wall (`BSP_SeamCandidates`), and the map's wall edges to run them on (`BSP_WallEdgePoints`)
 - surface physics props / friction (`IPhysicsSurfaceProps`)
 
