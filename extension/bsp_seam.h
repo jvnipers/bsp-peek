@@ -41,9 +41,10 @@ namespace BSPSeam
 		EDGE_TOP = 1,       // else a bottom edge
 		EDGE_CONTINUES = 2, // a face flush with this one goes on past the edge
 		EDGE_NONWORLD = 4,  // that face is a displacement's, a prop's or an entity's
-		EDGE_LEDGE = 8,     // top edge: the face above is set back 0.25 to 1u (a ledge); a displacement floor's side under a wall within 1u
+		EDGE_LEDGE = 8,     // top edge: the face above is set back 0.25 to 1u (a ledge); a displacement floor's side or wall top's end under a
+							// wall within 1u
 		EDGE_END = 16,      // a covered top edge's end, its cell 1u along the edge from it (PixelwalkEnd)
-		EDGE_RAMP = 32,     // top edge of a face leaning back (a ramp), no face flush above: only PixelwalkCatch
+		EDGE_RAMP = 32,     // top edge of a face leaning back (a ramp, or a wall no face above goes on from in its plane): only PixelwalkCatch
 	};
 
 	// EDGE_POINT_FLOATS a point: x, y, z, flat normal x, y, edge index, EDGE_* bits, then the ends (x, y) of the stretch of edge

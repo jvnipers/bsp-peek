@@ -502,6 +502,15 @@ namespace BSPSeam
 			mt.Run(p, up, tr);
 			return !tr.startsolid && tr.fraction > 0.0f;
 		};
+		// 1u out from 1u up: a floor out there a little higher than the strip would start a hull at the strip's height solid.
+		auto floorOut = [&](const Vector &p)
+		{
+			Vector up(p.x, p.y, p.z + 1.0f), down(p.x, p.y, p.z - 2.0f);
+			et->SetupLeafAndEntityListBox(down + mt.mins - pad, up + mt.maxs + pad, mt.list);
+			CGameTrace tr;
+			mt.Run(up, down, tr);
+			return !tr.startsolid && tr.fraction < 1.0f && tr.plane.normal.z >= 0.7f;
+		};
 		float reach = 16.0f * (std::fabs(n.x) + std::fabs(n.y));
 		int creep = 0, exact = 0;
 		for (int duck = 0; duck < 2; ++duck)
@@ -581,7 +590,7 @@ namespace BSPSeam
 			}
 			Vector crept = at(creptGap);
 			int bit = duck ? CATCH_DUCKED : CATCH_STANDING;
-			if (stands(crept, groundZ) && !stands(at(1.0f), groundZ))
+			if (stands(crept, groundZ) && !stands(at(1.0f), groundZ) && !floorOut(at(1.0f)))
 			{
 				// The standing hull's origin: under an overhang the ducked one gets closer, where a standing hull is stuck.
 				if (!creep)
@@ -929,7 +938,7 @@ namespace BSPSeam
 		// lean: the face normal's z over its flat length, how far the face moves in per unit up.
 		// shrunk: moved down or up with a vphysics brush entity's collision model (SettleEdge).
 		// prop: a prop's top edge, kept only under a displacement, prop or entity (a prop under the world never hovers).
-		// floor: a displacement floor's open side, a ledge for pixelwalks only.
+		// floor: a displacement floor's open side or wall top's end, a ledge for pixelwalks only.
 		struct WallEdge
 		{
 			float a[2], c[2], z, fn[2], lean;
@@ -1026,8 +1035,10 @@ namespace BSPSeam
 							s_edgeEnds.insert(s_edgeEnds.end(), ept, ept + EDGE_POINT_FLOATS);
 						}
 					}
-					// A wall leaning back is a ramp too.
-					if (e.top && e.lean > 0.001f && !(bits & (EDGE_CONTINUES | EDGE_LEDGE)))
+					// A wall leaning back is a ramp too, unless the face above goes on in its plane. A face straight up passes the 1/4u flush test;
+					// back tells them apart (the probe stops 1/32 off: 1/32 + lean / 16 in front in the plane, 1/32 + lean * past straight up).
+					if (e.top && e.lean > 0.001f && !(bits & EDGE_LEDGE)
+						&& !((bits & EDGE_CONTINUES) && back > -0.03125f - e.lean * (past + 0.0625f) * 0.5f))
 					{
 						bits |= EDGE_RAMP;
 					}
@@ -1325,6 +1336,7 @@ namespace BSPSeam
 		// a level triangle side no other triangle of the displacement has, the third corner below.
 		// Kept under a brush face too, unless that brush's bottom edge is on the same plane at the same height.
 		// And such sides of floors, facing away from the third corner: ledges where a wall stands above, flush or set back under 1u.
+		// Likewise a wall's top end, facing along it: a hull straddling the sheet stands on its top, here against a wall it runs past.
 		void DispEdges(std::vector<WallEdge> &edges)
 		{
 			std::vector<float> tris;
@@ -1354,6 +1366,8 @@ namespace BSPSeam
 						++uses[key(t, i, (i + 1) % 3)];
 					}
 				}
+				// Wall top sides by corner: a corner only one of them has is the top's end.
+				std::map<std::array<float, 3>, std::vector<std::array<float, 3>>> tops;
 				for (size_t t = 0; t < count; ++t)
 				{
 					const float *n = &tris[12 * t + 9];
@@ -1388,7 +1402,27 @@ namespace BSPSeam
 						}
 						const float fn[2] = {n[0] / len, n[1] / len};
 						AddEdge(edges, a, c, (std::max)(a[2], c[2]), fn, n[2] / len, true, false, false, ramp);
+						if (!ramp)
+						{
+							tops[{a[0], a[1], a[2]}].push_back({c[0], c[1], c[2]});
+							tops[{c[0], c[1], c[2]}].push_back({a[0], a[1], a[2]});
+						}
 					}
+				}
+				for (const auto &[q, others] : tops)
+				{
+					if (others.size() != 1)
+					{
+						continue;
+					}
+					float dx = q[0] - others[0][0], dy = q[1] - others[0][1], dl = std::sqrt(dx * dx + dy * dy);
+					if (dl < 0.001f)
+					{
+						continue;
+					}
+					const float fn[2] = {dx / dl, dy / dl};
+					const float a[3] = {q[0] + fn[1], q[1] - fn[0], q[2]}, c[3] = {q[0] - fn[1], q[1] + fn[0], q[2]};
+					AddEdge(edges, a, c, q[2], fn, 0.0f, true, false, false, false, true);
 				}
 			}
 		}
@@ -1557,6 +1591,7 @@ namespace BSPSeam
 			// A flush face can cover only part of a seam edge, a few units at its end:
 			// cut the edge where those faces start and end, so even a short flush stretch gets a point of its own.
 			// A bottom edge's are top edges at its height, a top edge's bottom edges, a shrunk top edge's bottom edges up to 1u above it.
+			// Not a displacement floor's side or wall top's end: no face of the plane.
 			std::map<std::tuple<int, int, int>, std::vector<int>> onPlane;
 			for (int i = 0; i < (int)edges.size(); ++i)
 			{
@@ -1587,7 +1622,7 @@ namespace BSPSeam
 					{
 						const WallEdge &t = edges[j];
 						float up = t.z - e.z;
-						if (t.top == e.top || (e.shrunk ? up < 0.49f || up > 1.01f : std::fabs(up) > 0.01f))
+						if (t.top == e.top || t.floor || (e.shrunk ? up < 0.49f || up > 1.01f : std::fabs(up) > 0.01f))
 						{
 							continue;
 						}
