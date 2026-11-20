@@ -487,6 +487,21 @@ namespace BSPSeam
 			groundZ = tr.endpos.z;
 			return !tr.startsolid && tr.fraction < 1.0f && tr.plane.normal.z >= 0.7f;
 		};
+		// Exactly on a face that goes on, a zero-length test can pass where every move stops at once:
+		// it and the sweep round the face's distance differently. So a drop from 2u up must land there, and a jump from there must get off it.
+		auto moves = [&](const Vector &p)
+		{
+			Vector up(p.x, p.y, p.z + 2.0f), down(p.x, p.y, p.z - 2.0f);
+			et->SetupLeafAndEntityListBox(down + mt.mins - pad, up + mt.maxs + pad, mt.list);
+			CGameTrace tr;
+			mt.Run(up, down, tr);
+			if (tr.startsolid || tr.fraction <= 0.0f || tr.fraction >= 1.0f || tr.plane.normal.z < 0.7f)
+			{
+				return false;
+			}
+			mt.Run(p, up, tr);
+			return !tr.startsolid && tr.fraction > 0.0f;
+		};
 		float reach = 16.0f * (std::fabs(n.x) + std::fabs(n.y));
 		int creep = 0, exact = 0;
 		for (int duck = 0; duck < 2; ++duck)
@@ -585,7 +600,7 @@ namespace BSPSeam
 				}
 				outInfo[0] = (std::max)(outInfo[0], lo);
 			}
-			else if (axis >= 0 && !creep && stands(at(0.0f), groundZ))
+			else if (axis >= 0 && !creep && stands(at(0.0f), groundZ) && moves(at(0.0f)))
 			{
 				if (!exact)
 				{
@@ -914,10 +929,11 @@ namespace BSPSeam
 		// lean: the face normal's z over its flat length, how far the face moves in per unit up.
 		// shrunk: moved down or up with a vphysics brush entity's collision model (SettleEdge).
 		// prop: a prop's top edge, kept only under a displacement, prop or entity (a prop under the world never hovers).
+		// floor: a displacement floor's open side, a ledge for pixelwalks only.
 		struct WallEdge
 		{
 			float a[2], c[2], z, fn[2], lean;
-			bool top, shrunk, prop, ramp;
+			bool top, shrunk, prop, ramp, floor;
 		};
 
 		// Faces on one plane share it: flat normal to 1/1000, distance to 1/64u, up units above e (a leaning face moves in going up).
@@ -965,6 +981,16 @@ namespace BSPSeam
 				if (e.ramp)
 				{
 					bits |= EDGE_RAMP;
+				}
+				else if (e.floor)
+				{
+					// A wall flush above it or set back under 1u.
+					float back = 0.0f;
+					if (!(Continuation(et, p, e.fn, 0.0f, &back) & EDGE_CONTINUES) && !(back > 0.0f && back < 1.0f))
+					{
+						continue;
+					}
+					bits |= EDGE_LEDGE;
 				}
 				else if (!e.shrunk)
 				{
@@ -1037,13 +1063,13 @@ namespace BSPSeam
 		}
 
 		void AddEdge(std::vector<WallEdge> &edges, const float a[2], const float c[2], float z, const float fn[2], float lean, bool top, bool shrunk,
-					 bool prop = false, bool ramp = false)
+					 bool prop = false, bool ramp = false, bool floor = false)
 		{
 			if ((c[0] - a[0]) * (c[0] - a[0]) + (c[1] - a[1]) * (c[1] - a[1]) < 1.0f)
 			{
 				return;
 			}
-			edges.push_back({{a[0], a[1]}, {c[0], c[1]}, z, {fn[0], fn[1]}, lean, top, shrunk, prop, ramp});
+			edges.push_back({{a[0], a[1]}, {c[0], c[1]}, z, {fn[0], fn[1]}, lean, top, shrunk, prop, ramp, floor});
 		}
 
 		// Horizontal edges of brush b's wall faces, moved by xf (a brush entity's collision transform) when given.
@@ -1295,8 +1321,10 @@ namespace BSPSeam
 			}
 		}
 
-		// Top edges of displacement walls: a triangle side no other triangle of the displacement has, with the third corner below.
+		// Top edges of displacement walls and ramps:
+		// a level triangle side no other triangle of the displacement has, the third corner below.
 		// Kept under a brush face too, unless that brush's bottom edge is on the same plane at the same height.
+		// And such sides of floors, facing away from the third corner: ledges where a wall stands above, flush or set back under 1u.
 		void DispEdges(std::vector<WallEdge> &edges)
 		{
 			std::vector<float> tris;
@@ -1330,19 +1358,36 @@ namespace BSPSeam
 				{
 					const float *n = &tris[12 * t + 9];
 					float len = std::sqrt(n[0] * n[0] + n[1] * n[1]);
-					if (std::fabs(n[2]) > 0.3f || len < 0.5f)
+					bool ramp = n[2] > 0.3f && n[2] < 0.7f, floor = n[2] >= 0.7f;
+					if (!floor && ((std::fabs(n[2]) > 0.3f && !ramp) || len < 0.5f))
 					{
 						continue;
 					}
 					for (int i = 0; i < 3; ++i)
 					{
 						const float *a = &tris[12 * t + 3 * i], *c = &tris[12 * t + 3 * ((i + 1) % 3)], *o = &tris[12 * t + 3 * ((i + 2) % 3)];
-						if (std::fabs(a[2] - c[2]) > 0.01f || o[2] > a[2] - 0.01f || uses[key(t, i, (i + 1) % 3)] != 1)
+						if (std::fabs(a[2] - c[2]) > 0.01f || (!floor && o[2] > a[2] - 0.01f) || uses[key(t, i, (i + 1) % 3)] != 1)
 						{
 							continue;
 						}
+						if (floor)
+						{
+							float ex = c[0] - a[0], ey = c[1] - a[1], el = std::sqrt(ex * ex + ey * ey);
+							if (el < 0.001f)
+							{
+								continue;
+							}
+							float fn[2] = {ey / el, -ex / el};
+							if ((o[0] - a[0]) * fn[0] + (o[1] - a[1]) * fn[1] > 0.0f)
+							{
+								fn[0] = -fn[0];
+								fn[1] = -fn[1];
+							}
+							AddEdge(edges, a, c, (std::max)(a[2], c[2]), fn, 0.0f, true, false, false, false, true);
+							continue;
+						}
 						const float fn[2] = {n[0] / len, n[1] / len};
-						AddEdge(edges, a, c, (std::max)(a[2], c[2]), fn, n[2] / len, true, false);
+						AddEdge(edges, a, c, (std::max)(a[2], c[2]), fn, n[2] / len, true, false, false, ramp);
 					}
 				}
 			}

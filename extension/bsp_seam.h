@@ -24,7 +24,8 @@ namespace BSPSeam
 	// Movement's trace list, so brush order counts. -1 unavailable, else CATCH_STANDING / CATCH_DUCKED; outInfo: height, gap.
 	int TexturebugCatch(const float wallPos[3], const float normal[3], float edgeZ, float frametime, float gravity, float maxspeed, float outInfo[2]);
 
-	// Pixelwalk at a top edge: a hull pressed against the face (up to 1u behind wallPos), feet at edgeZ + 1/32, stands where 1u further out it doesn't:
+	// Pixelwalk at a top edge:
+	// a hull pressed against the face (up to 1u behind wallPos), feet at edgeZ + 1/32, stands where 1u further out it doesn't:
 	// one float step off an axial face, two past the closest clear gap on a slanted one (a creep), else only exactly on an axial face (CATCH_EXACT).
 	// -1 unavailable, else CATCH_STANDING / CATCH_DUCKED (| CATCH_EXACT);
 	// outInfo: the strip's width (the wider hull's), the feet's height and origin x, y (the standing hull's, else the ducked one's).
@@ -40,7 +41,7 @@ namespace BSPSeam
 		EDGE_TOP = 1,       // else a bottom edge
 		EDGE_CONTINUES = 2, // a face flush with this one goes on past the edge
 		EDGE_NONWORLD = 4,  // that face is a displacement's, a prop's or an entity's
-		EDGE_LEDGE = 8,     // top edge: the face above is set back 0.25 to 1u (a ledge)
+		EDGE_LEDGE = 8,     // top edge: the face above is set back 0.25 to 1u (a ledge); a displacement floor's side under a wall within 1u
 		EDGE_END = 16,      // a covered top edge's end, its cell 1u along the edge from it (PixelwalkEnd)
 		EDGE_RAMP = 32,     // top edge of a face leaning back (a ramp), no face flush above: only PixelwalkCatch
 	};
