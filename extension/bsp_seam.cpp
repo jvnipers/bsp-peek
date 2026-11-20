@@ -465,8 +465,8 @@ namespace BSPSeam
 			mt.Run(p, p, tr);
 			return !tr.startsolid;
 		};
-		// CategorizePosition's 2u trace can start clear where a zero-length one starts solid (touching a cover): stuck, not standing.
-		// Again from where it rests: a +Z bevel vbsp put under a slanted ramp's top, after the slope in side order, gives way to the slope.
+		// Zero-length start solid is stuck (touching a cover), though the 2u trace may hit. On ground CategorizePosition traces
+		// 2u + step size instead (server.so 0x7162B0), which can pass an edge the 2u trace stops on.
 		auto stands = [&](const Vector &p, float &groundZ)
 		{
 			Vector down(p.x, p.y, p.z - 2.0f);
@@ -483,12 +483,11 @@ namespace BSPSeam
 				return false;
 			}
 			Vector rest = tr.endpos;
-			mt.Run(rest, rest - Vector(0.0f, 0.0f, 2.0f), tr);
+			mt.Run(rest, rest - Vector(0.0f, 0.0f, 20.0f), tr);
 			groundZ = tr.endpos.z;
-			return !tr.startsolid && tr.fraction < 1.0f && tr.plane.normal.z >= 0.7f;
+			return !tr.startsolid && tr.fraction < 1.0f && tr.plane.normal.z >= 0.7f && tr.endpos.z > rest.z - 0.1f;
 		};
-		// Exactly on a face that goes on, a zero-length test can pass where every move stops at once:
-		// it and the sweep round the face's distance differently. So a drop from 2u up must land there, and a jump from there must get off it.
+		// Exactly on a face the point test and the sweeps round its distance differently: every move can stop at once.
 		auto moves = [&](const Vector &p)
 		{
 			Vector up(p.x, p.y, p.z + 2.0f), down(p.x, p.y, p.z - 2.0f);
@@ -502,7 +501,7 @@ namespace BSPSeam
 			mt.Run(p, up, tr);
 			return !tr.startsolid && tr.fraction > 0.0f;
 		};
-		// 1u out from 1u up: a floor out there a little higher than the strip would start a hull at the strip's height solid.
+		// From 1u up: a floor out there a bit higher than the strip starts a hull at its height solid.
 		auto floorOut = [&](const Vector &p)
 		{
 			Vector up(p.x, p.y, p.z + 1.0f), down(p.x, p.y, p.z - 2.0f);
@@ -517,7 +516,7 @@ namespace BSPSeam
 		{
 			mt.maxs.Init(16.0f, 16.0f, duck ? 54.0f : 72.0f);
 			float z = edgeZ + 0.03125f;
-			// The face the hull rests against (over a ledge, the wall above it), 1u up: a ramp rising into the wall is in the way lower.
+			// The face the hull rests against, 1u up: lower, a ramp rising into the wall is in the way.
 			CGameTrace hit;
 			bool found = false;
 			for (float out : {48.0f, reach + 2.0f})
@@ -531,8 +530,11 @@ namespace BSPSeam
 				et->SetupLeafAndEntityListBox(lo + mt.mins - pad, hi + mt.maxs + pad, mt.list);
 				mt.Run(from, to, hit);
 				// Up to 1u behind the point (a ledge's wall); a face further out is another strip's.
-				float behind = DotProduct(Vector(wallPos[0], wallPos[1], wallPos[2]), hit.plane.normal) - hit.plane.dist;
-				if (!hit.startsolid && hit.fraction < 1.0f && DotProduct(hit.plane.normal, n) > 0.999f && behind > -0.1f && behind < 1.0f)
+				// Leaning out under ~2.6°, or back up to a ramp.
+				const Vector &hn = hit.plane.normal;
+				float behind = DotProduct(Vector(wallPos[0], wallPos[1], wallPos[2]), hn) - hit.plane.dist;
+				if (!hit.startsolid && hit.fraction < 1.0f && hn.x * n.x + hn.y * n.y > 0.999f * std::hypot(hn.x, hn.y) && hn.z > -0.045f
+					&& hn.z < 0.7f && behind > -0.1f && behind < 1.0f)
 				{
 					found = true;
 					break;
@@ -542,7 +544,7 @@ namespace BSPSeam
 			{
 				continue;
 			}
-			// The gap runs from the hull's nearest edge to the face's plane; on an axial face in float steps of one coordinate.
+			// gap: the hull's nearest edge to the face's plane.
 			const Vector &f = hit.plane.normal;
 			// Not plane.type: it doesn't follow the normal on a box brush's hit.
 			int axis = std::fabs(f.x) == 1.0f ? 0 : (std::fabs(f.y) == 1.0f ? 1 : -1);
@@ -574,7 +576,7 @@ namespace BSPSeam
 			}
 			else
 			{
-				// The closest clear gap, two float steps out: closer, movement's list traces can start solid at other heights.
+				// Two float steps past the clear boundary: closer, list traces start solid at other heights.
 				float lo = 0.0f, hi = 0.03125f;
 				if (!clear(at(hi)))
 				{
@@ -585,14 +587,36 @@ namespace BSPSeam
 					float mid = (lo + hi) * 0.5f;
 					(clear(at(mid)) ? hi : lo) = mid;
 				}
-				float c = (std::max)(std::fabs(p.x), std::fabs(p.y));
-				creptGap = hi + 2.0f * (std::nextafter(c, 2.0f * c + 1.0f) - c);
+				float c = (std::max)(std::fabs(p.x), std::fabs(p.y)), step = std::nextafter(c, 2.0f * c + 1.0f) - c;
+				creptGap = hi + 2.0f * step;
+				// Right outside a face leaning back it wins the ground trace's fraction-0 tie: from the first gap that stands.
+				if (f.z > 0.001f && !stands(at(creptGap), groundZ))
+				{
+					float out = creptGap, last = creptGap;
+					bool any = false;
+					for (int k = 1; k <= 32 && !any; ++k)
+					{
+						last = out;
+						out = creptGap + k / 1024.0f;
+						any = stands(at(out), groundZ);
+					}
+					if (!any)
+					{
+						continue;
+					}
+					for (int k = 0; k < 16; ++k)
+					{
+						float mid = (last + out) * 0.5f;
+						(stands(at(mid), groundZ) ? out : last) = mid;
+					}
+					creptGap = out + 2.0f * step;
+				}
 			}
 			Vector crept = at(creptGap);
 			int bit = duck ? CATCH_DUCKED : CATCH_STANDING;
 			if (stands(crept, groundZ) && !stands(at(1.0f), groundZ) && !floorOut(at(1.0f)))
 			{
-				// The standing hull's origin: under an overhang the ducked one gets closer, where a standing hull is stuck.
+				// The standing hull's origin: under an overhang the ducked one gets closer.
 				if (!creep)
 				{
 					stands(crept, groundZ);
@@ -607,7 +631,8 @@ namespace BSPSeam
 					float mid = (lo + hi) * 0.5f, g;
 					(stands(at(mid), g) ? lo : hi) = mid;
 				}
-				outInfo[0] = (std::max)(outInfo[0], lo);
+				// On a face leaning back, across at the edge's height.
+				outInfo[0] = (std::max)(outInfo[0], f.z > 0.0f ? (lo - f.z * 0.03125f) / (float)std::sqrt(h) : lo);
 			}
 			else if (axis >= 0 && !creep && stands(at(0.0f), groundZ) && moves(at(0.0f)))
 			{
@@ -721,6 +746,13 @@ namespace BSPSeam
 			CGameTrace tr;
 			down(origin(mid, 0.0f), tr);
 			bool stands = !tr.startsolid && !stuck(origin(mid, 0.0f)) && tr.fraction < 1.0f && tr.plane.normal.z >= 0.7f;
+			if (stands)
+			{
+				// The on-ground trace, as in PixelwalkCatch.
+				Vector rest = tr.endpos;
+				mt.Run(rest, rest - Vector(0.0f, 0.0f, 20.0f), tr);
+				stands = !tr.startsolid && tr.fraction < 1.0f && tr.plane.normal.z >= 0.7f && tr.endpos.z > rest.z - 0.1f;
+			}
 			// Not a floor 1u into the wall either (the top past the cover), nor 1u out.
 			CGameTrace tin, tout;
 			down(origin(mid, -1.0f), tin);
@@ -938,7 +970,7 @@ namespace BSPSeam
 		// lean: the face normal's z over its flat length, how far the face moves in per unit up.
 		// shrunk: moved down or up with a vphysics brush entity's collision model (SettleEdge).
 		// prop: a prop's top edge, kept only under a displacement, prop or entity (a prop under the world never hovers).
-		// floor: a displacement floor's open side or wall top's end, a ledge for pixelwalks only.
+		// floor: a displacement floor side or wall top end, a ledge for pixelwalks only.
 		struct WallEdge
 		{
 			float a[2], c[2], z, fn[2], lean;
@@ -969,7 +1001,8 @@ namespace BSPSeam
 		}
 
 		// Samples e between s0 and s1 units along it from a. ownAbove: a bottom edge at this height covers the stretch.
-		void SampleSpan(IEngineTrace *et, const WallEdge &e, float s0, float s1, float spacing, int edge, bool ownAbove)
+		// hair: e stands out past that bottom edge by under 1/64u (a ledge).
+		void SampleSpan(IEngineTrace *et, const WallEdge &e, float s0, float s1, float spacing, int edge, bool ownAbove, bool hair = false)
 		{
 			float span = std::sqrt((e.c[0] - e.a[0]) * (e.c[0] - e.a[0]) + (e.c[1] - e.a[1]) * (e.c[1] - e.a[1]));
 			float dir[2] = {(e.c[0] - e.a[0]) / span, (e.c[1] - e.a[1]) / span};
@@ -1005,6 +1038,10 @@ namespace BSPSeam
 				{
 					float back = 0.0f;
 					bits |= Continuation(et, p, e.fn, -e.lean * past, &back);
+					if (hair)
+					{
+						bits = (bits & ~(EDGE_CONTINUES | EDGE_NONWORLD)) | EDGE_LEDGE;
+					}
 					// A ledge: the face above set back 0.25 to 1u.
 					if (e.top && !(bits & EDGE_CONTINUES) && back > 0.25f && back < 1.0f)
 					{
@@ -1035,10 +1072,8 @@ namespace BSPSeam
 							s_edgeEnds.insert(s_edgeEnds.end(), ept, ept + EDGE_POINT_FLOATS);
 						}
 					}
-					// A wall leaning back is a ramp too, unless the face above goes on in its plane. A face straight up passes the 1/4u flush test;
-					// back tells them apart (the probe stops 1/32 off: 1/32 + lean / 16 in front in the plane, 1/32 + lean * past straight up).
-					if (e.top && e.lean > 0.001f && !(bits & EDGE_LEDGE)
-						&& !((bits & EDGE_CONTINUES) && back > -0.03125f - e.lean * (past + 0.0625f) * 0.5f))
+					// A wall leaning back holds like a ramp, whatever is above: its own bevel.
+					if (e.top && e.lean > 0.001f && !(bits & EDGE_LEDGE))
 					{
 						bits |= EDGE_RAMP;
 					}
@@ -1332,11 +1367,10 @@ namespace BSPSeam
 			}
 		}
 
-		// Top edges of displacement walls and ramps:
-		// a level triangle side no other triangle of the displacement has, the third corner below.
-		// Kept under a brush face too, unless that brush's bottom edge is on the same plane at the same height.
-		// And such sides of floors, facing away from the third corner: ledges where a wall stands above, flush or set back under 1u.
-		// Likewise a wall's top end, facing along it: a hull straddling the sheet stands on its top, here against a wall it runs past.
+		// Top edges of displacement walls and ramps: a level triangle side no other triangle of the displacement has, the third corner
+		// below. Kept under a brush face too, unless that brush's bottom edge is on the same plane at the same height.
+		// For pixelwalks: such floor sides (facing out) and wall top ends (facing along: a hull over the sheet stands on its top) under
+		// a wall within 1u, and level rows inside a face leaning back.
 		void DispEdges(std::vector<WallEdge> &edges)
 		{
 			std::vector<float> tris;
@@ -1366,7 +1400,7 @@ namespace BSPSeam
 						++uses[key(t, i, (i + 1) % 3)];
 					}
 				}
-				// Wall top sides by corner: a corner only one of them has is the top's end.
+				// A corner only one wall top side has is the top's end.
 				std::map<std::array<float, 3>, std::vector<std::array<float, 3>>> tops;
 				for (size_t t = 0; t < count; ++t)
 				{
@@ -1380,8 +1414,18 @@ namespace BSPSeam
 					for (int i = 0; i < 3; ++i)
 					{
 						const float *a = &tris[12 * t + 3 * i], *c = &tris[12 * t + 3 * ((i + 1) % 3)], *o = &tris[12 * t + 3 * ((i + 2) % 3)];
-						if (std::fabs(a[2] - c[2]) > 0.01f || (!floor && o[2] > a[2] - 0.01f) || uses[key(t, i, (i + 1) % 3)] != 1)
+						if (std::fabs(a[2] - c[2]) > 0.01f || (!floor && o[2] > a[2] - 0.01f))
 						{
+							continue;
+						}
+						int u = uses[key(t, i, (i + 1) % 3)];
+						if (u != 1)
+						{
+							if (!floor && u == 2 && n[2] > 0.001f * len)
+							{
+								const float fn[2] = {n[0] / len, n[1] / len};
+								AddEdge(edges, a, c, (std::max)(a[2], c[2]), fn, n[2] / len, true, false, false, true);
+							}
 							continue;
 						}
 						if (floor)
@@ -1591,7 +1635,7 @@ namespace BSPSeam
 			// A flush face can cover only part of a seam edge, a few units at its end:
 			// cut the edge where those faces start and end, so even a short flush stretch gets a point of its own.
 			// A bottom edge's are top edges at its height, a top edge's bottom edges, a shrunk top edge's bottom edges up to 1u above it.
-			// Not a displacement floor's side or wall top's end: no face of the plane.
+			// Not floor edges: no face of the plane.
 			std::map<std::tuple<int, int, int>, std::vector<int>> onPlane;
 			for (int i = 0; i < (int)edges.size(); ++i)
 			{
@@ -1602,7 +1646,7 @@ namespace BSPSeam
 				const WallEdge &e = edges[i];
 				float span = std::sqrt((e.c[0] - e.a[0]) * (e.c[0] - e.a[0]) + (e.c[1] - e.a[1]) * (e.c[1] - e.a[1]));
 				std::vector<float> cuts = {0.0f, span};
-				std::vector<std::pair<float, float>> above;
+				std::vector<std::array<float, 3>> above; // from, to along e; how far e stands in front
 				if (e.top || !e.shrunk)
 				{
 					float dir[2] = {(e.c[0] - e.a[0]) / span, (e.c[1] - e.a[1]) / span};
@@ -1638,7 +1682,8 @@ namespace BSPSeam
 						}
 						if (e.top)
 						{
-							above.push_back({(std::min)(at[0], at[1]), (std::max)(at[0], at[1])});
+							float front = (e.a[0] - t.a[0]) * e.fn[0] + (e.a[1] - t.a[1]) * e.fn[1];
+							above.push_back({(std::min)(at[0], at[1]), (std::max)(at[0], at[1]), front});
 						}
 					}
 					// So does a face on the plane that crosses the edge's height: a pillar through a trim.
@@ -1674,9 +1719,16 @@ namespace BSPSeam
 					if (cuts[k + 1] - cuts[k] >= 0.5f)
 					{
 						float mid = (cuts[k] + cuts[k + 1]) * 0.5f;
-						bool ownAbove = std::any_of(above.begin(), above.end(),
-													[&](const std::pair<float, float> &r) { return r.first <= mid && mid <= r.second; });
-						SampleSpan(et, e, cuts[k], cuts[k + 1], spacing, i, ownAbove || e.prop);
+						// Out past it by more than float noise: a ledge thinner than the plane key's 1/64u.
+						bool ownAbove = false, hair = false;
+						for (const auto &r : above)
+						{
+							if (r[0] <= mid && mid <= r[1])
+							{
+								(r[2] > 1e-4f ? hair : ownAbove) = true;
+							}
+						}
+						SampleSpan(et, e, cuts[k], cuts[k + 1], spacing, i, ownAbove || e.prop, hair && !ownAbove);
 					}
 				}
 			}
