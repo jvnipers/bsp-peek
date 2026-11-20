@@ -186,11 +186,14 @@ native int BSP_SeamCandidates(const float wallPos[3], const float wallNorm[3], f
 native int BSP_TexturebugCatch(const float wallPos[3], const float wallNorm[3], float edgeZ, float frametime, float gravity,
                                float maxspeed, float info[2]);
 
-// Whether a hull pressed against an axial wall stands on a strip at edgeZ that it doesn't 1u further out (a pixelwalk),
-// by movement's own traces, against the face the hull meets 1u up, at most 1u behind wallPos: one float step off it (as close as a creep gets),
-// else only exactly on it (BSPP_CATCH_EXACT). Feet at edgeZ + 1/32.
-// Returns BSPP_CATCH_STANDING / BSPP_CATCH_DUCKED bits (| BSPP_CATCH_EXACT), 0 none or a non-axial wall, -1 unavailable
-// info: the strip's width (0 when exact), the feet's height, the standing origin's x and y.
+// Whether a hull pressed against a wall stands on a strip at edgeZ that it doesn't 1u further out (a pixelwalk),
+// by movement's own traces, against the face the hull meets 1u up, at most 1u behind wallPos: one float step off an axial face,
+// two float steps past the closest clear gap on a slanted one (as close as a creep gets), else only exactly on an axial face
+// (BSPP_CATCH_EXACT).
+// Feet at edgeZ + 1/32, and ground again from where the hull comes to rest.
+// Returns BSPP_CATCH_STANDING / BSPP_CATCH_DUCKED bits (| BSPP_CATCH_EXACT), 0 none, -1 unavailable
+// info: the strip's width for the hull it is wider for (0 when exact), then the feet's height and origin x, y of the standing hull
+// (the ducked one if only it stands).
 native int BSP_PixelwalkCatch(const float wallPos[3], const float wallNorm[3], float edgeZ, float info[4]);
 
 // Pixelwalk at the end of a covered top edge (a BSPP_EDGE_END point):

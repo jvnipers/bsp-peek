@@ -443,12 +443,12 @@ namespace BSPSeam
 		{
 			return -1;
 		}
-		int axis = std::fabs(normal[0]) > 0.999f ? 0 : (std::fabs(normal[1]) > 0.999f ? 1 : -1);
-		if (axis < 0)
+		float len = std::hypot(normal[0], normal[1]);
+		if (len < 0.001f)
 		{
 			return 0;
 		}
-		float sign = normal[axis] > 0.0f ? 1.0f : -1.0f;
+		Vector n(normal[0] / len, normal[1] / len, 0.0f);
 		ITraceListData *list = et->AllocTraceListData();
 		if (!list)
 		{
@@ -457,11 +457,20 @@ namespace BSPSeam
 		MoveTrace mt;
 		mt.list = list;
 		mt.mins.Init(-16.0f, -16.0f, 0.0f);
+		Vector pad(18.0f, 18.0f, 18.0f);
+		auto clear = [&](const Vector &p)
+		{
+			et->SetupLeafAndEntityListBox(p + mt.mins - pad, p + mt.maxs + pad, mt.list);
+			CGameTrace tr;
+			mt.Run(p, p, tr);
+			return !tr.startsolid;
+		};
 		// CategorizePosition's 2u trace can start clear where a zero-length one starts solid (touching a cover): stuck, not standing.
+		// Again from where it rests: a +Z bevel vbsp put under a slanted ramp's top, after the slope in side order, gives way to the slope.
 		auto stands = [&](const Vector &p, float &groundZ)
 		{
-			Vector down(p.x, p.y, p.z - 2.0f), pad(18.0f, 18.0f, 18.0f);
-			et->SetupLeafAndEntityListBox(down + mt.mins - pad, p + mt.maxs + pad, mt.list);
+			Vector down(p.x, p.y, p.z - 2.0f);
+			et->SetupLeafAndEntityListBox(down - Vector(0.0f, 0.0f, 2.0f) + mt.mins - pad, p + mt.maxs + pad, mt.list);
 			CGameTrace tr;
 			mt.Run(p, p, tr);
 			if (tr.startsolid)
@@ -469,9 +478,16 @@ namespace BSPSeam
 				return false;
 			}
 			mt.Run(p, down, tr);
+			if (tr.startsolid || tr.fraction >= 1.0f || tr.plane.normal.z < 0.7f)
+			{
+				return false;
+			}
+			Vector rest = tr.endpos;
+			mt.Run(rest, rest - Vector(0.0f, 0.0f, 2.0f), tr);
 			groundZ = tr.endpos.z;
 			return !tr.startsolid && tr.fraction < 1.0f && tr.plane.normal.z >= 0.7f;
 		};
+		float reach = 16.0f * (std::fabs(n.x) + std::fabs(n.y));
 		int creep = 0, exact = 0;
 		for (int duck = 0; duck < 2; ++duck)
 		{
@@ -480,19 +496,19 @@ namespace BSPSeam
 			// The face the hull rests against (over a ledge, the wall above it), 1u up: a ramp rising into the wall is in the way lower.
 			CGameTrace hit;
 			bool found = false;
-			for (float out : {48.0f, 18.0f})
+			for (float out : {48.0f, reach + 2.0f})
 			{
-				Vector from(wallPos[0] + normal[0] * out, wallPos[1] + normal[1] * out, z + 1.0f);
-				Vector to(wallPos[0] - normal[0] * 8.0f, wallPos[1] - normal[1] * 8.0f, z + 1.0f);
+				Vector from(wallPos[0] + n.x * out, wallPos[1] + n.y * out, z + 1.0f);
+				Vector to(wallPos[0] - n.x * 8.0f, wallPos[1] - n.y * 8.0f, z + 1.0f);
 				// Movement pads its list box (MovementListBox): a brush only touching the hull's box is in it.
-				Vector lo, hi, pad(18.0f, 18.0f, 18.0f);
+				Vector lo, hi;
 				VectorMin(from, to, lo);
 				VectorMax(from, to, hi);
 				et->SetupLeafAndEntityListBox(lo + mt.mins - pad, hi + mt.maxs + pad, mt.list);
 				mt.Run(from, to, hit);
 				// Up to 1u behind the point (a ledge's wall); a face further out is another strip's.
-				float behind = (wallPos[axis] - hit.plane.dist * sign) * sign;
-				if (!hit.startsolid && hit.fraction < 1.0f && hit.plane.normal[axis] * sign > 0.999f && behind > -0.1f && behind < 1.0f)
+				float behind = DotProduct(Vector(wallPos[0], wallPos[1], wallPos[2]), hit.plane.normal) - hit.plane.dist;
+				if (!hit.startsolid && hit.fraction < 1.0f && DotProduct(hit.plane.normal, n) > 0.999f && behind > -0.1f && behind < 1.0f)
 				{
 					found = true;
 					break;
@@ -502,25 +518,66 @@ namespace BSPSeam
 			{
 				continue;
 			}
-			float face = hit.plane.dist * sign, onFace = face + 16.0f * sign, groundZ;
+			// The gap runs from the hull's nearest edge to the face's plane; on an axial face in float steps of one coordinate.
+			const Vector &f = hit.plane.normal;
+			// Not plane.type: it doesn't follow the normal on a box brush's hit.
+			int axis = std::fabs(f.x) == 1.0f ? 0 : (std::fabs(f.y) == 1.0f ? 1 : -1);
+			float sign = axis >= 0 && f[axis] < 0.0f ? -1.0f : 1.0f;
+			float onFace = axis >= 0 ? (hit.plane.dist + 16.0f) * sign : 0.0f, groundZ;
 			Vector p(hit.endpos.x, hit.endpos.y, z);
+			// A face leaning out meets the hull's top edge.
+			double pGap = (double)p.x * f.x + (double)p.y * f.y + (double)p.z * f.z - hit.plane.dist - 16.0 * (std::fabs(f.x) + std::fabs(f.y))
+						  + (std::min)(0.0, (double)mt.maxs.z * f.z);
+			double h = (double)f.x * f.x + (double)f.y * f.y;
 			auto at = [&](float gap)
 			{
 				Vector q = p;
-				q[axis] = onFace + sign * gap;
+				if (axis >= 0)
+				{
+					q[axis] = onFace + sign * gap;
+				}
+				else
+				{
+					q.x = (float)(p.x + f.x * (gap - pGap) / h);
+					q.y = (float)(p.y + f.y * (gap - pGap) / h);
+				}
 				return q;
 			};
-			Vector crept = p;
-			crept[axis] = std::nextafter(onFace, onFace + 64.0f * sign);
+			float creptGap;
+			if (axis >= 0)
+			{
+				creptGap = (std::nextafter(onFace, onFace + 64.0f * sign) - onFace) * sign;
+			}
+			else
+			{
+				// The closest clear gap, two float steps out: closer, movement's list traces can start solid at other heights.
+				float lo = 0.0f, hi = 0.03125f;
+				if (!clear(at(hi)))
+				{
+					continue;
+				}
+				for (int k = 0; k < 24; ++k)
+				{
+					float mid = (lo + hi) * 0.5f;
+					(clear(at(mid)) ? hi : lo) = mid;
+				}
+				float c = (std::max)(std::fabs(p.x), std::fabs(p.y));
+				creptGap = hi + 2.0f * (std::nextafter(c, 2.0f * c + 1.0f) - c);
+			}
+			Vector crept = at(creptGap);
 			int bit = duck ? CATCH_DUCKED : CATCH_STANDING;
 			if (stands(crept, groundZ) && !stands(at(1.0f), groundZ))
 			{
-				stands(crept, groundZ);
+				// The standing hull's origin: under an overhang the ducked one gets closer, where a standing hull is stuck.
+				if (!creep)
+				{
+					stands(crept, groundZ);
+					outInfo[1] = groundZ;
+					outInfo[2] = crept.x;
+					outInfo[3] = crept.y;
+				}
 				creep |= bit;
-				outInfo[1] = groundZ;
-				outInfo[2] = crept.x;
-				outInfo[3] = crept.y;
-				float lo = (crept[axis] - onFace) * sign, hi = 1.0f;
+				float lo = creptGap, hi = 1.0f;
 				for (int k = 0; k < 16; ++k)
 				{
 					float mid = (lo + hi) * 0.5f, g;
@@ -528,14 +585,17 @@ namespace BSPSeam
 				}
 				outInfo[0] = (std::max)(outInfo[0], lo);
 			}
-			else if (!creep && stands(at(0.0f), groundZ))
+			else if (axis >= 0 && !creep && stands(at(0.0f), groundZ))
 			{
-				Vector on = at(0.0f);
-				stands(on, groundZ);
+				if (!exact)
+				{
+					Vector on = at(0.0f);
+					stands(on, groundZ);
+					outInfo[1] = groundZ;
+					outInfo[2] = on.x;
+					outInfo[3] = on.y;
+				}
 				exact |= bit;
-				outInfo[1] = groundZ;
-				outInfo[2] = on.x;
-				outInfo[3] = on.y;
 			}
 		}
 		et->FreeTraceListData(list);

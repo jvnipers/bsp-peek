@@ -25,9 +25,9 @@ namespace BSPSeam
 	int TexturebugCatch(const float wallPos[3], const float normal[3], float edgeZ, float frametime, float gravity, float maxspeed, float outInfo[2]);
 
 	// Pixelwalk at a top edge: a hull pressed against the face (up to 1u behind wallPos), feet at edgeZ + 1/32, stands where 1u further out it doesn't:
-	// one float step off (a creep), else only exactly on the face (CATCH_EXACT).
+	// one float step off an axial face, two past the closest clear gap on a slanted one (a creep), else only exactly on an axial face (CATCH_EXACT).
 	// -1 unavailable, else CATCH_STANDING / CATCH_DUCKED (| CATCH_EXACT);
-	// outInfo: the strip's width, the feet's height, the standing origin's x and y.
+	// outInfo: the strip's width (the wider hull's), the feet's height and origin x, y (the standing hull's, else the ducked one's).
 	int PixelwalkCatch(const float wallPos[3], const float normal[3], float edgeZ, float outInfo[4]);
 
 	// Pixelwalk at the end of a covered top edge: a hull exactly on the face, slid from 17u off the end to 17u along the edge,
