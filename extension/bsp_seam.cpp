@@ -112,8 +112,9 @@ namespace BSPSeam
 		};
 
 		// A displacement hit on an axis-aligned normal reports that face's coordinate as dist: the sign is off on a negative axis.
-		// So take whichever of +-dist the contact point is on.
-		float HitDist(const CGameTrace &tr, const Vector &mins, const Vector &maxs)
+		// A vphysics hit (a prop) reports the plane through the hull's origin: then the face is taken 1/32 behind the contact,
+		// and own is false.
+		float HitDist(const CGameTrace &tr, const Vector &mins, const Vector &maxs, bool *own = nullptr)
 		{
 			const Vector &n = tr.plane.normal;
 			float c = 0.0f;
@@ -121,7 +122,19 @@ namespace BSPSeam
 			{
 				c += n[k] * (tr.endpos[k] + (n[k] > 0.0f ? mins[k] : maxs[k]));
 			}
-			return std::fabs(c + tr.plane.dist) < std::fabs(c - tr.plane.dist) ? -tr.plane.dist : tr.plane.dist;
+			bool plane = std::fabs(c - tr.plane.dist) < 0.5f, mirror = !plane && std::fabs(c + tr.plane.dist) < 0.5f;
+			if (own)
+			{
+				*own = plane || mirror;
+			}
+			return plane ? tr.plane.dist : (mirror ? -tr.plane.dist : c - 0.03125f);
+		}
+
+		// AirAccelerate's step for this hull: ducked, the input is 0.34 of it; CategorizePosition leaves friction 0.25 after a rise
+		// of 140 u/s or less, and the last tick moved at vz + halfG.
+		float AirScale(const MoveTrace &mt, float vz, float halfG)
+		{
+			return (mt.maxs.z < 72.0f ? 0.34f : 1.0f) * ((vz + halfG > 0.0f && vz + halfG <= 140.0f) ? 0.25f : 1.0f);
 		}
 
 		bool Caught(MoveTrace &mt, const Vector &start, const float normal[3], float vin, float vz, float frametime, float gravity,
@@ -132,8 +145,9 @@ namespace BSPSeam
 			collide::MovementListBox(origin, vel, maxspeed, frametime, 18.0f, mn, mx);
 			BSPProps::EngineTrace()->SetupLeafAndEntityListBox(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), mt.list);
 
-			float add = (std::min)((std::max)(30.0f - vin, 0.0f), airaccelerate * maxspeed * frametime);
-			Vector v(vel[0] - normal[0] * add, vel[1] - normal[1] * add, vz - gravity * 0.5f * frametime);
+			float halfG = gravity * 0.5f * frametime;
+			float add = (std::min)((std::max)(30.0f - vin, 0.0f), airaccelerate * maxspeed * frametime * AirScale(mt, vz, halfG));
+			Vector v(vel[0] - normal[0] * add, vel[1] - normal[1] * add, vz - halfG);
 			CGameTrace tr;
 			mt.Run(start, start + v * frametime, tr);
 			if (tr.startsolid || tr.fraction >= 0.0001f || tr.plane.normal.z <= 0.7f)
@@ -162,10 +176,8 @@ namespace BSPSeam
 			collide::MovementListBox(origin, vel, maxspeed, frametime, 18.0f, mn, mx);
 			BSPProps::EngineTrace()->SetupLeafAndEntityListBox(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), mt.list);
 
-			// CategorizePosition leaves friction 0.25 after a rise of 140 u/s or less; the last tick moved at vz + halfG.
 			float halfG = gravity * 0.5f * frametime;
-			float friction = (vz + halfG > 0.0f && vz + halfG <= 140.0f) ? 0.25f : 1.0f;
-			float add = (std::min)((std::max)(30.0f - vin, 0.0f), airaccelerate * maxspeed * frametime * friction);
+			float add = (std::min)((std::max)(30.0f - vin, 0.0f), airaccelerate * maxspeed * frametime * AirScale(mt, vz, halfG));
 			Vector v(vel[0] - normal[0] * add, vel[1] - normal[1] * add, vz - halfG);
 			CGameTrace tr;
 			mt.Run(start, start + v * frametime, tr);
@@ -387,7 +399,12 @@ namespace BSPSeam
 						continue;
 					}
 					// One float step off, the closest a hug gets; at 0 the clip takes the hull as inside.
-					float face = HitDist(hit, mt.mins, mt.maxs) * sign;
+					bool own;
+					float face = HitDist(hit, mt.mins, mt.maxs, &own) * sign;
+					if (!own)
+					{
+						continue;
+					}
 					Vector start = hit.endpos;
 					start[axis] = std::nextafter(face + 16.0f * sign, face + 64.0f * sign);
 					CGameTrace at;
@@ -400,7 +417,7 @@ namespace BSPSeam
 					}
 					// Ground within 2u: CategorizePosition would have landed the player at the end of the tick before.
 					{
-						float fall[3] = {0.0f, 0.0f, -vm}, origin[3] = {start.x, start.y, start.z}, mn[3], mx[3];
+						float fall[3] = {0.0f, 0.0f, -vz}, origin[3] = {start.x, start.y, start.z}, mn[3], mx[3];
 						collide::MovementListBox(origin, fall, maxspeed, frametime, 18.0f, mn, mx);
 						BSPProps::EngineTrace()->SetupLeafAndEntityListBox(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), mt.list);
 						mt.Run(start, start - Vector(0.0f, 0.0f, 2.0f), at);
@@ -422,9 +439,10 @@ namespace BSPSeam
 					}
 					for (float push : pushes)
 					{
-						float vel[3] = {-normal[0] * push, -normal[1] * push, -vm};
+						// Movement builds its list box before gravity.
+						float vel[3] = {-normal[0] * push, -normal[1] * push, -vm}, start0[3] = {vel[0], vel[1], -vz};
 						float origin[3] = {start.x, start.y, start.z}, mn[3], mx[3];
-						collide::MovementListBox(origin, vel, maxspeed, frametime, 18.0f, mn, mx);
+						collide::MovementListBox(origin, start0, maxspeed, frametime, 18.0f, mn, mx);
 						BSPProps::EngineTrace()->SetupLeafAndEntityListBox(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), mt.list);
 						CGameTrace tr;
 						mt.Run(start, start + Vector(vel[0], vel[1], vel[2]) * frametime, tr);
@@ -571,9 +589,11 @@ namespace BSPSeam
 			// gap: the hull's nearest edge to the face's plane.
 			const Vector &f = hit.plane.normal;
 			// Not plane.type: it doesn't follow the normal on a box brush's hit.
-			int axis = std::fabs(f.x) == 1.0f ? 0 : (std::fabs(f.y) == 1.0f ? 1 : -1);
+			// A prop's face isn't a plane movement clips exactly: search it as a slanted one.
+			bool own;
+			float dist = HitDist(hit, mt.mins, mt.maxs, &own);
+			int axis = !own ? -1 : (std::fabs(f.x) == 1.0f ? 0 : (std::fabs(f.y) == 1.0f ? 1 : -1));
 			float sign = axis >= 0 && f[axis] < 0.0f ? -1.0f : 1.0f;
-			float dist = HitDist(hit, mt.mins, mt.maxs);
 			float onFace = axis >= 0 ? (dist + 16.0f) * sign : 0.0f, groundZ;
 			Vector p(hit.endpos.x, hit.endpos.y, z);
 			// A face leaning out meets the hull's top edge.
@@ -597,7 +617,17 @@ namespace BSPSeam
 			float creptGap;
 			if (axis >= 0)
 			{
-				creptGap = (std::nextafter(onFace, onFace + 64.0f * sign) - onFace) * sign;
+				// The first clear float step off: in a coordinate-stop band (collisions §7.4) the first one rounds onto the face.
+				float c = onFace;
+				for (int k = 0; k < 4; ++k)
+				{
+					c = std::nextafter(c, c + 64.0f * sign);
+					creptGap = (c - onFace) * sign;
+					if (clear(at(creptGap)))
+					{
+						break;
+					}
+				}
 			}
 			else
 			{
@@ -639,7 +669,11 @@ namespace BSPSeam
 			}
 			Vector crept = at(creptGap);
 			int bit = duck ? CATCH_DUCKED : CATCH_STANDING;
-			if (stands(crept, groundZ) && !stands(at(1.0f), groundZ) && !floorOut(at(1.0f)))
+			if (stands(at(1.0f), groundZ) || floorOut(at(1.0f)))
+			{
+				continue;
+			}
+			if (stands(crept, groundZ))
 			{
 				// The standing hull's origin: under an overhang the ducked one gets closer.
 				if (!creep)
@@ -716,7 +750,12 @@ namespace BSPSeam
 			{
 				continue;
 			}
-			float onFace = HitDist(hit, mt.mins, mt.maxs) * sign + 16.0f * sign;
+			bool own;
+			float onFace = HitDist(hit, mt.mins, mt.maxs, &own) * sign + 16.0f * sign;
+			if (!own)
+			{
+				continue;
+			}
 			auto origin = [&](float s, float gap)
 			{
 				Vector q(endPos[0] + along[0] * s, endPos[1] + along[1] * s, z);
@@ -794,18 +833,27 @@ namespace BSPSeam
 			// Not a floor 1u into the wall either (the top past the cover), nor 1u out.
 			CGameTrace tin, tout;
 			down(origin(mid, -1.0f), tin);
-			down(origin(mid, 1.0f), tout);
+			// As PixelwalkCatch's floorOut.
+			{
+				Vector o = origin(mid, 1.0f), up(o.x, o.y, o.z + 1.0f), d(o.x, o.y, o.z - 2.0f);
+				et->SetupLeafAndEntityListBox(d + mt.mins - pad, up + mt.maxs + pad, mt.list);
+				mt.Run(up, d, tout);
+			}
 			bool floorIn = !tin.startsolid && tin.fraction < 1.0f && tin.plane.normal.z >= 0.7f;
 			bool floorOut = !tout.startsolid && tout.fraction < 1.0f && tout.plane.normal.z >= 0.7f;
 			if (!stands || floorIn || floorOut)
 			{
 				continue;
 			}
+			if (!flags)
+			{
+				// The standing hull's strip where both stand.
+				Vector m = origin(mid, 0.0f);
+				out[0] = m.x;
+				out[1] = m.y;
+				out[2] = sb - sa;
+			}
 			flags |= duck ? CATCH_DUCKED : CATCH_STANDING;
-			Vector m = origin(mid, 0.0f);
-			out[0] = m.x;
-			out[1] = m.y;
-			out[2] = sb - sa;
 		}
 		et->FreeTraceListData(list);
 		return flags ? flags | CATCH_EXACT : 0;
@@ -975,7 +1023,7 @@ namespace BSPSeam
 
 		// Flush: within 1/4u of where the face would be at p (expect, for a leaning face), facing the same way. World first:
 		// displacements are world. A box, not a ray: it meets a vphysics model where movement does, a ray meets the brush.
-		// back: how far behind where it would be a face facing the same way is (world first), 0 if none.
+		// back: how far behind where it would be the nearest face facing the same way is, unchanged if none.
 		int Continuation(IEngineTrace *et, const float p[3], const float fn[2], float expect, float *back = nullptr)
 		{
 			const float h = 0.0625f;
@@ -991,7 +1039,8 @@ namespace BSPSeam
 			NothingFilter world;
 			CGameTrace tr;
 			et->TraceRay(ray, MASK_PLAYERSOLID, &world, &tr);
-			if (back && tr.fraction < 1.0f && !tr.startsolid && tr.plane.normal.x * fn[0] + tr.plane.normal.y * fn[1] > 0.9f)
+			bool facing = tr.fraction < 1.0f && !tr.startsolid && tr.plane.normal.x * fn[0] + tr.plane.normal.y * fn[1] > 0.9f;
+			if (back && facing)
 			{
 				*back = expect - ((tr.endpos.x - p[0]) * fn[0] + (tr.endpos.y - p[1]) * fn[1] - h * (std::fabs(fn[0]) + std::fabs(fn[1])));
 			}
@@ -1002,6 +1051,12 @@ namespace BSPSeam
 			MovementFilter movement;
 			CGameTrace te;
 			et->TraceRay(ray, MASK_PLAYERSOLID, &movement, &te);
+			// A prop or entity face in front of the world's (or with none behind) gives back too.
+			if (back && te.fraction < 1.0f && !te.startsolid && te.plane.normal.x * fn[0] + te.plane.normal.y * fn[1] > 0.9f
+				&& (!facing || te.fraction < tr.fraction))
+			{
+				*back = expect - ((te.endpos.x - p[0]) * fn[0] + (te.endpos.y - p[1]) * fn[1] - h * (std::fabs(fn[0]) + std::fabs(fn[1])));
+			}
 			return flush(te) ? (EDGE_CONTINUES | EDGE_NONWORLD) : 0;
 		}
 
@@ -1039,8 +1094,8 @@ namespace BSPSeam
 		}
 
 		// Samples e between s0 and s1 units along it from a. ownAbove: a bottom edge at this height covers the stretch.
-		// hair: e stands out past that bottom edge by under 1/64u (a ledge).
-		void SampleSpan(IEngineTrace *et, const WallEdge &e, float s0, float s1, float spacing, int edge, bool ownAbove, bool hair = false)
+		// hair: e stands out past that bottom edge by under 1/64u (a ledge). ends: END points may go at a (bit 0) and c (bit 1).
+		void SampleSpan(IEngineTrace *et, const WallEdge &e, float s0, float s1, float spacing, int edge, bool ownAbove, bool hair, int ends)
 		{
 			float span = std::sqrt((e.c[0] - e.a[0]) * (e.c[0] - e.a[0]) + (e.c[1] - e.a[1]) * (e.c[1] - e.a[1]));
 			float dir[2] = {(e.c[0] - e.a[0]) / span, (e.c[1] - e.a[1]) / span};
@@ -1090,7 +1145,7 @@ namespace BSPSeam
 					{
 						for (int end = 0; end < 2; ++end)
 						{
-							if (end ? (k != samples - 1 || std::fabs(s1 - span) > 0.001f) : (k != 0 || s0 > 0.001f))
+							if (!(ends & (1 << end)) || (end ? (k != samples - 1 || std::fabs(s1 - span) > 0.001f) : (k != 0 || s0 > 0.001f)))
 							{
 								continue;
 							}
@@ -1110,10 +1165,15 @@ namespace BSPSeam
 							s_edgeEnds.insert(s_edgeEnds.end(), ept, ept + EDGE_POINT_FLOATS);
 						}
 					}
-					// A wall leaning back holds like a ramp, whatever is above: its own bevel.
+					// A wall leaning back holds like a ramp, whatever is above (a brush on its own bevel). Under its own bottom edge, which has
+					// the pixelsurf, only as a ramp.
 					if (e.top && e.lean > 0.001f && !(bits & EDGE_LEDGE))
 					{
 						bits |= EDGE_RAMP;
+						if (ownAbove && !(bits & EDGE_NONWORLD))
+						{
+							bits &= ~EDGE_CONTINUES;
+						}
 					}
 					// Under a world face only inside it, the brush above reaching lower: else that brush's bottom edge has the seam.
 					if (e.top && !(bits & (EDGE_NONWORLD | EDGE_LEDGE | EDGE_RAMP)) && (ownAbove || !(bits & EDGE_CONTINUES)))
@@ -1406,7 +1466,8 @@ namespace BSPSeam
 		}
 
 		// Top edges of displacement walls and ramps: a level triangle side no other triangle of the displacement has, the third corner
-		// below. Kept under a brush face too, unless that brush's bottom edge is on the same plane at the same height.
+		// below. Kept under a brush face too, unless that brush's bottom edge is on the same plane at the same height (a leaning one then
+		// only as a ramp).
 		// For pixelwalks: such floor sides (facing out) and wall top ends (facing along: a hull over the sheet stands on its top) under
 		// a wall within 1u, and level rows inside a face leaning back.
 		void DispEdges(std::vector<WallEdge> &edges)
@@ -1673,18 +1734,44 @@ namespace BSPSeam
 			// A flush face can cover only part of a seam edge, a few units at its end:
 			// cut the edge where those faces start and end, so even a short flush stretch gets a point of its own.
 			// A bottom edge's are top edges at its height, a top edge's bottom edges, a shrunk top edge's bottom edges up to 1u above it.
-			// Not floor edges: no face of the plane.
+			// Not floor or ramp edges: no wall face of the plane.
 			std::map<std::tuple<int, int, int>, std::vector<int>> onPlane;
+			// Top edge ends by corner, 1/16u: where another top edge on the same line goes on, the top doesn't end.
+			std::map<std::array<int, 3>, std::vector<int>> topEnds;
+			auto endKey = [](const float q[2], float z)
+			{ return std::array<int, 3> {(int)std::lround(q[0] * 16.0f), (int)std::lround(q[1] * 16.0f), (int)std::lround(z * 16.0f)}; };
 			for (int i = 0; i < (int)edges.size(); ++i)
 			{
 				onPlane[PlaneKey(edges[i])].push_back(i);
+				if (edges[i].top && !edges[i].floor)
+				{
+					topEnds[endKey(edges[i].a, edges[i].z)].push_back(i);
+					topEnds[endKey(edges[i].c, edges[i].z)].push_back(i);
+				}
 			}
+			auto endsAt = [&](int i)
+			{
+				const WallEdge &e = edges[i];
+				int ends = 3;
+				for (int end = 0; end < 2 && e.top; ++end)
+				{
+					for (int j : topEnds[endKey(end ? e.c : e.a, e.z)])
+					{
+						if (j != i && edges[j].fn[0] * e.fn[0] + edges[j].fn[1] * e.fn[1] > 0.999f)
+						{
+							ends &= ~(1 << end);
+						}
+					}
+				}
+				return ends;
+			};
 			for (int i = 0; i < (int)edges.size(); ++i)
 			{
 				const WallEdge &e = edges[i];
 				float span = std::sqrt((e.c[0] - e.a[0]) * (e.c[0] - e.a[0]) + (e.c[1] - e.a[1]) * (e.c[1] - e.a[1]));
 				std::vector<float> cuts = {0.0f, span};
 				std::vector<std::array<float, 3>> above; // from, to along e; how far e stands in front
+				int ends = endsAt(i);
 				if (e.top || !e.shrunk)
 				{
 					float dir[2] = {(e.c[0] - e.a[0]) / span, (e.c[1] - e.a[1]) / span};
@@ -1692,7 +1779,8 @@ namespace BSPSeam
 					auto lo = PlaneKey(e, e.shrunk ? 0.49f : 0.0f);
 					int d0 = std::get<2>(lo), d1 = std::get<2>(PlaneKey(e, e.shrunk ? 1.01f : 0.0f));
 					std::vector<int> coplanar;
-					for (int d = (std::min)(d0, d1); d <= (std::max)(d0, d1); ++d)
+					// One bucket either side: a distance on a bucket boundary splits on vertex noise.
+					for (int d = (std::min)(d0, d1) - 1; d <= (std::max)(d0, d1) + 1; ++d)
 					{
 						auto it = onPlane.find({std::get<0>(lo), std::get<1>(lo), d});
 						if (it != onPlane.end())
@@ -1704,7 +1792,13 @@ namespace BSPSeam
 					{
 						const WallEdge &t = edges[j];
 						float up = t.z - e.z;
-						if (t.top == e.top || t.floor || (e.shrunk ? up < 0.49f || up > 1.01f : std::fabs(up) > 0.01f))
+						if (t.top == e.top || t.floor || t.ramp || (e.shrunk ? up < 0.49f || up > 1.01f : std::fabs(up) > 0.01f))
+						{
+							continue;
+						}
+						// How far e stands in front of t's face at e's height.
+						float front = (e.a[0] - t.a[0]) * e.fn[0] + (e.a[1] - t.a[1]) * e.fn[1] - t.lean * up;
+						if (!e.shrunk && std::fabs(front) > 0.015625f)
 						{
 							continue;
 						}
@@ -1720,7 +1814,6 @@ namespace BSPSeam
 						}
 						if (e.top)
 						{
-							float front = (e.a[0] - t.a[0]) * e.fn[0] + (e.a[1] - t.a[1]) * e.fn[1];
 							above.push_back({(std::min)(at[0], at[1]), (std::max)(at[0], at[1]), front});
 						}
 					}
@@ -1757,16 +1850,18 @@ namespace BSPSeam
 					if (cuts[k + 1] - cuts[k] >= 0.5f)
 					{
 						float mid = (cuts[k] + cuts[k + 1]) * 0.5f;
-						// Out past it by more than float noise: a ledge thinner than the plane key's 1/64u.
+						// Out past it by more than the vertices' float noise: a ledge thinner than the plane key's 1/64u.
+						float far = (std::max)((std::max)(std::fabs(e.a[0]), std::fabs(e.a[1])), (std::max)(std::fabs(e.c[0]), std::fabs(e.c[1])));
+						float noise = (std::max)(1e-4f, 4.0f * (std::nextafter(far, 2.0f * far + 1.0f) - far));
 						bool ownAbove = false, hair = false;
 						for (const auto &r : above)
 						{
 							if (r[0] <= mid && mid <= r[1])
 							{
-								(r[2] > 1e-4f ? hair : ownAbove) = true;
+								(r[2] > noise ? hair : ownAbove) = true;
 							}
 						}
-						SampleSpan(et, e, cuts[k], cuts[k + 1], spacing, i, ownAbove || e.prop, hair && !ownAbove);
+						SampleSpan(et, e, cuts[k], cuts[k + 1], spacing, i, ownAbove || e.prop, hair && !ownAbove, ends);
 					}
 				}
 			}

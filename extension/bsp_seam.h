@@ -21,7 +21,8 @@ namespace BSPSeam
 			  float outSpeed[2], float outStart[6], bool head);
 
 	// Texturebug at a box brush's bottom edge: a hull one float step off the face, its top passing the edge, gets the box's top at fraction 0.
-	// Movement's trace list, so brush order counts. -1 unavailable, else CATCH_STANDING / CATCH_DUCKED; outInfo: height, gap.
+	// Movement's trace list, so brush order counts; no start within 2u of ground. -1 unavailable, else CATCH_STANDING / CATCH_DUCKED;
+	// outInfo: height, gap.
 	int TexturebugCatch(const float wallPos[3], const float normal[3], float edgeZ, float frametime, float gravity, float maxspeed, float outInfo[2]);
 
 	// Pixelwalk at a top edge: a hull pressed against the face (up to 1u behind wallPos, leaning back up to a ramp), feet at
@@ -32,7 +33,8 @@ namespace BSPSeam
 
 	// Pixelwalk at the end of a covered top edge: a hull exactly on the face, slid from 17u off the end to 17u along the edge,
 	// held (ground or stuck) from one point and stuck in the cover from a later one: the strip between. along: into the edge.
-	// -1 unavailable, else CATCH_STANDING / CATCH_DUCKED | CATCH_EXACT; out: the strip's middle (origin x, y) and width.
+	// -1 unavailable, else CATCH_STANDING / CATCH_DUCKED | CATCH_EXACT; out: the strip's middle (origin x, y) and width, the
+	// standing hull's (else the ducked one's).
 	int PixelwalkEnd(const float endPos[3], const float normal[3], const float along[2], float edgeZ, float out[3]);
 
 	enum
@@ -42,8 +44,8 @@ namespace BSPSeam
 		EDGE_NONWORLD = 4,  // that face is a displacement's, a prop's or an entity's
 		EDGE_LEDGE = 8,     // top edge: the face above set back 0.25 to 1u or under 1/64u; or a displacement floor side or wall top
 							// end under a wall within 1u
-		EDGE_END = 16,      // a covered top edge's end, its cell 1u along the edge from it (PixelwalkEnd)
-		EDGE_RAMP = 32,     // top edge of a face leaning back, or a level row inside a displacement one: only PixelwalkCatch
+		EDGE_END = 16,      // a covered top edge's end where no top edge on its line goes on, its cell 1u along it (PixelwalkEnd)
+		EDGE_RAMP = 32,     // top edge of a face leaning back, or a level row inside a displacement one: PixelwalkCatch too
 	};
 
 	// EDGE_POINT_FLOATS a point: x, y, z, flat normal x, y, edge index, EDGE_* bits, then the ends (x, y) of the stretch of edge
@@ -54,7 +56,8 @@ namespace BSPSeam
 	void OnMapEnd();
 
 	// Sorted heights where the wall column changes:
-	// brush edges, displacement vertices, prop and entity bounds, and where a ray into the wall meets another surface, entity or depth.
+	// brush edges, tops of faces leaning back the wall's way, displacement vertices, prop and entity bounds, and where a ray into the
+	// wall meets another surface, entity or depth.
 	int Candidates(const float wallPos[3], const float normal[3], float zMin, float zMax, float *out, int maxOut);
 } // namespace BSPSeam
 

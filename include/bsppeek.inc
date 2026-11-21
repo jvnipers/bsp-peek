@@ -165,10 +165,10 @@ native int  BSP_BrushSideOrder(int brushIdx, char[] buf, int maxlen);
 #define BSPP_CATCH_DUCKED         2
 #define BSPP_CATCH_WALL_NON_AXIAL 4     // the wall stopping the hull has plane type >= PLANE_Z
 #define BSPP_CATCH_UNDER_CEILING  8     // BSP_HeadSeamCatch: a flat overhang or displacement edge over the hull
-#define BSPP_CATCH_EXACT          16    // BSP_PixelwalkCatch: only with the hull exactly on the face (setpos, a teleport)
+#define BSPP_CATCH_EXACT          16    // BSP_PixelwalkCatch, BSP_PixelwalkEnd: only with the hull exactly on the face (setpos, a teleport)
 
 // Whether a seam at seamZ catches a player against the wall, by movement's own traces over a grid of arrivals.
-// wallPos: on the face. wallNorm: horizontal unit normal. speed: total speed range of the catches.
+// wallPos: on the face. wallNorm: horizontal unit normal. speed: the range of the catching samples' vertical speeds.
 // start: origin and velocity of the first catch. Returns 0, BSPP_CATCH_* bits, or -1 unavailable.
 native int BSP_SeamCatch(const float wallPos[3], const float wallNorm[3], float seamZ, float frametime, float gravity,
                          float airaccelerate, float maxspeed, float speed[2], float start[6]);
@@ -177,7 +177,8 @@ native int BSP_SeamCatch(const float wallPos[3], const float wallNorm[3], float 
 native int BSP_HeadSeamCatch(const float wallPos[3], const float wallNorm[3], float seamZ, float frametime, float gravity,
                              float airaccelerate, float maxspeed, float speed[2], float start[6]);
 
-// Sorted heights in zMin..zMax where the wall column changes, and tops of brush faces leaning back the way the wall faces (ramps),
+// Sorted heights in zMin..zMax where the wall column changes, and tops of brush faces leaning back the way the wall faces (ramps,
+// walls leaning back),
 // for BSP_SeamCatch and the other tests. Returns the count.
 native int BSP_SeamCandidates(const float wallPos[3], const float wallNorm[3], float zMin, float zMax, float[] out, int maxOut);
 
@@ -187,19 +188,21 @@ native int BSP_SeamCandidates(const float wallPos[3], const float wallNorm[3], f
 native int BSP_TexturebugCatch(const float wallPos[3], const float wallNorm[3], float edgeZ, float frametime, float gravity,
                                float maxspeed, float info[2]);
 
-// Whether a hull pressed against a wall stands on a strip at edgeZ that it doesn't 1u further out (a pixelwalk), by movement's own
-// traces, against the face the hull meets 1u up (leaning back up to a ramp), at most 1u behind wallPos: as close as a creep gets,
-// else only exactly on an axial face (BSPP_CATCH_EXACT). Feet at edgeZ + 1/32.
-// Returns BSPP_CATCH_STANDING / BSPP_CATCH_DUCKED bits (| BSPP_CATCH_EXACT), 0 none, -1 unavailable
+// Whether a hull pressed against a wall stands on a strip at edgeZ that it neither stands on nor lands on from 1u up 1u further
+// out (a pixelwalk), by movement's own traces, against the face the hull meets 1u up (leaning back up to a ramp; a prop's too),
+// 0.1u in front of wallPos to 1u behind: as close as a creep gets, else only exactly on an axial face (BSPP_CATCH_EXACT).
+// Feet at edgeZ + 1/32.
+// Returns BSPP_CATCH_STANDING / BSPP_CATCH_DUCKED bits (| BSPP_CATCH_EXACT), 0 none, -1 unavailable.
 // info: the strip's width (0 when exact), then the feet's height and origin x, y of the standing hull (the ducked one if only it
 // stands).
 native int BSP_PixelwalkCatch(const float wallPos[3], const float wallNorm[3], float edgeZ, float info[4]);
 
-// Pixelwalk at the end of a covered top edge (a BSPP_EDGE_END point):
+// Pixelwalk at the end of a covered top edge on an axial wall (a BSPP_EDGE_END point):
 // a hull exactly on the face, slid from 17u off the end along the edge, held from one point and inside the cover from a later one,
 // standing in between (landing from 2u up, a 2u rise moving) where the top isn't a floor 1u into the wall or 1u out.
 // along: unit, from the end into the edge.
-// Returns BSPP_CATCH_STANDING / BSPP_CATCH_DUCKED | BSPP_CATCH_EXACT, 0 none, -1 unavailable. out: the strip's middle (origin x, y) and its width.
+// Returns BSPP_CATCH_STANDING / BSPP_CATCH_DUCKED | BSPP_CATCH_EXACT, 0 none, -1 unavailable.
+// out: the strip's middle (origin x, y) and its width, the standing hull's (the ducked one's if only it stands).
 native int BSP_PixelwalkEnd(const float endPos[3], const float wallNorm[3], const float along[3], float edgeZ, float out[3]);
 
 // BSP_WallEdgePoints bits, the 7th float of a point.
@@ -208,8 +211,10 @@ native int BSP_PixelwalkEnd(const float endPos[3], const float wallNorm[3], cons
 #define BSPP_EDGE_NONWORLD  4     // with CONTINUES: the face past the edge is a displacement's, a prop's or an entity's
 #define BSPP_EDGE_LEDGE     8     // top edge: the face above set back 0.25 to 1u or under 1/64u; or a displacement floor side or
                                   // wall top end under a wall within 1u (BSP_PixelwalkCatch only)
-#define BSPP_EDGE_END       16    // a covered top edge's end; its stretch runs 1u from it along the edge (BSP_PixelwalkEnd)
-#define BSPP_EDGE_RAMP      32    // top edge of a face leaning back, or a level row inside a displacement one (BSP_PixelwalkCatch only)
+#define BSPP_EDGE_END       16    // a covered top edge's end, where no top edge on its line goes on; its stretch runs 1u from it
+                                  // along the edge (BSP_PixelwalkEnd)
+#define BSPP_EDGE_RAMP      32    // top edge of a face leaning back, or a level row inside a displacement one: BSP_PixelwalkCatch
+                                  // as well as what the other bits give
 #define BSPP_EDGE_FLOATS    11
 
 // Points about every `spacing` units along the horizontal edges of wall faces where a seam can be, for map-wide seam tests, from world
