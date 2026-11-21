@@ -111,6 +111,19 @@ namespace BSPSeam
 			}
 		};
 
+		// A displacement hit on an axis-aligned normal reports that face's coordinate as dist: the sign is off on a negative axis.
+		// So take whichever of +-dist the contact point is on.
+		float HitDist(const CGameTrace &tr, const Vector &mins, const Vector &maxs)
+		{
+			const Vector &n = tr.plane.normal;
+			float c = 0.0f;
+			for (int k = 0; k < 3; ++k)
+			{
+				c += n[k] * (tr.endpos[k] + (n[k] > 0.0f ? mins[k] : maxs[k]));
+			}
+			return std::fabs(c + tr.plane.dist) < std::fabs(c - tr.plane.dist) ? -tr.plane.dist : tr.plane.dist;
+		}
+
 		bool Caught(MoveTrace &mt, const Vector &start, const float normal[3], float vin, float vz, float frametime, float gravity,
 					float airaccelerate, float maxspeed, bool &wallNonAxial)
 		{
@@ -374,7 +387,7 @@ namespace BSPSeam
 						continue;
 					}
 					// One float step off, the closest a hug gets; at 0 the clip takes the hull as inside.
-					float face = hit.plane.dist * sign;
+					float face = HitDist(hit, mt.mins, mt.maxs) * sign;
 					Vector start = hit.endpos;
 					start[axis] = std::nextafter(face + 16.0f * sign, face + 64.0f * sign);
 					CGameTrace at;
@@ -382,6 +395,17 @@ namespace BSPSeam
 					still.Init(start, start, mt.mins, mt.maxs);
 					BSPProps::EngineTrace()->TraceRay(still, MASK_PLAYERSOLID, &mt.filter, &at);
 					if (at.startsolid)
+					{
+						continue;
+					}
+					// Ground within 2u: CategorizePosition would have landed the player at the end of the tick before.
+					{
+						float fall[3] = {0.0f, 0.0f, -vm}, origin[3] = {start.x, start.y, start.z}, mn[3], mx[3];
+						collide::MovementListBox(origin, fall, maxspeed, frametime, 18.0f, mn, mx);
+						BSPProps::EngineTrace()->SetupLeafAndEntityListBox(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), mt.list);
+						mt.Run(start, start - Vector(0.0f, 0.0f, 2.0f), at);
+					}
+					if (!at.startsolid && at.fraction < 1.0f && at.plane.normal.z >= 0.7f)
 					{
 						continue;
 					}
@@ -532,7 +556,7 @@ namespace BSPSeam
 				// Up to 1u behind the point (a ledge's wall); a face further out is another strip's.
 				// Leaning out under ~2.6°, or back up to a ramp.
 				const Vector &hn = hit.plane.normal;
-				float behind = DotProduct(Vector(wallPos[0], wallPos[1], wallPos[2]), hn) - hit.plane.dist;
+				float behind = DotProduct(Vector(wallPos[0], wallPos[1], wallPos[2]), hn) - HitDist(hit, mt.mins, mt.maxs);
 				if (!hit.startsolid && hit.fraction < 1.0f && hn.x * n.x + hn.y * n.y > 0.999f * std::hypot(hn.x, hn.y) && hn.z > -0.045f
 					&& hn.z < 0.7f && behind > -0.1f && behind < 1.0f)
 				{
@@ -549,10 +573,11 @@ namespace BSPSeam
 			// Not plane.type: it doesn't follow the normal on a box brush's hit.
 			int axis = std::fabs(f.x) == 1.0f ? 0 : (std::fabs(f.y) == 1.0f ? 1 : -1);
 			float sign = axis >= 0 && f[axis] < 0.0f ? -1.0f : 1.0f;
-			float onFace = axis >= 0 ? (hit.plane.dist + 16.0f) * sign : 0.0f, groundZ;
+			float dist = HitDist(hit, mt.mins, mt.maxs);
+			float onFace = axis >= 0 ? (dist + 16.0f) * sign : 0.0f, groundZ;
 			Vector p(hit.endpos.x, hit.endpos.y, z);
 			// A face leaning out meets the hull's top edge.
-			double pGap = (double)p.x * f.x + (double)p.y * f.y + (double)p.z * f.z - hit.plane.dist - 16.0 * (std::fabs(f.x) + std::fabs(f.y))
+			double pGap = (double)p.x * f.x + (double)p.y * f.y + (double)p.z * f.z - dist - 16.0 * (std::fabs(f.x) + std::fabs(f.y))
 						  + (std::min)(0.0, (double)mt.maxs.z * f.z);
 			double h = (double)f.x * f.x + (double)f.y * f.y;
 			auto at = [&](float gap)
@@ -687,11 +712,11 @@ namespace BSPSeam
 			CGameTrace hit;
 			mt.Run(from, to, hit);
 			if (hit.startsolid || hit.fraction >= 1.0f || hit.plane.normal[axis] * sign <= 0.999f
-				|| std::fabs((endPos[axis] - hit.plane.dist * sign) * sign) > 0.1f)
+				|| std::fabs((endPos[axis] - HitDist(hit, mt.mins, mt.maxs) * sign) * sign) > 0.1f)
 			{
 				continue;
 			}
-			float onFace = hit.plane.dist * sign + 16.0f * sign;
+			float onFace = HitDist(hit, mt.mins, mt.maxs) * sign + 16.0f * sign;
 			auto origin = [&](float s, float gap)
 			{
 				Vector q(endPos[0] + along[0] * s, endPos[1] + along[1] * s, z);
@@ -752,6 +777,19 @@ namespace BSPSeam
 				Vector rest = tr.endpos;
 				mt.Run(rest, rest - Vector(0.0f, 0.0f, 20.0f), tr);
 				stands = !tr.startsolid && tr.fraction < 1.0f && tr.plane.normal.z >= 0.7f && tr.endpos.z > rest.z - 0.1f;
+			}
+			if (stands)
+			{
+				// As PixelwalkCatch's exact class: a drop from 2u up lands, a 2u rise moves.
+				Vector p = origin(mid, 0.0f), up(p.x, p.y, p.z + 2.0f), d(p.x, p.y, p.z - 2.0f);
+				et->SetupLeafAndEntityListBox(d + mt.mins - pad, up + mt.maxs + pad, mt.list);
+				mt.Run(up, d, tr);
+				stands = !tr.startsolid && tr.fraction > 0.0f && tr.fraction < 1.0f && tr.plane.normal.z >= 0.7f;
+				if (stands)
+				{
+					mt.Run(p, up, tr);
+					stands = !tr.startsolid && tr.fraction > 0.0f;
+				}
 			}
 			// Not a floor 1u into the wall either (the top past the cover), nor 1u out.
 			CGameTrace tin, tout;

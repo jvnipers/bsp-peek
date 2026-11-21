@@ -181,7 +181,8 @@ native int BSP_HeadSeamCatch(const float wallPos[3], const float wallNorm[3], fl
 // for BSP_SeamCatch and the other tests. Returns the count.
 native int BSP_SeamCandidates(const float wallPos[3], const float wallNorm[3], float zMin, float zMax, float[] out, int maxOut);
 
-// Whether a box brush's bottom edge at edgeZ gives a falling player a texturebug, by movement's own traces (brush order counts).
+// Whether a box brush's bottom edge at edgeZ gives a falling player a texturebug, by movement's own traces (brush order counts),
+// from a start not within 2u of ground.
 // Returns BSPP_CATCH_STANDING / BSPP_CATCH_DUCKED bits, or -1 unavailable. info: the brush's height, the smallest gap at the wall.
 native int BSP_TexturebugCatch(const float wallPos[3], const float wallNorm[3], float edgeZ, float frametime, float gravity,
                                float maxspeed, float info[2]);
@@ -196,7 +197,8 @@ native int BSP_PixelwalkCatch(const float wallPos[3], const float wallNorm[3], f
 
 // Pixelwalk at the end of a covered top edge (a BSPP_EDGE_END point):
 // a hull exactly on the face, slid from 17u off the end along the edge, held from one point and inside the cover from a later one,
-// standing in between where the top isn't a floor 1u into the wall or 1u out. along: unit, from the end into the edge.
+// standing in between (landing from 2u up, a 2u rise moving) where the top isn't a floor 1u into the wall or 1u out.
+// along: unit, from the end into the edge.
 // Returns BSPP_CATCH_STANDING / BSPP_CATCH_DUCKED | BSPP_CATCH_EXACT, 0 none, -1 unavailable. out: the strip's middle (origin x, y) and its width.
 native int BSP_PixelwalkEnd(const float endPos[3], const float wallNorm[3], const float along[3], float edgeZ, float out[3]);
 
