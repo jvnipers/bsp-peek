@@ -637,7 +637,7 @@ namespace BSPSeam
 				{
 					continue;
 				}
-				for (int k = 0; k < 24; ++k)
+				for (int k = 0; k < 24 && at(lo) != at(hi); ++k)
 				{
 					float mid = (lo + hi) * 0.5f;
 					(clear(at(mid)) ? hi : lo) = mid;
@@ -659,7 +659,7 @@ namespace BSPSeam
 					{
 						continue;
 					}
-					for (int k = 0; k < 16; ++k)
+					for (int k = 0; k < 16 && at(last) != at(out); ++k)
 					{
 						float mid = (last + out) * 0.5f;
 						(stands(at(mid), groundZ) ? out : last) = mid;
@@ -685,7 +685,7 @@ namespace BSPSeam
 				}
 				creep |= bit;
 				float lo = creptGap, hi = 1.0f;
-				for (int k = 0; k < 16; ++k)
+				for (int k = 0; k < 16 && at(lo) != at(hi); ++k)
 				{
 					float mid = (lo + hi) * 0.5f, g;
 					(stands(at(mid), g) ? lo : hi) = mid;
@@ -765,7 +765,8 @@ namespace BSPSeam
 			auto down = [&](const Vector &p, CGameTrace &tr)
 			{
 				Vector d(p.x, p.y, p.z - 2.0f);
-				et->SetupLeafAndEntityListBox(d + mt.mins - pad, p + mt.maxs + pad, mt.list);
+				// 2u lower too, for the on-ground trace from where this one ends.
+				et->SetupLeafAndEntityListBox(d - Vector(0.0f, 0.0f, 2.0f) + mt.mins - pad, p + mt.maxs + pad, mt.list);
 				mt.Run(p, d, tr);
 			};
 			// Held: on ground or stuck; inside: stuck (a zero-length trace starts solid). Both only grow from off the end along the edge.
@@ -794,7 +795,7 @@ namespace BSPSeam
 			auto bisect = [&](auto test)
 			{
 				float a = -17.0f, b = 17.0f;
-				for (int k = 0; k < 24; ++k)
+				for (int k = 0; k < 24 && origin(a, 0.0f) != origin(b, 0.0f); ++k)
 				{
 					float m = (a + b) * 0.5f;
 					(test(m) ? b : a) = m;
@@ -1075,6 +1076,12 @@ namespace BSPSeam
 		{
 			float d = e.fn[0] * e.a[0] + e.fn[1] * e.a[1] - e.lean * up;
 			return std::make_tuple((int)std::lround(e.fn[0] * 1000.0f), (int)std::lround(e.fn[1] * 1000.0f), (int)std::lround(d * 64.0f));
+		}
+
+		// Height to 1/2u, flat normal to 1/500.
+		std::array<int, 3> NearKey(const WallEdge &e, int dz, int dx, int dy)
+		{
+			return {(int)std::lround(e.z * 2.0f) + dz, (int)std::lround(e.fn[0] * 500.0f) + dx, (int)std::lround(e.fn[1] * 500.0f) + dy};
 		}
 
 		// A wall face, for cutting the edges of other faces on its plane where it crosses their height.
@@ -1736,6 +1743,8 @@ namespace BSPSeam
 			// A bottom edge's are top edges at its height, a top edge's bottom edges, a shrunk top edge's bottom edges up to 1u above it.
 			// Not floor or ramp edges: no wall face of the plane.
 			std::map<std::tuple<int, int, int>, std::vector<int>> onPlane;
+			// Faces meeting at an edge with normals a little apart can be far apart in distance: an unshrunk edge's by height and normal.
+			std::map<std::array<int, 3>, std::vector<int>> nearBy;
 			// Top edge ends by corner, 1/16u: where another top edge on the same line goes on, the top doesn't end.
 			std::map<std::array<int, 3>, std::vector<int>> topEnds;
 			auto endKey = [](const float q[2], float z)
@@ -1743,6 +1752,7 @@ namespace BSPSeam
 			for (int i = 0; i < (int)edges.size(); ++i)
 			{
 				onPlane[PlaneKey(edges[i])].push_back(i);
+				nearBy[NearKey(edges[i], 0, 0, 0)].push_back(i);
 				if (edges[i].top && !edges[i].floor)
 				{
 					topEnds[endKey(edges[i].a, edges[i].z)].push_back(i);
@@ -1770,7 +1780,7 @@ namespace BSPSeam
 				const WallEdge &e = edges[i];
 				float span = std::sqrt((e.c[0] - e.a[0]) * (e.c[0] - e.a[0]) + (e.c[1] - e.a[1]) * (e.c[1] - e.a[1]));
 				std::vector<float> cuts = {0.0f, span};
-				std::vector<std::array<float, 3>> above; // from, to along e; how far e stands in front
+				std::vector<std::array<float, 4>> above; // t's ends along e; how far e stands in front at each
 				int ends = endsAt(i);
 				if (e.top || !e.shrunk)
 				{
@@ -1779,34 +1789,54 @@ namespace BSPSeam
 					auto lo = PlaneKey(e, e.shrunk ? 0.49f : 0.0f);
 					int d0 = std::get<2>(lo), d1 = std::get<2>(PlaneKey(e, e.shrunk ? 1.01f : 0.0f));
 					std::vector<int> coplanar;
-					// One bucket either side: a distance on a bucket boundary splits on vertex noise.
-					for (int d = (std::min)(d0, d1) - 1; d <= (std::max)(d0, d1) + 1; ++d)
+					if (e.shrunk)
 					{
-						auto it = onPlane.find({std::get<0>(lo), std::get<1>(lo), d});
-						if (it != onPlane.end())
+						// One bucket either side: a distance on a bucket boundary splits on vertex noise.
+						for (int d = (std::min)(d0, d1) - 1; d <= (std::max)(d0, d1) + 1; ++d)
 						{
-							coplanar.insert(coplanar.end(), it->second.begin(), it->second.end());
+							auto it = onPlane.find({std::get<0>(lo), std::get<1>(lo), d});
+							if (it != onPlane.end())
+							{
+								coplanar.insert(coplanar.end(), it->second.begin(), it->second.end());
+							}
+						}
+					}
+					else
+					{
+						for (int k = 0; k < 27; ++k)
+						{
+							auto it = nearBy.find(NearKey(e, k % 3 - 1, k / 3 % 3 - 1, k / 9 - 1));
+							if (it != nearBy.end())
+							{
+								coplanar.insert(coplanar.end(), it->second.begin(), it->second.end());
+							}
 						}
 					}
 					for (int j : coplanar)
 					{
 						const WallEdge &t = edges[j];
 						float up = t.z - e.z;
-						if (t.top == e.top || t.floor || t.ramp || (e.shrunk ? up < 0.49f || up > 1.01f : std::fabs(up) > 0.01f))
+						if (std::fabs(t.fn[0] - e.fn[0]) > 0.002f || std::fabs(t.fn[1] - e.fn[1]) > 0.002f || t.top == e.top || t.floor || t.ramp
+							|| (e.shrunk ? up < 0.49f || up > 1.01f : std::fabs(up) > 0.01f))
 						{
 							continue;
 						}
-						// How far e stands in front of t's face at e's height.
-						float front = (e.a[0] - t.a[0]) * e.fn[0] + (e.a[1] - t.a[1]) * e.fn[1] - t.lean * up;
-						if (!e.shrunk && std::fabs(front) > 0.015625f)
-						{
-							continue;
-						}
-						float at[2];
+						// How far e stands in front of t's face at e's height, at t's ends: t's normal can be a little off e's.
+						float at[2], front[2];
 						for (int k = 0; k < 2; ++k)
 						{
 							const float *q = k ? t.c : t.a;
 							at[k] = (q[0] - e.a[0]) * dir[0] + (q[1] - e.a[1]) * dir[1];
+							front[k] = (e.a[0] - q[0]) * e.fn[0] + (e.a[1] - q[1]) * e.fn[1] - t.lean * up;
+						}
+						auto frontAt = [&](float s) { return front[0] + (front[1] - front[0]) * (s - at[0]) / (at[1] - at[0]); };
+						float from = (std::max)(0.0f, (std::min)(at[0], at[1])), to = (std::min)(span, (std::max)(at[0], at[1]));
+						if (!e.shrunk && (std::fabs(frontAt(from)) > 0.015625f || std::fabs(frontAt(to)) > 0.015625f))
+						{
+							continue;
+						}
+						for (int k = 0; k < 2; ++k)
+						{
 							if (at[k] > 0.5f && at[k] < span - 0.5f)
 							{
 								cuts.push_back(at[k]);
@@ -1814,7 +1844,7 @@ namespace BSPSeam
 						}
 						if (e.top)
 						{
-							above.push_back({(std::min)(at[0], at[1]), (std::max)(at[0], at[1]), front});
+							above.push_back({at[0], at[1], front[0], front[1]});
 						}
 					}
 					// So does a face on the plane that crosses the edge's height: a pillar through a trim.
@@ -1851,14 +1881,14 @@ namespace BSPSeam
 					{
 						float mid = (cuts[k] + cuts[k + 1]) * 0.5f;
 						// Out past it by more than the vertices' float noise: a ledge thinner than the plane key's 1/64u.
-						float far = (std::max)((std::max)(std::fabs(e.a[0]), std::fabs(e.a[1])), (std::max)(std::fabs(e.c[0]), std::fabs(e.c[1])));
-						float noise = (std::max)(1e-4f, 4.0f * (std::nextafter(far, 2.0f * far + 1.0f) - far));
+						float extent = (std::max)((std::max)(std::fabs(e.a[0]), std::fabs(e.a[1])), (std::max)(std::fabs(e.c[0]), std::fabs(e.c[1])));
+						float noise = (std::max)(1e-4f, 4.0f * (std::nextafter(extent, 2.0f * extent + 1.0f) - extent));
 						bool ownAbove = false, hair = false;
 						for (const auto &r : above)
 						{
-							if (r[0] <= mid && mid <= r[1])
+							if ((std::min)(r[0], r[1]) <= mid && mid <= (std::max)(r[0], r[1]))
 							{
-								(r[2] > noise ? hair : ownAbove) = true;
+								(r[2] + (r[3] - r[2]) * (mid - r[0]) / (r[1] - r[0]) > noise ? hair : ownAbove) = true;
 							}
 						}
 						SampleSpan(et, e, cuts[k], cuts[k + 1], spacing, i, ownAbove || e.prop, hair && !ownAbove, ends);
