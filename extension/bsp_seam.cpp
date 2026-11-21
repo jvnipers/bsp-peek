@@ -1078,10 +1078,10 @@ namespace BSPSeam
 			return std::make_tuple((int)std::lround(e.fn[0] * 1000.0f), (int)std::lround(e.fn[1] * 1000.0f), (int)std::lround(d * 64.0f));
 		}
 
-		// Height to 1/2u, flat normal to 1/500.
-		std::array<int, 3> NearKey(const WallEdge &e, int dz, int dx, int dy)
+		// Height to 1/2u, flat normal to 1/250.
+		std::array<int, 3> NearKey(float z, float fx, float fy)
 		{
-			return {(int)std::lround(e.z * 2.0f) + dz, (int)std::lround(e.fn[0] * 500.0f) + dx, (int)std::lround(e.fn[1] * 500.0f) + dy};
+			return {(int)std::lround(z * 2.0f), (int)std::lround(fx * 250.0f), (int)std::lround(fy * 250.0f)};
 		}
 
 		// A wall face, for cutting the edges of other faces on its plane where it crosses their height.
@@ -1138,6 +1138,12 @@ namespace BSPSeam
 				{
 					float back = 0.0f;
 					bits |= Continuation(et, p, e.fn, -e.lean * past, &back);
+					// A face below under 1u tall: a covered top's seam is this edge's.
+					if (!e.top && !(bits & EDGE_CONTINUES))
+					{
+						const float q[3] = {p[0], p[1], e.z - 0.25f};
+						bits |= Continuation(et, q, e.fn, e.lean * 0.25f);
+					}
 					if (hair)
 					{
 						bits = (bits & ~(EDGE_CONTINUES | EDGE_NONWORLD)) | EDGE_LEDGE;
@@ -1752,7 +1758,7 @@ namespace BSPSeam
 			for (int i = 0; i < (int)edges.size(); ++i)
 			{
 				onPlane[PlaneKey(edges[i])].push_back(i);
-				nearBy[NearKey(edges[i], 0, 0, 0)].push_back(i);
+				nearBy[NearKey(edges[i].z, edges[i].fn[0], edges[i].fn[1])].push_back(i);
 				if (edges[i].top && !edges[i].floor)
 				{
 					topEnds[endKey(edges[i].a, edges[i].z)].push_back(i);
@@ -1803,12 +1809,21 @@ namespace BSPSeam
 					}
 					else
 					{
-						for (int k = 0; k < 27; ++k)
+						// The buckets the tolerances below span.
+						auto k0 = NearKey(e.z - 0.01f, e.fn[0] - 0.002f, e.fn[1] - 0.002f),
+							 k1 = NearKey(e.z + 0.01f, e.fn[0] + 0.002f, e.fn[1] + 0.002f);
+						for (int z = k0[0]; z <= k1[0]; ++z)
 						{
-							auto it = nearBy.find(NearKey(e, k % 3 - 1, k / 3 % 3 - 1, k / 9 - 1));
-							if (it != nearBy.end())
+							for (int x = k0[1]; x <= k1[1]; ++x)
 							{
-								coplanar.insert(coplanar.end(), it->second.begin(), it->second.end());
+								for (int y = k0[2]; y <= k1[2]; ++y)
+								{
+									auto it = nearBy.find({z, x, y});
+									if (it != nearBy.end())
+									{
+										coplanar.insert(coplanar.end(), it->second.begin(), it->second.end());
+									}
+								}
 							}
 						}
 					}
