@@ -1583,8 +1583,8 @@ namespace BSPSeam
 			}
 		}
 
-		// Top edges of a prop mesh's wall faces: a triangle side no coplanar triangle shares, third corner below. The winding isn't
-		// reliable and combined props hide faces inside: the front is the side a ray meets the face from; neither side, inside.
+		// Top edges of a prop mesh's wall and ramp faces: a triangle side no coplanar triangle shares, third corner below. The winding
+		// isn't reliable and combined props hide faces inside: the front is the side a ray meets the face from; neither side, inside.
 		void MeshTopEdges(IEngineTrace *et, ICollideable *c, const std::vector<float> &m, std::vector<WallEdge> &edges)
 		{
 			size_t count = m.size() / 9;
@@ -1617,7 +1617,7 @@ namespace BSPSeam
 			{
 				const Vector &n = normal[t];
 				float len = std::sqrt(n.x * n.x + n.y * n.y);
-				if (std::fabs(n.z) > 0.3f || len < 0.5f)
+				if (std::fabs(n.z) >= 0.7f || len < 0.5f)
 				{
 					continue;
 				}
@@ -1655,10 +1655,11 @@ namespace BSPSeam
 							break;
 						}
 					}
-					if (side != 0.0f)
+					bool ramp = n.z * side > 0.3f;
+					if (side != 0.0f && (ramp || std::fabs(n.z) <= 0.3f))
 					{
 						const float fn[2] = {n.x / len * side, n.y / len * side};
-						AddEdge(edges, a, b, z, fn, n.z / len * side, true, false, true);
+						AddEdge(edges, a, b, z, fn, n.z / len * side, true, false, true, ramp);
 					}
 				}
 			}
