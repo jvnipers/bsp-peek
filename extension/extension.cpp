@@ -2,6 +2,7 @@
 #include "bsp_data.h"
 #include "bsp_disp.h"
 #include "bsp_lumps.h"
+#include "bsp_overlay.h"
 #include "bsp_props.h"
 #include "bsp_seam.h"
 #include <IGameHelpers.h>
@@ -51,6 +52,10 @@ bool BSPPeek::SDK_OnLoad(char *error, size_t maxlen, bool late)
 	sharesys->AddNatives(myself, g_BSPNatives);
 	sharesys->RegisterLibrary(myself, "bsppeek");
 
+	char self[PLATFORM_MAX_PATH];
+	smutils->BuildPath(Path_SM, self, sizeof(self), "extensions/%s", myself->GetFilename());
+	BSPOverlay::OnLoad(self);
+
 	void *base = BSPData::DebugGetBase();
 	smutils->LogMessage(myself,
 						"Loaded. g_BSPData base = %p  | offs: brushes %d/%d  planes %d/%d"
@@ -62,6 +67,7 @@ bool BSPPeek::SDK_OnLoad(char *error, size_t maxlen, bool late)
 
 void BSPPeek::SDK_OnUnload()
 {
+	BSPOverlay::OnUnload();
 	BSPData::Shutdown();
 	BSPDisp::Clear();
 	BSPDisp::ShutdownEngine();
@@ -79,6 +85,8 @@ bool BSPPeek::QueryRunning(char *error, size_t maxlen)
 // Cleared here, not at map start: OnMapInit and entity spawn of the next map run before OnCoreMapStart.
 void BSPPeek::OnCoreMapEnd()
 {
+	// First: the overlay worker reads the edge points and the engine's map data.
+	BSPOverlay::OnMapEnd();
 	BSPData::OnMapEnd();
 	BSPSeam::OnMapEnd();
 	BSPProps::OnMapClear();
@@ -110,4 +118,7 @@ void BSPPeek::OnCoreMapStart(edict_t *pEdictList, int edictCount, int clientMax)
 	{
 		smutils->LogError(myself, "Lump load failed: %s", lerr);
 	}
+	char cacheDir[260];
+	smutils->BuildPath(Path_SM, cacheDir, sizeof(cacheDir), "data/bsppeek/overlay");
+	BSPOverlay::OnMapStart(mapname, bspPath, cacheDir);
 }

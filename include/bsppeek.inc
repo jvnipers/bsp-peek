@@ -237,6 +237,37 @@ native int BSP_PixelwalkEnd(const float endPos[3], const float wallNorm[3], cons
 // negative first or maxOut.
 native int BSP_WallEdgePoints(float spacing, int first, float[] out, int maxOut);
 
+// Overlay passes:
+// the seam tests at every BSP_WallEdgePoints point for one set of movement values ({tick interval, gravity, airaccelerate, maxspeed}),
+// as BSP_SeamCatch, BSP_HeadSeamCatch, BSP_TexturebugCatch, BSP_PixelwalkCatch and BSP_PixelwalkEnd give them by the point's bits,
+// and a point that misses next to one that catches tested again up to 16u toward it where a side wall stands at the edge.
+// A pass runs in BSP_OverlayStep calls, and on a worker thread while the server hibernates (BSP_OverlayHibernate).
+// Finished passes are saved under data/bsppeek/overlay per map, BSP-Peek build, spacing and values.
+#define BSPP_OVERLAY_PIXELSURF       1
+#define BSPP_OVERLAY_CEILING         2
+#define BSPP_OVERLAY_HEADSEAM        4
+#define BSPP_OVERLAY_TEXTUREBUG      8
+#define BSPP_OVERLAY_PIXELWALK       16
+#define BSPP_OVERLAY_PIXELWALK_EXACT 32
+
+// Starts the pass for these values, points nearest origin first (NULL_VECTOR: in point order).
+// With useCache a saved pass is loaded, and a pass the worker began for these values goes on from there.
+// Returns 1 when done (loaded), 0 started, -1 without points.
+native int  BSP_OverlayStart(const float values[4], float spacing, const float[] origin, bool useCache);
+
+// Runs the pass for up to seconds. Returns the points left, -1 without a pass.
+native int  BSP_OverlayStep(float seconds);
+
+// The pass's kinds per point (BSPP_OVERLAY_* bits, -1 untested), from `first`. Returns the total.
+native int  BSP_OverlayKinds(int first, int[] kinds, int maxKinds);
+
+// Values the worker tests too on every map, after the started pass, while the server hibernates; saved for a later start.
+native void BSP_OverlayQueue(const float values[4], float spacing);
+
+// Call from OnServerEnterHibernation (true) and OnServerExitHibernation (false): the worker runs only in between, and when 10 s
+// pass with no frame (the server hibernating since before SourceMod loaded, which then fires no enter).
+native void BSP_OverlayHibernate(bool hibernating);
+
 // Order bits returned by BSP_SeamOrder (1 << value).
 #define BSPP_SEAM_LOWER_FIRST   0
 #define BSPP_SEAM_UPPER_FIRST   1
@@ -823,6 +854,11 @@ public void __ext_bsppeek_SetNTVOptional()
     MarkNativeAsOptional("BSP_SeamOrder");
     MarkNativeAsOptional("BSP_SeamCatch");
     MarkNativeAsOptional("BSP_WallEdgePoints");
+    MarkNativeAsOptional("BSP_OverlayStart");
+    MarkNativeAsOptional("BSP_OverlayStep");
+    MarkNativeAsOptional("BSP_OverlayKinds");
+    MarkNativeAsOptional("BSP_OverlayQueue");
+    MarkNativeAsOptional("BSP_OverlayHibernate");
     MarkNativeAsOptional("BSP_HeadSeamCatch");
     MarkNativeAsOptional("BSP_SeamCandidates");
     MarkNativeAsOptional("BSP_TexturebugCatch");

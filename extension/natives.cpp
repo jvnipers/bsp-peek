@@ -2,6 +2,7 @@
 #include "bsp_data.h"
 #include "bsp_disp.h"
 #include "bsp_lumps.h"
+#include "bsp_overlay.h"
 #include "bsp_props.h"
 #include "bsp_seam.h"
 #include "collide.h"
@@ -1953,7 +1954,11 @@ cell_t N_WallEdgePoints(IPluginContext *pCtx, const cell_t *params)
 		return pCtx->ThrowNativeError("spacing %f must be at least 1, first %d and maxOut %d not negative", spacing, first, maxOut);
 	}
 	std::vector<float> pts((size_t)maxOut * BSPSeam::EDGE_POINT_FLOATS);
-	int total = BSPSeam::WallEdgePoints(spacing, first, pts.data(), maxOut);
+	int total;
+	{
+		auto lk = BSPOverlay::GameThreadLock();
+		total = BSPSeam::WallEdgePoints(spacing, first, pts.data(), maxOut);
+	}
 	int n = (std::min)(maxOut, (std::max)(0, total - first));
 	cell_t *out;
 	pCtx->LocalToPhysAddr(params[3], &out);
@@ -1962,6 +1967,81 @@ cell_t N_WallEdgePoints(IPluginContext *pCtx, const cell_t *params)
 		out[i] = sp_ftoc(pts[i]);
 	}
 	return total;
+}
+
+cell_t N_OverlayStart(IPluginContext *pCtx, const cell_t *params)
+{
+	cell_t *v, *o;
+	pCtx->LocalToPhysAddr(params[1], &v);
+	pCtx->LocalToPhysAddr(params[3], &o);
+	float values[4], origin[3], spacing = sp_ctof(params[2]);
+	if (!(spacing >= 1.0f))
+	{
+		return pCtx->ThrowNativeError("spacing %f must be at least 1", spacing);
+	}
+	for (int k = 0; k < 4; ++k)
+	{
+		values[k] = sp_ctof(v[k]);
+	}
+	bool hasOrigin = o != pCtx->GetNullRef(SP_NULL_VECTOR);
+	for (int k = 0; hasOrigin && k < 3; ++k)
+	{
+		origin[k] = sp_ctof(o[k]);
+	}
+	auto lk = BSPOverlay::GameThreadLock();
+	return BSPOverlay::Start(values, spacing, hasOrigin ? origin : nullptr, params[4] != 0);
+}
+
+cell_t N_OverlayStep(IPluginContext *pCtx, const cell_t *params)
+{
+	auto lk = BSPOverlay::GameThreadLock();
+	return BSPOverlay::Step(sp_ctof(params[1]));
+}
+
+cell_t N_OverlayKinds(IPluginContext *pCtx, const cell_t *params)
+{
+	int first = params[1], maxOut = out_len(params[3]);
+	if (first < 0 || maxOut < 0)
+	{
+		return pCtx->ThrowNativeError("first %d and maxKinds %d must not be negative", first, maxOut);
+	}
+	std::vector<int> kinds(maxOut);
+	int total;
+	{
+		auto lk = BSPOverlay::GameThreadLock();
+		total = BSPOverlay::Kinds(first, kinds.data(), maxOut);
+	}
+	cell_t *out;
+	pCtx->LocalToPhysAddr(params[2], &out);
+	for (int k = 0; k < maxOut && first + k < total; ++k)
+	{
+		out[k] = kinds[k];
+	}
+	return total;
+}
+
+cell_t N_OverlayQueue(IPluginContext *pCtx, const cell_t *params)
+{
+	cell_t *v;
+	pCtx->LocalToPhysAddr(params[1], &v);
+	float values[4], spacing = sp_ctof(params[2]);
+	if (!(spacing >= 1.0f))
+	{
+		return pCtx->ThrowNativeError("spacing %f must be at least 1", spacing);
+	}
+	for (int k = 0; k < 4; ++k)
+	{
+		values[k] = sp_ctof(v[k]);
+	}
+	auto lk = BSPOverlay::GameThreadLock();
+	BSPOverlay::Queue(values, spacing);
+	return 0;
+}
+
+cell_t N_OverlayHibernate(IPluginContext *pCtx, const cell_t *params)
+{
+	BSPOverlay::Hibernate(params[1] != 0);
+	return 0;
 }
 
 cell_t N_WorldTraceHull(IPluginContext *pCtx, const cell_t *params)
@@ -2463,6 +2543,11 @@ extern const sp_nativeinfo_t g_BSPNatives[] = {
 	{"BSP_PixelwalkCatch", N_PixelwalkCatch},
 	{"BSP_PixelwalkEnd", N_PixelwalkEnd},
 	{"BSP_WallEdgePoints", N_WallEdgePoints},
+	{"BSP_OverlayStart", N_OverlayStart},
+	{"BSP_OverlayStep", N_OverlayStep},
+	{"BSP_OverlayKinds", N_OverlayKinds},
+	{"BSP_OverlayQueue", N_OverlayQueue},
+	{"BSP_OverlayHibernate", N_OverlayHibernate},
 
 	// Surface physics properties (friction / surfaceprop)
 	{"BSP_SurfacePropsReady", N_SurfacePropsReady},
