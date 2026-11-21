@@ -1065,11 +1065,19 @@ namespace BSPSeam
 		// shrunk: moved down or up with a vphysics brush entity's collision model (SettleEdge).
 		// prop: a prop's top edge, kept only under a displacement, prop or entity (a prop under the world never hovers).
 		// floor: a displacement floor side or wall top end, a ledge for pixelwalks only.
+		// outBelow: the face under the top edge reaches out past it by more than float noise, leaning back too little for lean
+		// (a displacement sheet whose top vbsp welded onto the wall above).
 		struct WallEdge
 		{
 			float a[2], c[2], z, fn[2], lean;
-			bool top, shrunk, prop, ramp, floor;
+			bool top, shrunk, prop, ramp, floor, outBelow;
 		};
+
+		// Four float steps at the largest coordinate, at least 1e-4: vertices' float noise.
+		float FloatNoise(float extent)
+		{
+			return (std::max)(1e-4f, 4.0f * (std::nextafter(extent, 2.0f * extent + 1.0f) - extent));
+		}
 
 		// Faces on one plane share it: flat normal to 1/1000, distance to 1/64u, up units above e (a leaning face moves in going up).
 		std::tuple<int, int, int> PlaneKey(const WallEdge &e, float up = 0.0f)
@@ -1180,7 +1188,7 @@ namespace BSPSeam
 					}
 					// A wall leaning back holds like a ramp, whatever is above (a brush on its own bevel). Under its own bottom edge, which has
 					// the pixelsurf, only as a ramp.
-					if (e.top && e.lean > 0.001f && !(bits & EDGE_LEDGE))
+					if (e.top && (e.lean > 0.001f || e.outBelow) && !(bits & EDGE_LEDGE))
 					{
 						bits |= EDGE_RAMP;
 						if (ownAbove && !(bits & EDGE_NONWORLD))
@@ -1220,13 +1228,13 @@ namespace BSPSeam
 		}
 
 		void AddEdge(std::vector<WallEdge> &edges, const float a[2], const float c[2], float z, const float fn[2], float lean, bool top, bool shrunk,
-					 bool prop = false, bool ramp = false, bool floor = false)
+					 bool prop = false, bool ramp = false, bool floor = false, bool outBelow = false)
 		{
 			if ((c[0] - a[0]) * (c[0] - a[0]) + (c[1] - a[1]) * (c[1] - a[1]) < 1.0f)
 			{
 				return;
 			}
-			edges.push_back({{a[0], a[1]}, {c[0], c[1]}, z, {fn[0], fn[1]}, lean, top, shrunk, prop, ramp, floor});
+			edges.push_back({{a[0], a[1]}, {c[0], c[1]}, z, {fn[0], fn[1]}, lean, top, shrunk, prop, ramp, floor, outBelow});
 		}
 
 		// Horizontal edges of brush b's wall faces, moved by xf (a brush entity's collision transform) when given.
@@ -1557,7 +1565,10 @@ namespace BSPSeam
 							continue;
 						}
 						const float fn[2] = {n[0] / len, n[1] / len};
-						AddEdge(edges, a, c, (std::max)(a[2], c[2]), fn, n[2] / len, true, false, false, ramp);
+						float extent =
+							(std::max)({std::fabs(a[0]), std::fabs(a[1]), std::fabs(c[0]), std::fabs(c[1]), std::fabs(o[0]), std::fabs(o[1])});
+						bool out = !ramp && (o[0] - a[0]) * fn[0] + (o[1] - a[1]) * fn[1] > FloatNoise(extent);
+						AddEdge(edges, a, c, (std::max)(a[2], c[2]), fn, n[2] / len, true, false, false, ramp, false, out);
 						if (!ramp)
 						{
 							tops[{a[0], a[1], a[2]}].push_back({c[0], c[1], c[2]});
@@ -1897,8 +1908,7 @@ namespace BSPSeam
 					{
 						float mid = (cuts[k] + cuts[k + 1]) * 0.5f;
 						// Out past it by more than the vertices' float noise: a ledge thinner than the plane key's 1/64u.
-						float extent = (std::max)((std::max)(std::fabs(e.a[0]), std::fabs(e.a[1])), (std::max)(std::fabs(e.c[0]), std::fabs(e.c[1])));
-						float noise = (std::max)(1e-4f, 4.0f * (std::nextafter(extent, 2.0f * extent + 1.0f) - extent));
+						float noise = FloatNoise((std::max)({std::fabs(e.a[0]), std::fabs(e.a[1]), std::fabs(e.c[0]), std::fabs(e.c[1])}));
 						bool ownAbove = false, hair = false;
 						for (const auto &r : above)
 						{
