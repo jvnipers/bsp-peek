@@ -86,6 +86,8 @@ namespace BSPProps
 	//   material: char material code, climbable: ladder-surface flag.
 	bool SurfacePropData(int idx, float &friction, float &elasticity, float &density, float &thickness, float &dampening, float &maxSpeedFactor,
 						 float &jumpFactor, int &material, bool &climbable);
+	// The live surfacedata_t of surfaceprop[idx], as the player's m_pSurfaceData points to it. nullptr if unavailable / OOB.
+	const void *SurfacePropAddress(int idx);
 
 	// Diagnostic: hex+float dump of the live surfacedata_t for surfaceprop[idx] (the struct GetSurfaceData returns).
 	// Used to RE the runtime field layout. (friction=+0 is the known anchor). Returns length written.

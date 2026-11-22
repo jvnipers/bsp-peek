@@ -247,6 +247,11 @@ cell_t N_SurfacePropIndex(IPluginContext *pCtx, const cell_t *params)
 	return BSPProps::SurfacePropIndex(name);
 }
 
+cell_t N_SurfacePropAddress(IPluginContext *pCtx, const cell_t *params)
+{
+	return static_cast<cell_t>(reinterpret_cast<uintptr_t>(BSPProps::SurfacePropAddress(params[1])));
+}
+
 cell_t N_SurfacePropData(IPluginContext *pCtx, const cell_t *params)
 {
 	float friction, elasticity, density, thickness, dampening, maxSpeed, jump;
@@ -316,6 +321,7 @@ extern const sp_nativeinfo_t g_PropNatives[] = {
 	{"BSP_SurfacePropName", N_SurfacePropName},
 	{"BSP_SurfacePropIndex", N_SurfacePropIndex},
 	{"BSP_SurfacePropData", N_SurfacePropData},
+	{"BSP_SurfacePropAddress", N_SurfacePropAddress},
 	{"BSP_SurfacePropDump", N_SurfacePropDump},
 
 	{nullptr, nullptr},

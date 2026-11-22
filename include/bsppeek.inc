@@ -279,6 +279,7 @@ public void __ext_bsppeek_SetNTVOptional()
     MarkNativeAsOptional("BSP_SurfacePropName");
     MarkNativeAsOptional("BSP_SurfacePropIndex");
     MarkNativeAsOptional("BSP_SurfacePropData");
+    MarkNativeAsOptional("BSP_SurfacePropAddress");
     MarkNativeAsOptional("BSP_SurfacePropDump");
     MarkNativeAsOptional("BSP_LeafWaterCount");
     MarkNativeAsOptional("BSP_LeafWaterData");

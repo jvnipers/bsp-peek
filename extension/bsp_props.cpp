@@ -384,6 +384,16 @@ namespace BSPProps
 		return true;
 	}
 
+	const void *SurfacePropAddress(int idx)
+	{
+		IPhysicsSurfaceProps *sp = SurfaceProps();
+		if (!sp || idx < 0 || idx >= sp->SurfacePropCount())
+		{
+			return nullptr;
+		}
+		return sp->GetSurfaceData(idx);
+	}
+
 	int SurfacePropDump(int idx, char *buf, size_t buflen)
 	{
 		if (!buf || buflen == 0)
