@@ -64,6 +64,8 @@ namespace BSPProps
 	IEngineTrace *EngineTrace();
 	IStaticPropMgrServer *StaticPropMgr();
 	IVModelInfo *ModelInfo();
+	// An interface from an already loaded module's CreateInterface ("vphysics", "datacache"), else null.
+	void *ModuleInterface(const char *module, const char *name);
 
 	// Surface physics properties (friction / elasticity / movement modifiers).
 	// Resolved from the live IPhysicsSurfaceProps singleton in the already-loaded vphysics module.

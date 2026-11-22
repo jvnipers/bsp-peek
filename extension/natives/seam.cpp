@@ -191,9 +191,12 @@ cell_t N_OverlayQueue(IPluginContext *pCtx, const cell_t *params)
 	return 0;
 }
 
-cell_t N_OverlayHibernate(IPluginContext *pCtx, const cell_t *params)
+cell_t N_OverlayNearest(IPluginContext *pCtx, const cell_t *params)
 {
-	BSPOverlay::Hibernate(params[1] != 0);
+	float origin[3];
+	cell_to_float3(pCtx, params[1], origin);
+	auto lk = BSPOverlay::GameThreadLock();
+	BSPOverlay::Nearest(origin);
 	return 0;
 }
 
@@ -210,7 +213,7 @@ extern const sp_nativeinfo_t g_SeamNatives[] = {
 	{"BSP_OverlayStep", N_OverlayStep},
 	{"BSP_OverlayKinds", N_OverlayKinds},
 	{"BSP_OverlayQueue", N_OverlayQueue},
-	{"BSP_OverlayHibernate", N_OverlayHibernate},
+	{"BSP_OverlayNearest", N_OverlayNearest},
 
 	{nullptr, nullptr},
 };

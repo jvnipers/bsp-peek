@@ -47,6 +47,7 @@ bool BSPPeek::SDK_OnLoad(char *error, size_t maxlen, bool late)
 		smutils->LogMessage(myself, "Static-prop collision initialized");
 	}
 
+	BSPOverlay::Init(gameconf);
 	gameconfs->CloseGameConfigFile(gameconf);
 
 	sharesys->AddNatives(myself, g_CoreNatives);
@@ -60,6 +61,11 @@ bool BSPPeek::SDK_OnLoad(char *error, size_t maxlen, bool late)
 	char self[PLATFORM_MAX_PATH];
 	smutils->BuildPath(Path_SM, self, sizeof(self), "extensions/%s", myself->GetFilename());
 	BSPOverlay::OnLoad(self);
+	// A late load misses SourceMod's OnCoreMapStart for the running map.
+	if (late)
+	{
+		OnCoreMapStart(nullptr, 0, 0);
+	}
 
 	void *base = BSPData::DebugGetBase();
 	smutils->LogMessage(myself,

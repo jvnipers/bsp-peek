@@ -123,7 +123,7 @@ public void __ext_bsppeek_SetNTVOptional()
     MarkNativeAsOptional("BSP_OverlayStep");
     MarkNativeAsOptional("BSP_OverlayKinds");
     MarkNativeAsOptional("BSP_OverlayQueue");
-    MarkNativeAsOptional("BSP_OverlayHibernate");
+    MarkNativeAsOptional("BSP_OverlayNearest");
     MarkNativeAsOptional("BSP_HeadSeamCatch");
     MarkNativeAsOptional("BSP_SeamCandidates");
     MarkNativeAsOptional("BSP_TexturebugCatch");

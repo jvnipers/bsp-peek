@@ -4,6 +4,16 @@
     {
         "Signatures"
         {
+            // IVEngineServer::CreateFakeClient (VEngineServer023 slot 55), which pushes &sv:
+            // SourceMod's own check bytes (sdktools.games/engine.csgo.txt), unique in each engine binary.
+            //   Linux  0x1C7CF0, sv 0x6EB940 at +11;  Windows 0x101C1500, sv 0x107C1B00 at +8
+            "CreateFakeClient"
+            {
+                "library"   "engine"
+                "linux"     "\x55\x89\xE5\x53\x83\xEC\x0C\xFF\x75\x0C\x68"
+                "windows"   "\x55\x8B\xEC\x56\xFF\x2A\x2A\xB9\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x8B"
+            }
+
             "BSPDataLoaderCaller"
             {
                 "library"   "engine"
@@ -47,6 +57,20 @@
 
         "Addresses"
         {
+            // The game server (CGameServer sv, an IServer).
+            "sv"
+            {
+                "signature" "CreateFakeClient"
+                "linux"
+                {
+                    "read"  "11"
+                }
+                "windows"
+                {
+                    "read"  "8"
+                }
+            }
+
             "g_BSPData"
             {
                 "signature" "BSPDataLoaderCaller"
@@ -152,6 +176,17 @@
                 }
             }
         }
+        "Offsets"
+        {
+            // CBaseServer::m_bHibernating: SetHibernating ("Server is hibernating") writes it first.
+            //   Linux sub_1A0FC0 `mov [ebx+4A421h], al`; Windows 0x101B1870 `cmp byte ptr [ebx+4A429h], 0`
+            "sv_hibernating"
+            {
+                "linux"     "304161"
+                "windows"   "304169"
+            }
+        }
+
         "Keys"
         {
             // CDispCollTree

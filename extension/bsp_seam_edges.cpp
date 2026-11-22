@@ -89,7 +89,7 @@ namespace BSPSeam
 
 		// lean: the face normal's z over its flat length, how far the face moves in per unit up.
 		// shrunk: moved down or up with a vphysics brush entity's collision model (SettleEdge).
-		// prop: a prop's top edge, kept only under a displacement, prop or entity (a prop under the world never hovers).
+		// prop: a prop's top edge; a wall top kept only under a displacement, prop or entity (a prop under the world never hovers).
 		// floor: a displacement floor side or wall top end, a ledge for pixelwalks only.
 		// outBelow: the face under the top edge reaches out past it by more than float noise, leaning back too little for lean
 		// (a displacement sheet whose top vbsp welded onto the wall above).
@@ -134,8 +134,9 @@ namespace BSPSeam
 			return std::make_tuple((int)std::lround(fn[0] * 1000.0f), (int)std::lround(fn[1] * 1000.0f), (int)std::lround(d * 64.0f));
 		}
 
-		// Samples e between s0 and s1 units along it from a. ownAbove: a bottom edge at this height covers the stretch.
-		// hair: e stands out past that bottom edge by under 1/64u (a ledge). ends: END points may go at a (bit 0) and c (bit 1).
+		// Samples e between s0 and s1 units along it from a. ownAbove: a bottom edge at this height covers the stretch (set for a prop's).
+		// hair: e stands out past that bottom edge by more than float noise and under 1/64u (a ledge).
+		// ends: END points may go at a (bit 0) and c (bit 1).
 		void SampleSpan(IEngineTrace *et, const WallEdge &e, float s0, float s1, float spacing, int edge, bool ownAbove, bool hair, int ends)
 		{
 			float span = std::sqrt((e.c[0] - e.a[0]) * (e.c[0] - e.a[0]) + (e.c[1] - e.a[1]) * (e.c[1] - e.a[1]));
@@ -788,14 +789,26 @@ namespace BSPSeam
 			auto endsAt = [&](int i)
 			{
 				const WallEdge &e = edges[i];
+				float span = std::hypot(e.c[0] - e.a[0], e.c[1] - e.a[1]);
+				float dir[2] = {(e.c[0] - e.a[0]) / span, (e.c[1] - e.a[1]) / span};
 				int ends = 3;
 				for (int end = 0; end < 2 && e.top; ++end)
 				{
 					for (int j : topEnds[endKey(end ? e.c : e.a, e.z)])
 					{
-						if (j != i && edges[j].fn[0] * e.fn[0] + edges[j].fn[1] * e.fn[1] > 0.999f)
+						const WallEdge &t = edges[j];
+						if (j == i || t.fn[0] * e.fn[0] + t.fn[1] * e.fn[1] <= 0.999f)
 						{
-							ends &= ~(1 << end);
+							continue;
+						}
+						// Only one that goes on past the end: an overlapping or duplicate brush ending there too doesn't.
+						for (const float *q : {t.a, t.c})
+						{
+							float at = (q[0] - e.a[0]) * dir[0] + (q[1] - e.a[1]) * dir[1];
+							if (end ? at > span + 0.5f : at < -0.5f)
+							{
+								ends &= ~(1 << end);
+							}
 						}
 					}
 				}

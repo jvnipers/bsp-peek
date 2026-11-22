@@ -32,6 +32,31 @@
 
 namespace BSPProps
 {
+	typedef void *(*CreateInterfaceFn)(const char *name, int *returnCode);
+
+	void *ModuleInterface(const char *module, const char *name)
+	{
+		CreateInterfaceFn fn = nullptr;
+		char file[64];
+#ifdef _WIN32
+		snprintf(file, sizeof(file), "%s.dll", module);
+		HMODULE mod = GetModuleHandleA(file);
+		if (mod)
+		{
+			fn = reinterpret_cast<CreateInterfaceFn>(GetProcAddress(mod, "CreateInterface"));
+		}
+#else
+		// RTLD_NOLOAD: only a module already mapped; dlclose balances the refcount bump.
+		snprintf(file, sizeof(file), "%s.so", module);
+		void *mod = dlopen(file, RTLD_NOW | RTLD_NOLOAD);
+		if (mod)
+		{
+			fn = reinterpret_cast<CreateInterfaceFn>(dlsym(mod, "CreateInterface"));
+			dlclose(mod);
+		}
+#endif
+		return fn ? fn(name, nullptr) : nullptr;
+	}
 
 	namespace
 	{
@@ -71,34 +96,10 @@ namespace BSPProps
 		int OFF_SD_MATERIAL = 0x60;
 		int OFF_SD_CLIMBABLE = 0x62;
 
-		typedef void *(*CreateInterfaceFn)(const char *name, int *returnCode);
-
-		// Pull the live IPhysicsSurfaceProps singleton from the loaded vphysics module's CreateInterface export.
-		// These are process singletons, so it's the same instance the engine/server use.
+		// The live IPhysicsSurfaceProps singleton of the loaded vphysics module: the same instance the engine and server use.
 		IPhysicsSurfaceProps *ResolveSurfaceProps()
 		{
-			CreateInterfaceFn fn = nullptr;
-#ifdef _WIN32
-			HMODULE mod = GetModuleHandleA("vphysics.dll");
-			if (mod)
-			{
-				fn = reinterpret_cast<CreateInterfaceFn>(GetProcAddress(mod, "CreateInterface"));
-			}
-#else
-			// RTLD_NOLOAD: only succeed if vphysics is already mapped (always, on a running server).
-			// dlclose balances the implicit refcount bump.
-			void *mod = dlopen("vphysics.so", RTLD_NOW | RTLD_NOLOAD);
-			if (mod)
-			{
-				fn = reinterpret_cast<CreateInterfaceFn>(dlsym(mod, "CreateInterface"));
-				dlclose(mod);
-			}
-#endif
-			if (!fn)
-			{
-				return nullptr;
-			}
-			return reinterpret_cast<IPhysicsSurfaceProps *>(fn(VPHYSICS_SURFACEPROPS_INTERFACE_VERSION, nullptr));
+			return reinterpret_cast<IPhysicsSurfaceProps *>(ModuleInterface("vphysics", VPHYSICS_SURFACEPROPS_INTERFACE_VERSION));
 		}
 
 		// model path -> vcollide_t* (engine-owned, not freed here).

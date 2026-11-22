@@ -63,8 +63,8 @@ namespace BSPSeam
 		};
 
 		// A displacement hit on an axis-aligned normal reports that face's coordinate as dist: the sign is off on a negative axis.
-		// A vphysics hit (a prop) reports the plane through the hull's origin: then the face is taken 1/32 behind the contact,
-		// and own is false.
+		// A vphysics hit (a prop) reports the plane through the hull's origin, far from the contact: then the face is taken 1/32
+		// behind the contact, and own is false.
 		float HitDist(const CGameTrace &tr, const Vector &mins, const Vector &maxs, bool *own = nullptr)
 		{
 			const Vector &n = tr.plane.normal;
@@ -73,12 +73,18 @@ namespace BSPSeam
 			{
 				c += n[k] * (tr.endpos[k] + (n[k] > 0.0f ? mins[k] : maxs[k]));
 			}
-			bool plane = std::fabs(c - tr.plane.dist) < 0.5f, mirror = !plane && std::fabs(c + tr.plane.dist) < 0.5f;
+			float d = tr.plane.dist;
+			bool axial = std::fabs(n.x) == 1.0f || std::fabs(n.y) == 1.0f || std::fabs(n.z) == 1.0f;
+			if (tr.dispFlags && axial && std::fabs(c + d) < std::fabs(c - d))
+			{
+				d = -d;
+			}
+			bool plane = std::fabs(c - d) < 0.5f;
 			if (own)
 			{
-				*own = plane || mirror;
+				*own = plane;
 			}
-			return plane ? tr.plane.dist : (mirror ? -tr.plane.dist : c - 0.03125f);
+			return plane ? d : c - 0.03125f;
 		}
 
 		// AirAccelerate's step for this hull: ducked, the input is 0.34 of it; CategorizePosition leaves friction 0.25 after a rise
@@ -349,7 +355,8 @@ namespace BSPSeam
 					{
 						continue;
 					}
-					// One float step off, the closest a hug gets; at 0 the clip takes the hull as inside.
+					// The first clear float step off, the closest a hug gets: at 0 the clip takes the hull as inside,
+					// and in a coordinate-stop band (collisions §7.4) the first step rounds onto the face.
 					bool own;
 					float face = HitDist(hit, mt.mins, mt.maxs, &own) * sign;
 					if (!own)
@@ -357,12 +364,18 @@ namespace BSPSeam
 						continue;
 					}
 					Vector start = hit.endpos;
-					start[axis] = std::nextafter(face + 16.0f * sign, face + 64.0f * sign);
+					start[axis] = face + 16.0f * sign;
 					CGameTrace at;
-					Ray_t still;
-					still.Init(start, start, mt.mins, mt.maxs);
-					BSPProps::EngineTrace()->TraceRay(still, MASK_PLAYERSOLID, &mt.filter, &at);
-					if (at.startsolid)
+					bool clear = false;
+					for (int k = 0; k < 4 && !clear; ++k)
+					{
+						start[axis] = std::nextafter(start[axis], start[axis] + 64.0f * sign);
+						Ray_t still;
+						still.Init(start, start, mt.mins, mt.maxs);
+						BSPProps::EngineTrace()->TraceRay(still, MASK_PLAYERSOLID, &mt.filter, &at);
+						clear = !at.startsolid;
+					}
+					if (!clear)
 					{
 						continue;
 					}
@@ -481,13 +494,14 @@ namespace BSPSeam
 			return !tr.startsolid && tr.fraction < 1.0f && tr.plane.normal.z >= 0.7f && tr.endpos.z > rest.z - 0.1f;
 		};
 		// Exactly on a face the point test and the sweeps round its distance differently: every move can stop at once.
-		auto moves = [&](const Vector &p)
+		// drop: a drop from 2u up must land there too (a prop's face only needs the rise).
+		auto moves = [&](const Vector &p, bool drop)
 		{
 			Vector up(p.x, p.y, p.z + 2.0f), down(p.x, p.y, p.z - 2.0f);
 			et->SetupLeafAndEntityListBox(down + mt.mins - pad, up + mt.maxs + pad, mt.list);
 			CGameTrace tr;
 			mt.Run(up, down, tr);
-			if (tr.startsolid || tr.fraction <= 0.0f || tr.fraction >= 1.0f || tr.plane.normal.z < 0.7f)
+			if (drop && (tr.startsolid || tr.fraction <= 0.0f || tr.fraction >= 1.0f || tr.plane.normal.z < 0.7f))
 			{
 				return false;
 			}
@@ -565,7 +579,8 @@ namespace BSPSeam
 				}
 				return q;
 			};
-			float creptGap;
+			// setposGap: where only a setpos stands it (exactly on an axial face; on a prop, closer than a creep stops).
+			float creptGap, setposGap = 0.0f;
 			if (axis >= 0)
 			{
 				// The first clear float step off: in a coordinate-stop band (collisions §7.4) the first one rounds onto the face.
@@ -617,6 +632,12 @@ namespace BSPSeam
 					}
 					creptGap = out + 2.0f * step;
 				}
+				// A creep against a vphysics face stops 0.9 ε off it (collisions §5.2).
+				if (!own)
+				{
+					setposGap = creptGap;
+					creptGap = (std::max)(creptGap, hi + 0.9f * 0.03125f);
+				}
 			}
 			Vector crept = at(creptGap);
 			int bit = duck ? CATCH_DUCKED : CATCH_STANDING;
@@ -644,11 +665,11 @@ namespace BSPSeam
 				// On a face leaning back, across at the edge's height.
 				outInfo[0] = (std::max)(outInfo[0], f.z > 0.0f ? (lo - f.z * 0.03125f) / (float)std::sqrt(h) : lo);
 			}
-			else if (axis >= 0 && !creep && stands(at(0.0f), groundZ) && moves(at(0.0f)))
+			else if ((axis >= 0 || !own) && !creep && stands(at(setposGap), groundZ) && moves(at(setposGap), own))
 			{
 				if (!exact)
 				{
-					Vector on = at(0.0f);
+					Vector on = at(setposGap);
 					stands(on, groundZ);
 					outInfo[1] = groundZ;
 					outInfo[2] = on.x;
@@ -746,10 +767,11 @@ namespace BSPSeam
 			auto bisect = [&](auto test)
 			{
 				float a = -17.0f, b = 17.0f;
-				for (int k = 0; k < 24 && origin(a, 0.0f) != origin(b, 0.0f); ++k)
+				for (int k = 0; k < 24; ++k)
 				{
 					float m = (a + b) * 0.5f;
-					(test(m) ? b : a) = m;
+					Vector at = origin(m, 0.0f);
+					(at == origin(a, 0.0f) ? false : at == origin(b, 0.0f) || test(m)) ? b = m : a = m;
 				}
 				return b;
 			};
