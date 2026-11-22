@@ -415,15 +415,35 @@ namespace BSPProps
 		return off;
 	}
 
+	namespace
+	{
+		// A sweep's outputs before (or without) a hit: the whole move, no plane.
+		void SetMiss(const float end[3], float &outFraction, float outEndPos[3], float outNormal[3])
+		{
+			outFraction = 1.0f;
+			outEndPos[0] = end[0];
+			outEndPos[1] = end[1];
+			outEndPos[2] = end[2];
+			outNormal[0] = outNormal[1] = outNormal[2] = 0.0f;
+		}
+
+		void SetHit(const CGameTrace &tr, float &outFraction, float outEndPos[3], float outNormal[3])
+		{
+			outFraction = tr.fraction;
+			outEndPos[0] = tr.endpos.x;
+			outEndPos[1] = tr.endpos.y;
+			outEndPos[2] = tr.endpos.z;
+			outNormal[0] = tr.plane.normal.x;
+			outNormal[1] = tr.plane.normal.y;
+			outNormal[2] = tr.plane.normal.z;
+		}
+	} // namespace
+
 	int HullSweep(const float start[3], const float end[3], const float mins[3], const float maxs[3], float refZ, float &outFraction,
 				  float outEndPos[3], float outNormal[3], bool &outStartSolid)
 	{
-		outFraction = 1.0f;
+		SetMiss(end, outFraction, outEndPos, outNormal);
 		outStartSolid = false;
-		outEndPos[0] = end[0];
-		outEndPos[1] = end[1];
-		outEndPos[2] = end[2];
-		outNormal[0] = outNormal[1] = outNormal[2] = 0.0f;
 		if (!SweepReady())
 		{
 			return -1;
@@ -484,14 +504,8 @@ namespace BSPProps
 			{
 				bestDelta = delta;
 				haveHit = true;
-				outFraction = tr.fraction;
+				SetHit(tr, outFraction, outEndPos, outNormal);
 				outStartSolid = tr.startsolid;
-				outEndPos[0] = tr.endpos.x;
-				outEndPos[1] = tr.endpos.y;
-				outEndPos[2] = tr.endpos.z;
-				outNormal[0] = tr.plane.normal.x;
-				outNormal[1] = tr.plane.normal.y;
-				outNormal[2] = tr.plane.normal.z;
 			}
 		}
 		return haveHit ? 1 : 0;
@@ -502,11 +516,7 @@ namespace BSPProps
 					   int &outDispFlags, float &outPlaneDist, int &outSurfaceProps, int &outSurfaceFlags, int &outHitType, char *outSurfName,
 					   int surfNameLen)
 	{
-		outFraction = 1.0f;
-		outEndPos[0] = end[0];
-		outEndPos[1] = end[1];
-		outEndPos[2] = end[2];
-		outNormal[0] = outNormal[1] = outNormal[2] = 0.0f;
+		SetMiss(end, outFraction, outEndPos, outNormal);
 		outStartSolid = false;
 		outAllSolid = false;
 		outContents = 0;
@@ -547,13 +557,7 @@ namespace BSPProps
 			g_enginetrace->TraceRay(ray, mask, &filter, &tr);
 		}
 
-		outFraction = tr.fraction;
-		outEndPos[0] = tr.endpos.x;
-		outEndPos[1] = tr.endpos.y;
-		outEndPos[2] = tr.endpos.z;
-		outNormal[0] = tr.plane.normal.x;
-		outNormal[1] = tr.plane.normal.y;
-		outNormal[2] = tr.plane.normal.z;
+		SetHit(tr, outFraction, outEndPos, outNormal);
 		outPlaneDist = tr.plane.dist;
 		outStartSolid = tr.startsolid;
 		outAllSolid = tr.allsolid;
@@ -597,12 +601,8 @@ namespace BSPProps
 	int TraceHull(int propIdx, const float start[3], const float end[3], const float mins[3], const float maxs[3], float &outFraction,
 				  float outEndPos[3], float outNormal[3], bool &outStartSolid)
 	{
-		outFraction = 1.0f;
+		SetMiss(end, outFraction, outEndPos, outNormal);
 		outStartSolid = false;
-		outEndPos[0] = end[0];
-		outEndPos[1] = end[1];
-		outEndPos[2] = end[2];
-		outNormal[0] = outNormal[1] = outNormal[2] = 0.0f;
 
 		if (!Ready())
 		{
@@ -642,13 +642,7 @@ namespace BSPProps
 		{
 			return 0;
 		}
-		outFraction = tr.fraction;
-		outEndPos[0] = tr.endpos.x;
-		outEndPos[1] = tr.endpos.y;
-		outEndPos[2] = tr.endpos.z;
-		outNormal[0] = tr.plane.normal.x;
-		outNormal[1] = tr.plane.normal.y;
-		outNormal[2] = tr.plane.normal.z;
+		SetHit(tr, outFraction, outEndPos, outNormal);
 		return 1;
 	}
 

@@ -443,10 +443,12 @@ namespace BSPSeam
 			}
 		}
 
-		// Brush entities that stay put and block movement.
-		class StaticBrushEntities : public IEntityEnumerator
+		// Entities of these classes that block movement, static props aside, in enumeration order.
+		class SolidEntities : public IEntityEnumerator
 		{
 		public:
+			SolidEntities(std::initializer_list<const char *> classes) : m_classes(classes) {}
+
 			std::vector<ICollideable *> found;
 
 			bool EnumEntity(IHandleEntity *ent) override
@@ -458,17 +460,15 @@ namespace BSPSeam
 				}
 				IServerNetworkable *net = static_cast<IServerUnknown *>(ent)->GetNetworkable();
 				const char *cls = net ? net->GetClassName() : nullptr;
-				if (!cls || (std::strcmp(cls, "func_brush") && std::strcmp(cls, "func_wall") && std::strcmp(cls, "func_wall_toggle")))
+				if (cls && std::any_of(m_classes.begin(), m_classes.end(), [cls](const char *c) { return !std::strcmp(cls, c); }))
 				{
-					return true;
-				}
-				ICollideable *c = static_cast<IServerUnknown *>(ent)->GetCollideable();
-				if (c && (c->GetSolid() == SOLID_BSP || c->GetSolid() == SOLID_VPHYSICS))
-				{
-					found.push_back(c);
+					found.push_back(static_cast<IServerUnknown *>(ent)->GetCollideable());
 				}
 				return true;
 			}
+
+		private:
+			std::vector<const char *> m_classes;
 		};
 
 		void EntityEdges(IEngineTrace *et, std::vector<WallEdge> &edges)
@@ -479,10 +479,15 @@ namespace BSPSeam
 			{
 				return;
 			}
-			StaticBrushEntities ents;
+			// Brush entities that stay put.
+			SolidEntities ents({"func_brush", "func_wall", "func_wall_toggle"});
 			et->EnumerateEntities(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), &ents);
 			for (ICollideable *c : ents.found)
 			{
+				if (!c || (c->GetSolid() != SOLID_BSP && c->GetSolid() != SOLID_VPHYSICS))
+				{
+					continue;
+				}
 				const model_t *m = c->GetCollisionModel();
 				// Brush models are "*N", cmodel N.
 				const char *name = m ? mi->GetModelName(m) : nullptr;
@@ -702,29 +707,6 @@ namespace BSPSeam
 			}
 		}
 
-		// prop_dynamic entities that block movement.
-		class PropEntities : public IEntityEnumerator
-		{
-		public:
-			std::vector<ICollideable *> found;
-
-			bool EnumEntity(IHandleEntity *ent) override
-			{
-				MovementFilter movement;
-				if ((BSPProps::StaticPropMgr() && BSPProps::StaticPropMgr()->IsStaticProp(ent)) || !movement.ShouldHitEntity(ent, MASK_PLAYERSOLID))
-				{
-					return true;
-				}
-				IServerNetworkable *net = static_cast<IServerUnknown *>(ent)->GetNetworkable();
-				const char *cls = net ? net->GetClassName() : nullptr;
-				if (cls && (!std::strcmp(cls, "prop_dynamic") || !std::strcmp(cls, "prop_dynamic_override")))
-				{
-					found.push_back(static_cast<IServerUnknown *>(ent)->GetCollideable());
-				}
-				return true;
-			}
-		};
-
 		void PropEdges(IEngineTrace *et, std::vector<WallEdge> &edges)
 		{
 			std::vector<float> m;
@@ -742,7 +724,7 @@ namespace BSPSeam
 			{
 				return;
 			}
-			PropEntities ents;
+			SolidEntities ents({"prop_dynamic", "prop_dynamic_override"});
 			et->EnumerateEntities(Vector(mn[0], mn[1], mn[2]), Vector(mx[0], mx[1], mx[2]), &ents);
 			for (ICollideable *c : ents.found)
 			{

@@ -7,51 +7,46 @@
 #include <cstdio>
 #include <cstring>
 
+namespace
+{
+	// One load attempt per map and loader: natives can run every tick. The map name when this call loaded it, else nullptr.
+	const char *LoadOncePerMap(const char *what, char (&failedMap)[128], bool (*isLoaded)(const char *),
+							   bool (*load)(const char *, const char *, char *, size_t))
+	{
+		// By name: a load between map end and the next map's OnMapInit holds the previous map.
+		const char *mapname = gamehelpers->GetCurrentMap();
+		if (!mapname || !mapname[0] || isLoaded(mapname))
+		{
+			return nullptr;
+		}
+		if (std::strcmp(failedMap, mapname) == 0)
+		{
+			return nullptr;
+		}
+		char bspPath[260];
+		smutils->BuildPath(Path_Game, bspPath, sizeof(bspPath), "maps/%s.bsp", mapname);
+		char err[256] = {0};
+		if (!load(mapname, bspPath, err, sizeof(err)))
+		{
+			smutils->LogError(myself, "%s load failed for '%s': %s", what, mapname, err);
+			std::strncpy(failedMap, mapname, sizeof(failedMap) - 1);
+			return nullptr;
+		}
+		return mapname;
+	}
+} // namespace
+
 void EnsureLumpsLoaded()
 {
-	// By name: a load between map end and the next map's OnMapInit holds the previous map.
-	const char *mapname = gamehelpers->GetCurrentMap();
-	if (!mapname || !mapname[0] || BSPLumps::IsLoaded(mapname))
-	{
-		return;
-	}
-	// One attempt per map: natives can run every tick.
 	static char s_failedMap[128] = {0};
-	if (std::strcmp(s_failedMap, mapname) == 0)
-	{
-		return;
-	}
-	char bspPath[260];
-	smutils->BuildPath(Path_Game, bspPath, sizeof(bspPath), "maps/%s.bsp", mapname);
-	char err[256] = {0};
-	if (!BSPLumps::LoadFromMap(mapname, bspPath, err, sizeof(err)))
-	{
-		smutils->LogError(myself, "Lump load failed for '%s': %s", mapname, err);
-		std::strncpy(s_failedMap, mapname, sizeof(s_failedMap) - 1);
-	}
+	LoadOncePerMap("Lump", s_failedMap, BSPLumps::IsLoaded, BSPLumps::LoadFromMap);
 }
 
 void EnsureDispLoaded()
 {
-	const char *mapname = gamehelpers->GetCurrentMap();
-	if (!mapname || !mapname[0] || BSPDisp::IsLoaded(mapname))
-	{
-		return;
-	}
 	static char s_failedMap[128] = {0};
-	if (std::strcmp(s_failedMap, mapname) == 0)
-	{
-		return;
-	}
-	char bspPath[260];
-	smutils->BuildPath(Path_Game, bspPath, sizeof(bspPath), "maps/%s.bsp", mapname);
-	char err[256] = {0};
-	if (!BSPDisp::EnsureLoaded(mapname, bspPath, err, sizeof(err)))
-	{
-		smutils->LogError(myself, "Displacement load failed for '%s': %s", mapname, err);
-		std::strncpy(s_failedMap, mapname, sizeof(s_failedMap) - 1);
-	}
-	else if (BSPDisp::DiskCount() > 0)
+	const char *mapname = LoadOncePerMap("Displacement", s_failedMap, BSPDisp::IsLoaded, BSPDisp::EnsureLoaded);
+	if (mapname && BSPDisp::DiskCount() > 0)
 	{
 		static char s_lastReportedMap[128] = {0};
 		if (std::strcmp(s_lastReportedMap, mapname) != 0)
