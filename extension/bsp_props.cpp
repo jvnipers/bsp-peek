@@ -986,57 +986,6 @@ namespace BSPProps
 			return &stored;
 		}
 
-		// Squared distance from p to triangle abc + the closest point (Ericson, RTCD).
-		float ClosestPtTriSq(const Vector &p, const Vector &a, const Vector &b, const Vector &c, Vector &out)
-		{
-			Vector ab = b - a, ac = c - a, ap = p - a;
-			float d1 = ab.Dot(ap), d2 = ac.Dot(ap);
-			if (d1 <= 0.0f && d2 <= 0.0f)
-			{
-				out = a;
-				return (p - a).LengthSqr();
-			}
-			Vector bp = p - b;
-			float d3 = ab.Dot(bp), d4 = ac.Dot(bp);
-			if (d3 >= 0.0f && d4 <= d3)
-			{
-				out = b;
-				return (p - b).LengthSqr();
-			}
-			float vc = d1 * d4 - d3 * d2;
-			if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f)
-			{
-				float v = d1 / (d1 - d3);
-				out = a + ab * v;
-				return (p - out).LengthSqr();
-			}
-			Vector cp = p - c;
-			float d5 = ab.Dot(cp), d6 = ac.Dot(cp);
-			if (d6 >= 0.0f && d5 <= d6)
-			{
-				out = c;
-				return (p - c).LengthSqr();
-			}
-			float vb = d5 * d2 - d1 * d6;
-			if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f)
-			{
-				float w = d2 / (d2 - d6);
-				out = a + ac * w;
-				return (p - out).LengthSqr();
-			}
-			float va = d3 * d6 - d5 * d4;
-			if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f)
-			{
-				float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-				out = b + (c - b) * w;
-				return (p - out).LengthSqr();
-			}
-			float denom = 1.0f / (va + vb + vc);
-			float v = vb * denom, w = vc * denom;
-			out = a + ab * v + ac * w;
-			return (p - out).LengthSqr();
-		}
-
 	} // namespace
 
 	void CollisionMesh(ICollideable *c, std::vector<float> &out)
@@ -1087,6 +1036,7 @@ namespace BSPProps
 			return -1.0f;
 		}
 		Vector p(pos[0], pos[1], pos[2]);
+		const BSPUtil::Vec3 pv = {pos[0], pos[1], pos[2]};
 		Vector bmin(p.x - maxDist, p.y - maxDist, p.z - maxDist);
 		Vector bmax(p.x + maxDist, p.y + maxDist, p.z + maxDist);
 		CUtlVector<ICollideable *> cands;
@@ -1117,8 +1067,7 @@ namespace BSPProps
 			{
 				const float *q = &(*m)[t * 9];
 				Vector a(q[0], q[1], q[2]), b(q[3], q[4], q[5]), c(q[6], q[7], q[8]);
-				Vector cp;
-				float d2 = ClosestPtTriSq(p, a, b, c, cp);
+				float d2 = BSPUtil::DistSqToTri(pv, {q[0], q[1], q[2]}, {q[3], q[4], q[5]}, {q[6], q[7], q[8]});
 				if (d2 < bestSq)
 				{
 					bestSq = d2;

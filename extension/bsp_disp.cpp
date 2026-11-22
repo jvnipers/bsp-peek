@@ -8,6 +8,7 @@
 #include <cstring>
 #include <vector>
 
+using BSPUtil::DistSqToTri;
 using BSPUtil::GetKeyInt;
 using BSPUtil::kNoHit;
 using BSPUtil::ReadF32;
@@ -624,85 +625,6 @@ namespace BSPDisp
 		return best;
 	}
 
-	// Closest point on triangle (a,b,c) to p, written into q.
-	// Ericson, Real-Time Collision Detection, ClosestPtPointTriangle.
-	static void ClosestPtPointTriangle(const float p[3], const Vec3 &a, const Vec3 &b, const Vec3 &c, float q[3])
-	{
-		float ab[3] = {b.x - a.x, b.y - a.y, b.z - a.z};
-		float ac[3] = {c.x - a.x, c.y - a.y, c.z - a.z};
-		float ap[3] = {p[0] - a.x, p[1] - a.y, p[2] - a.z};
-		float d1 = ab[0] * ap[0] + ab[1] * ap[1] + ab[2] * ap[2];
-		float d2 = ac[0] * ap[0] + ac[1] * ap[1] + ac[2] * ap[2];
-		if (d1 <= 0.0f && d2 <= 0.0f)
-		{
-			q[0] = a.x;
-			q[1] = a.y;
-			q[2] = a.z;
-			return;
-		}
-		float bp[3] = {p[0] - b.x, p[1] - b.y, p[2] - b.z};
-		float d3 = ab[0] * bp[0] + ab[1] * bp[1] + ab[2] * bp[2];
-		float d4 = ac[0] * bp[0] + ac[1] * bp[1] + ac[2] * bp[2];
-		if (d3 >= 0.0f && d4 <= d3)
-		{
-			q[0] = b.x;
-			q[1] = b.y;
-			q[2] = b.z;
-			return;
-		}
-		float vc = d1 * d4 - d3 * d2;
-		if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f)
-		{
-			float v = d1 / (d1 - d3);
-			q[0] = a.x + v * ab[0];
-			q[1] = a.y + v * ab[1];
-			q[2] = a.z + v * ab[2];
-			return;
-		}
-		float cp[3] = {p[0] - c.x, p[1] - c.y, p[2] - c.z};
-		float d5 = ab[0] * cp[0] + ab[1] * cp[1] + ab[2] * cp[2];
-		float d6 = ac[0] * cp[0] + ac[1] * cp[1] + ac[2] * cp[2];
-		if (d6 >= 0.0f && d5 <= d6)
-		{
-			q[0] = c.x;
-			q[1] = c.y;
-			q[2] = c.z;
-			return;
-		}
-		float vb = d5 * d2 - d1 * d6;
-		if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f)
-		{
-			float w = d2 / (d2 - d6);
-			q[0] = a.x + w * ac[0];
-			q[1] = a.y + w * ac[1];
-			q[2] = a.z + w * ac[2];
-			return;
-		}
-		float va = d3 * d6 - d5 * d4;
-		if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f)
-		{
-			float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-			q[0] = b.x + w * (c.x - b.x);
-			q[1] = b.y + w * (c.y - b.y);
-			q[2] = b.z + w * (c.z - b.z);
-			return;
-		}
-		float denom = 1.0f / (va + vb + vc);
-		float v = vb * denom;
-		float w = vc * denom;
-		q[0] = a.x + ab[0] * v + ac[0] * w;
-		q[1] = a.y + ab[1] * v + ac[1] * w;
-		q[2] = a.z + ab[2] * v + ac[2] * w;
-	}
-
-	static float DistSqToTri(const float p[3], const Vec3 &a, const Vec3 &b, const Vec3 &c)
-	{
-		float q[3];
-		ClosestPtPointTriangle(p, a, b, c, q);
-		float dx = p[0] - q[0], dy = p[1] - q[1], dz = p[2] - q[2];
-		return dx * dx + dy * dy + dz * dz;
-	}
-
 	namespace engine
 	{
 		// Invoke fn(tree index, triRec, v0, v1, v2, squared distance to pos)
@@ -710,6 +632,7 @@ namespace BSPDisp
 		template<typename F>
 		inline void ForEachTriNear(const float pos[3], float maxDist, F &&fn)
 		{
+			const Vec3 p = {pos[0], pos[1], pos[2]};
 			int count = EngineCount();
 			for (int i = 0; i < count; i++)
 			{
@@ -726,7 +649,7 @@ namespace BSPDisp
 					continue;
 				}
 				ForEachTreeTriangle(tree, [&](const uint8_t *triRec, const Vec3 &v0, const Vec3 &v1, const Vec3 &v2)
-									{ fn(i, triRec, v0, v1, v2, DistSqToTri(pos, v0, v1, v2)); });
+									{ fn(i, triRec, v0, v1, v2, DistSqToTri(p, v0, v1, v2)); });
 			}
 		}
 	} // namespace engine
@@ -738,6 +661,7 @@ namespace BSPDisp
 		template<typename F>
 		inline void ForEachTriNear(const float pos[3], float maxDist, F &&fn)
 		{
+			const Vec3 p = {pos[0], pos[1], pos[2]};
 			for (size_t i = 0; i < g_disps.size(); i++)
 			{
 				const Displacement &d = g_disps[i];
@@ -748,7 +672,7 @@ namespace BSPDisp
 				}
 				for (const Triangle &t : d.tris)
 				{
-					fn(i, t, DistSqToTri(pos, t.v0, t.v1, t.v2));
+					fn(i, t, DistSqToTri(p, t.v0, t.v1, t.v2));
 				}
 			}
 		}
