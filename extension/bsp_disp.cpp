@@ -130,6 +130,44 @@ namespace BSPDisp
 			}
 		}
 
+		// Invoke fn(tree index, triRec, z) for every triangle of a sane tree that has a height z at (x, y), in tree and triangle order.
+		template<typename F>
+		inline void ForEachHeightAt(float x, float y, F &&fn)
+		{
+			int count = EngineCount();
+			for (int i = 0; i < count; i++)
+			{
+				const uint8_t *tree = TreePtr(i);
+				if (!IsTreeSane(tree))
+				{
+					continue;
+				}
+				float mn[3], mx[3];
+				ReadTreeAABB(tree, mn, mx);
+				if (x < mn[0] || x > mx[0] || y < mn[1] || y > mx[1])
+				{
+					continue;
+				}
+				ForEachTreeTriangle(tree,
+									[&](const uint8_t *triRec, const Vec3 &v0, const Vec3 &v1, const Vec3 &v2)
+									{
+										float triMinX = std::fmin(v0.x, std::fmin(v1.x, v2.x));
+										float triMaxX = std::fmax(v0.x, std::fmax(v1.x, v2.x));
+										float triMinY = std::fmin(v0.y, std::fmin(v1.y, v2.y));
+										float triMaxY = std::fmax(v0.y, std::fmax(v1.y, v2.y));
+										if (x < triMinX || x > triMaxX || y < triMinY || y > triMaxY)
+										{
+											return;
+										}
+										float z = TriHeightZXY(v0, v1, v2, x, y);
+										if (!std::isnan(z))
+										{
+											fn(i, triRec, z);
+										}
+									});
+			}
+		}
+
 	} // namespace engine
 
 	// DISK - parses BSP file lumps into triangle meshes
@@ -597,42 +635,15 @@ namespace BSPDisp
 		}
 
 		float best = kNoHit;
-		int count = EngineCount();
-
-		for (int i = 0; i < count; i++)
-		{
-			const uint8_t *tree = engine::TreePtr(i);
-			if (!engine::IsTreeSane(tree))
-			{
-				continue;
-			}
-
-			float mn[3], mx[3];
-			engine::ReadTreeAABB(tree, mn, mx);
-			if (x < mn[0] || x > mx[0] || y < mn[1] || y > mx[1])
-			{
-				continue;
-			}
-
-			engine::ForEachTreeTriangle(tree,
-										[&](const uint8_t *, const Vec3 &v0, const Vec3 &v1, const Vec3 &v2)
-										{
-											float triMinX = std::fmin(v0.x, std::fmin(v1.x, v2.x));
-											float triMaxX = std::fmax(v0.x, std::fmax(v1.x, v2.x));
-											float triMinY = std::fmin(v0.y, std::fmin(v1.y, v2.y));
-											float triMaxY = std::fmax(v0.y, std::fmax(v1.y, v2.y));
-											if (x < triMinX || x > triMaxX || y < triMinY || y > triMaxY)
-											{
-												return;
-											}
-											float z = TriHeightZXY(v0, v1, v2, x, y);
-											if (!std::isnan(z) && z > best)
-											{
-												best = z;
-												outIdx = i;
-											}
-										});
-		}
+		engine::ForEachHeightAt(x, y,
+								[&](int i, const uint8_t *, float z)
+								{
+									if (z > best)
+									{
+										best = z;
+										outIdx = i;
+									}
+								});
 		return best;
 	}
 
@@ -707,6 +718,65 @@ namespace BSPDisp
 		q[2] = a.z + ab[2] * v + ac[2] * w;
 	}
 
+	static float DistSqToTri(const float p[3], const Vec3 &a, const Vec3 &b, const Vec3 &c)
+	{
+		float q[3];
+		ClosestPtPointTriangle(p, a, b, c, q);
+		float dx = p[0] - q[0], dy = p[1] - q[1], dz = p[2] - q[2];
+		return dx * dx + dy * dy + dz * dz;
+	}
+
+	namespace engine
+	{
+		// Invoke fn(tree index, triRec, v0, v1, v2, squared distance to pos)
+		// for every triangle of a sane tree whose AABB is within maxDist of pos, in tree and triangle order.
+		template<typename F>
+		inline void ForEachTriNear(const float pos[3], float maxDist, F &&fn)
+		{
+			int count = EngineCount();
+			for (int i = 0; i < count; i++)
+			{
+				const uint8_t *tree = TreePtr(i);
+				if (!IsTreeSane(tree))
+				{
+					continue;
+				}
+				float mn[3], mx[3];
+				ReadTreeAABB(tree, mn, mx);
+				if (pos[0] < mn[0] - maxDist || pos[0] > mx[0] + maxDist || pos[1] < mn[1] - maxDist || pos[1] > mx[1] + maxDist
+					|| pos[2] < mn[2] - maxDist || pos[2] > mx[2] + maxDist)
+				{
+					continue;
+				}
+				ForEachTreeTriangle(tree, [&](const uint8_t *triRec, const Vec3 &v0, const Vec3 &v1, const Vec3 &v2)
+									{ fn(i, triRec, v0, v1, v2, DistSqToTri(pos, v0, v1, v2)); });
+			}
+		}
+	} // namespace engine
+
+	namespace disk
+	{
+		// Invoke fn(displacement index, triangle, squared distance to pos)
+		// for every triangle of a displacement whose bbox is within maxDist of pos, in displacement and triangle order.
+		template<typename F>
+		inline void ForEachTriNear(const float pos[3], float maxDist, F &&fn)
+		{
+			for (size_t i = 0; i < g_disps.size(); i++)
+			{
+				const Displacement &d = g_disps[i];
+				if (pos[0] < d.bboxMins[0] - maxDist || pos[0] > d.bboxMaxs[0] + maxDist || pos[1] < d.bboxMins[1] - maxDist
+					|| pos[1] > d.bboxMaxs[1] + maxDist || pos[2] < d.bboxMins[2] - maxDist || pos[2] > d.bboxMaxs[2] + maxDist)
+				{
+					continue;
+				}
+				for (const Triangle &t : d.tris)
+				{
+					fn(i, t, DistSqToTri(pos, t.v0, t.v1, t.v2));
+				}
+			}
+		}
+	} // namespace disk
+
 	// Min 3D distance from pos to any engine displacement collision triangle within maxDist.
 	// Returns kNoHit if no engine disp data or nothing within maxDist.
 	float EngineDistToSurface(const float pos[3], float maxDist)
@@ -717,35 +787,15 @@ namespace BSPDisp
 		}
 		float bestSq = maxDist * maxDist;
 		bool found = false;
-		int count = EngineCount();
-		for (int i = 0; i < count; i++)
-		{
-			const uint8_t *tree = engine::TreePtr(i);
-			if (!engine::IsTreeSane(tree))
-			{
-				continue;
-			}
-			float mn[3], mx[3];
-			engine::ReadTreeAABB(tree, mn, mx);
-			if (pos[0] < mn[0] - maxDist || pos[0] > mx[0] + maxDist || pos[1] < mn[1] - maxDist || pos[1] > mx[1] + maxDist
-				|| pos[2] < mn[2] - maxDist || pos[2] > mx[2] + maxDist)
-			{
-				continue;
-			}
-			engine::ForEachTreeTriangle(tree,
-										[&](const uint8_t *, const Vec3 &v0, const Vec3 &v1, const Vec3 &v2)
-										{
-											float q[3];
-											ClosestPtPointTriangle(pos, v0, v1, v2, q);
-											float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
-											float dsq = dx * dx + dy * dy + dz * dz;
-											if (dsq < bestSq)
-											{
-												bestSq = dsq;
-												found = true;
-											}
-										});
-		}
+		engine::ForEachTriNear(pos, maxDist,
+							   [&](int, const uint8_t *, const Vec3 &, const Vec3 &, const Vec3 &, float dsq)
+							   {
+								   if (dsq < bestSq)
+								   {
+									   bestSq = dsq;
+									   found = true;
+								   }
+							   });
 		return found ? std::sqrt(bestSq) : kNoHit;
 	}
 
@@ -799,39 +849,19 @@ namespace BSPDisp
 		float bestSq = maxDist * maxDist;
 		bool found = false;
 		Vec3 bN = {0, 0, 0}, bV0 = {0, 0, 0}, bV1 = {0, 0, 0}, bV2 = {0, 0, 0};
-		int count = EngineCount();
-		for (int i = 0; i < count; i++)
-		{
-			const uint8_t *tree = engine::TreePtr(i);
-			if (!engine::IsTreeSane(tree))
-			{
-				continue;
-			}
-			float mn[3], mx[3];
-			engine::ReadTreeAABB(tree, mn, mx);
-			if (pos[0] < mn[0] - maxDist || pos[0] > mx[0] + maxDist || pos[1] < mn[1] - maxDist || pos[1] > mx[1] + maxDist
-				|| pos[2] < mn[2] - maxDist || pos[2] > mx[2] + maxDist)
-			{
-				continue;
-			}
-			engine::ForEachTreeTriangle(tree,
-										[&](const uint8_t *triRec, const Vec3 &v0, const Vec3 &v1, const Vec3 &v2)
-										{
-											float q[3];
-											ClosestPtPointTriangle(pos, v0, v1, v2, q);
-											float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
-											float dsq = dx * dx + dy * dy + dz * dz;
-											if (dsq < bestSq)
-											{
-												bestSq = dsq;
-												found = true;
-												std::memcpy(&bN, triRec + engine::OFF_TRI_NORMAL, sizeof(Vec3));
-												bV0 = v0;
-												bV1 = v1;
-												bV2 = v2;
-											}
-										});
-		}
+		engine::ForEachTriNear(pos, maxDist,
+							   [&](int, const uint8_t *triRec, const Vec3 &v0, const Vec3 &v1, const Vec3 &v2, float dsq)
+							   {
+								   if (dsq < bestSq)
+								   {
+									   bestSq = dsq;
+									   found = true;
+									   std::memcpy(&bN, triRec + engine::OFF_TRI_NORMAL, sizeof(Vec3));
+									   bV0 = v0;
+									   bV1 = v1;
+									   bV2 = v2;
+								   }
+							   });
 		if (!found)
 		{
 			return kNoHit;
@@ -861,35 +891,15 @@ namespace BSPDisp
 		}
 		float bestSq = maxDist * maxDist;
 		int bestTree = -1;
-		int count = EngineCount();
-		for (int i = 0; i < count; i++)
-		{
-			const uint8_t *tree = engine::TreePtr(i);
-			if (!engine::IsTreeSane(tree))
-			{
-				continue;
-			}
-			float mn[3], mx[3];
-			engine::ReadTreeAABB(tree, mn, mx);
-			if (pos[0] < mn[0] - maxDist || pos[0] > mx[0] + maxDist || pos[1] < mn[1] - maxDist || pos[1] > mx[1] + maxDist
-				|| pos[2] < mn[2] - maxDist || pos[2] > mx[2] + maxDist)
-			{
-				continue;
-			}
-			engine::ForEachTreeTriangle(tree,
-										[&](const uint8_t *, const Vec3 &v0, const Vec3 &v1, const Vec3 &v2)
-										{
-											float q[3];
-											ClosestPtPointTriangle(pos, v0, v1, v2, q);
-											float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
-											float dsq = dx * dx + dy * dy + dz * dz;
-											if (dsq < bestSq)
-											{
-												bestSq = dsq;
-												bestTree = i;
-											}
-										});
-		}
+		engine::ForEachTriNear(pos, maxDist,
+							   [&](int i, const uint8_t *, const Vec3 &, const Vec3 &, const Vec3 &, float dsq)
+							   {
+								   if (dsq < bestSq)
+								   {
+									   bestSq = dsq;
+									   bestTree = i;
+								   }
+							   });
 		return bestTree;
 	}
 
@@ -1270,42 +1280,16 @@ namespace BSPDisp
 		}
 
 		float best = kNoHit;
-		int count = EngineCount();
 		Vec3 bestNormal = {0, 0, 1};
-
-		for (int i = 0; i < count; i++)
-		{
-			const uint8_t *tree = engine::TreePtr(i);
-			if (!engine::IsTreeSane(tree))
-			{
-				continue;
-			}
-			float mn[3], mx[3];
-			engine::ReadTreeAABB(tree, mn, mx);
-			if (x < mn[0] || x > mx[0] || y < mn[1] || y > mx[1])
-			{
-				continue;
-			}
-
-			engine::ForEachTreeTriangle(tree,
-										[&](const uint8_t *triRec, const Vec3 &v0, const Vec3 &v1, const Vec3 &v2)
-										{
-											float triMinX = std::fmin(v0.x, std::fmin(v1.x, v2.x));
-											float triMaxX = std::fmax(v0.x, std::fmax(v1.x, v2.x));
-											float triMinY = std::fmin(v0.y, std::fmin(v1.y, v2.y));
-											float triMaxY = std::fmax(v0.y, std::fmax(v1.y, v2.y));
-											if (x < triMinX || x > triMaxX || y < triMinY || y > triMaxY)
-											{
-												return;
-											}
-											float z = TriHeightZXY(v0, v1, v2, x, y);
-											if (!std::isnan(z) && z > best)
-											{
-												best = z;
-												std::memcpy(&bestNormal, triRec + engine::OFF_TRI_NORMAL, sizeof(Vec3));
-											}
-										});
-		}
+		engine::ForEachHeightAt(x, y,
+								[&](int, const uint8_t *triRec, float z)
+								{
+									if (z > best)
+									{
+										best = z;
+										std::memcpy(&bestNormal, triRec + engine::OFF_TRI_NORMAL, sizeof(Vec3));
+									}
+								});
 		if (best > kNoHit)
 		{
 			outNormal[0] = bestNormal.x;
@@ -1413,60 +1397,14 @@ namespace BSPDisp
 
 		if (EngineReady())
 		{
-			int treeCount = EngineCount();
-			for (int i = 0; i < treeCount && count < maxResults; i++)
-			{
-				const uint8_t *tree = engine::TreePtr(i);
-				if (!engine::IsTreeSane(tree))
-				{
-					continue;
-				}
-				float minX = ReadF32(tree, engine::OFF_TREE_MINS + 0);
-				float minY = ReadF32(tree, engine::OFF_TREE_MINS + 4);
-				float maxX = ReadF32(tree, engine::OFF_TREE_MAXS + 0);
-				float maxY = ReadF32(tree, engine::OFF_TREE_MAXS + 4);
-				if (x < minX || x > maxX || y < minY || y > maxY)
-				{
-					continue;
-				}
-
-				const uint8_t *vertsPtr = (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_VERTS_PTR);
-				int vertsCnt = ReadI32(tree, engine::OFF_TREE_VERTS_CNT);
-				const uint8_t *trisPtr = (const uint8_t *)ReadPtr(tree, engine::OFF_TREE_TRIS_PTR);
-				int trisCnt = ReadI32(tree, engine::OFF_TREE_TRIS_CNT);
-
-				for (int t = 0; t < trisCnt && count < maxResults; t++)
-				{
-					const uint8_t *triRec = trisPtr + (size_t)t * engine::SZ_DISPCOLL_TRI;
-					uint16_t i0 = ReadU16(triRec, engine::OFF_TRI_INDICES + 0) & engine::TRI_VERT_MASK;
-					uint16_t i1 = ReadU16(triRec, engine::OFF_TRI_INDICES + 2) & engine::TRI_VERT_MASK;
-					uint16_t i2 = ReadU16(triRec, engine::OFF_TRI_INDICES + 4) & engine::TRI_VERT_MASK;
-					if (i0 >= vertsCnt || i1 >= vertsCnt || i2 >= vertsCnt)
-					{
-						continue;
-					}
-
-					Vec3 v0, v1, v2;
-					std::memcpy(&v0, vertsPtr + (size_t)i0 * engine::SZ_VERT, sizeof(Vec3));
-					std::memcpy(&v1, vertsPtr + (size_t)i1 * engine::SZ_VERT, sizeof(Vec3));
-					std::memcpy(&v2, vertsPtr + (size_t)i2 * engine::SZ_VERT, sizeof(Vec3));
-
-					float triMinX = std::fmin(v0.x, std::fmin(v1.x, v2.x));
-					float triMaxX = std::fmax(v0.x, std::fmax(v1.x, v2.x));
-					float triMinY = std::fmin(v0.y, std::fmin(v1.y, v2.y));
-					float triMaxY = std::fmax(v0.y, std::fmax(v1.y, v2.y));
-					if (x < triMinX || x > triMaxX || y < triMinY || y > triMaxY)
-					{
-						continue;
-					}
-
-					float z = TriHeightZXY(v0, v1, v2, x, y);
-					if (!std::isnan(z))
-					{
-						results[count++] = z;
-					}
-				}
-			}
+			engine::ForEachHeightAt(x, y,
+									[&](int, const uint8_t *, float z)
+									{
+										if (count < maxResults)
+										{
+											results[count++] = z;
+										}
+									});
 			if (count > 0)
 			{
 				return count;
@@ -1512,27 +1450,15 @@ namespace BSPDisp
 		// Disk fallback: 3D nearest-triangle over parsed disp meshes.
 		float bestSq = maxDist * maxDist;
 		bool found = false;
-		for (size_t i = 0; i < disk::g_disps.size(); i++)
-		{
-			const auto &d = disk::g_disps[i];
-			if (pos[0] < d.bboxMins[0] - maxDist || pos[0] > d.bboxMaxs[0] + maxDist || pos[1] < d.bboxMins[1] - maxDist
-				|| pos[1] > d.bboxMaxs[1] + maxDist || pos[2] < d.bboxMins[2] - maxDist || pos[2] > d.bboxMaxs[2] + maxDist)
-			{
-				continue;
-			}
-			for (const auto &t : d.tris)
-			{
-				float q[3];
-				ClosestPtPointTriangle(pos, t.v0, t.v1, t.v2, q);
-				float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
-				float dsq = dx * dx + dy * dy + dz * dz;
-				if (dsq < bestSq)
-				{
-					bestSq = dsq;
-					found = true;
-				}
-			}
-		}
+		disk::ForEachTriNear(pos, maxDist,
+							 [&](size_t, const disk::Triangle &, float dsq)
+							 {
+								 if (dsq < bestSq)
+								 {
+									 bestSq = dsq;
+									 found = true;
+								 }
+							 });
 		return found ? std::sqrt(bestSq) : kNoHit;
 	}
 
@@ -1553,30 +1479,18 @@ namespace BSPDisp
 		float bestSq = maxDist * maxDist;
 		bool found = false;
 		Vec3 bV0 = {0, 0, 0}, bV1 = {0, 0, 0}, bV2 = {0, 0, 0};
-		for (size_t i = 0; i < disk::g_disps.size(); i++)
-		{
-			const auto &d = disk::g_disps[i];
-			if (pos[0] < d.bboxMins[0] - maxDist || pos[0] > d.bboxMaxs[0] + maxDist || pos[1] < d.bboxMins[1] - maxDist
-				|| pos[1] > d.bboxMaxs[1] + maxDist || pos[2] < d.bboxMins[2] - maxDist || pos[2] > d.bboxMaxs[2] + maxDist)
-			{
-				continue;
-			}
-			for (const auto &t : d.tris)
-			{
-				float q[3];
-				ClosestPtPointTriangle(pos, t.v0, t.v1, t.v2, q);
-				float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
-				float dsq = dx * dx + dy * dy + dz * dz;
-				if (dsq < bestSq)
-				{
-					bestSq = dsq;
-					found = true;
-					bV0 = t.v0;
-					bV1 = t.v1;
-					bV2 = t.v2;
-				}
-			}
-		}
+		disk::ForEachTriNear(pos, maxDist,
+							 [&](size_t, const disk::Triangle &t, float dsq)
+							 {
+								 if (dsq < bestSq)
+								 {
+									 bestSq = dsq;
+									 found = true;
+									 bV0 = t.v0;
+									 bV1 = t.v1;
+									 bV2 = t.v2;
+								 }
+							 });
 		if (!found)
 		{
 			return kNoHit;
@@ -1618,27 +1532,15 @@ namespace BSPDisp
 
 		float bestSq = maxDist * maxDist;
 		int best = -1;
-		for (size_t i = 0; i < disk::g_disps.size(); i++)
-		{
-			const auto &d = disk::g_disps[i];
-			if (pos[0] < d.bboxMins[0] - maxDist || pos[0] > d.bboxMaxs[0] + maxDist || pos[1] < d.bboxMins[1] - maxDist
-				|| pos[1] > d.bboxMaxs[1] + maxDist || pos[2] < d.bboxMins[2] - maxDist || pos[2] > d.bboxMaxs[2] + maxDist)
-			{
-				continue;
-			}
-			for (const auto &t : d.tris)
-			{
-				float q[3];
-				ClosestPtPointTriangle(pos, t.v0, t.v1, t.v2, q);
-				float dx = pos[0] - q[0], dy = pos[1] - q[1], dz = pos[2] - q[2];
-				float dsq = dx * dx + dy * dy + dz * dz;
-				if (dsq < bestSq)
-				{
-					bestSq = dsq;
-					best = (int)i;
-				}
-			}
-		}
+		disk::ForEachTriNear(pos, maxDist,
+							 [&](size_t i, const disk::Triangle &, float dsq)
+							 {
+								 if (dsq < bestSq)
+								 {
+									 bestSq = dsq;
+									 best = (int)i;
+								 }
+							 });
 		return best;
 	}
 
