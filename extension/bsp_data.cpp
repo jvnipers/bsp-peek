@@ -451,6 +451,12 @@ namespace BSPData
 		return TableEntry(OFF_MAP_BRUSHSIDES, idx, GetNumBrushSides(), SZ_CBRUSHSIDE);
 	}
 
+	// The cplane_t a brush side points at. nullptr for a null side or plane pointer.
+	static const uint8_t *PlaneOf(const uint8_t *side)
+	{
+		return side ? reinterpret_cast<const uint8_t *>(ReadPtr(side, OFF_CBRUSHSIDE_PLANE)) : nullptr;
+	}
+
 	static const uint8_t *leaf_at(int idx)
 	{
 		return TableEntry(OFF_MAP_LEAFS, idx, GetNumLeaves(), SZ_CLEAF);
@@ -866,20 +872,14 @@ namespace BSPData
 
 		for (uint16_t i = 0; i < numsides; ++i)
 		{
-			const uint8_t *side = brushside_at(first + i);
-			if (!side)
-			{
-				continue;
-			}
-			const uint8_t *plane = reinterpret_cast<const uint8_t *>(ReadPtr(side, OFF_CBRUSHSIDE_PLANE));
+			const uint8_t *plane = PlaneOf(brushside_at(first + i));
 			if (!plane)
 			{
 				continue;
 			}
-			float nx = ReadF32(plane, OFF_CPLANE_NORMAL + 0);
-			float ny = ReadF32(plane, OFF_CPLANE_NORMAL + 4);
-			float nz = ReadF32(plane, OFF_CPLANE_NORMAL + 8);
-			float d = ReadF32(plane, OFF_CPLANE_DIST);
+			float n[3], d;
+			ReadPlane(plane, n, d);
+			float nx = n[0], ny = n[1], nz = n[2];
 			// Exact axial planes only: vbsp bevels give every brush all six, and a near-axial slope's dist is not a bound.
 			if (nx == 1.0f)
 			{
@@ -950,12 +950,7 @@ namespace BSPData
 		int axisHit[6] = {0, 0, 0, 0, 0, 0};
 		for (uint16_t i = 0; i < numsides; ++i)
 		{
-			const uint8_t *side = brushside_at(first + i);
-			if (!side)
-			{
-				return false;
-			}
-			const uint8_t *plane = reinterpret_cast<const uint8_t *>(ReadPtr(side, OFF_CBRUSHSIDE_PLANE));
+			const uint8_t *plane = PlaneOf(brushside_at(first + i));
 			if (!plane)
 			{
 				return false;
@@ -1031,12 +1026,7 @@ namespace BSPData
 
 	bool BrushSidePlane(int brushIdx, int sideIdx, float normal[3], float &dist)
 	{
-		const uint8_t *side = brushside_for(brushIdx, sideIdx);
-		if (!side)
-		{
-			return false;
-		}
-		const uint8_t *plane = reinterpret_cast<const uint8_t *>(ReadPtr(side, OFF_CBRUSHSIDE_PLANE));
+		const uint8_t *plane = PlaneOf(brushside_for(brushIdx, sideIdx));
 		if (!plane)
 		{
 			return false;
@@ -1083,7 +1073,7 @@ namespace BSPData
 		{
 			return -1;
 		}
-		const uint8_t *plane = reinterpret_cast<const uint8_t *>(ReadPtr(side, OFF_CBRUSHSIDE_PLANE));
+		const uint8_t *plane = PlaneOf(side);
 		const uint8_t *base = reinterpret_cast<const uint8_t *>(ReadPtr(g_pBSPData, OFF_MAP_PLANES));
 		if (!plane || !base || plane < base)
 		{
@@ -1531,12 +1521,7 @@ namespace BSPData
 		// Read side k's plane normal+dist (k is brush-relative). false if unresolved.
 		bool side_plane(uint16_t first, int k, float n[3], float &d)
 		{
-			const uint8_t *side = brushside_at((int)first + k);
-			if (!side)
-			{
-				return false;
-			}
-			const uint8_t *plane = reinterpret_cast<const uint8_t *>(ReadPtr(side, OFF_CBRUSHSIDE_PLANE));
+			const uint8_t *plane = PlaneOf(brushside_at((int)first + k));
 			if (!plane)
 			{
 				return false;
@@ -1987,16 +1972,10 @@ namespace BSPData
 			int bevel = BrushSideBevel(brushIdx, i);
 			int thin = BrushSideThin(brushIdx, i);
 			int ptype = -1;
+			const uint8_t *plane = PlaneOf(brushside_at((int)first + i));
+			if (plane)
 			{
-				const uint8_t *side = brushside_at((int)first + i);
-				if (side)
-				{
-					const uint8_t *plane = reinterpret_cast<const uint8_t *>(ReadPtr(side, OFF_CBRUSHSIDE_PLANE));
-					if (plane)
-					{
-						ptype = (int)*(plane + OFF_CPLANE_TYPE);
-					}
-				}
+				ptype = (int)*(plane + OFF_CPLANE_TYPE);
 			}
 			off += snprintf(buf + off, maxlen - off, "\n [%d] %s n=(%.3f,%.3f,%.3f) d=%.3f type=%d bevel=%d thin=%d", i, kAxis[axis], n[0], n[1],
 							n[2], d, ptype, bevel, thin);
