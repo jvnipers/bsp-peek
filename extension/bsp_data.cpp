@@ -270,25 +270,19 @@ namespace BSPData
 		return true;
 	}
 
-	void Shutdown()
+	// The brush and leaf/node AABB caches. Caller holds g_brushCacheMutex.
+	static void ClearAabbCaches()
 	{
-		// Wait for any in-flight async build before we tear down the cache vector.
-		if (g_asyncBuildThread.joinable())
-		{
-			g_asyncBuildThread.join();
-		}
-		std::lock_guard<std::mutex> lk(g_brushCacheMutex);
 		g_brushCache.clear();
 		g_brushCacheBuilt = false;
 		g_leafCache.clear();
 		g_nodeCache.clear();
 		g_leafCacheBuilt = false;
-		g_boxBrushAuth.clear();
-		g_brushToBoxIdx.clear();
-		g_boxToBrushIdx.clear();
-		g_boxBrushAuthBuiltFor = -1;
-		g_collideBuilt = false;
-		g_collideFailed = false;
+	}
+
+	void Shutdown()
+	{
+		OnMapEnd();
 	}
 
 	// The engine frees the collision tables right after LevelShutdown, and the worker reads them unlocked.
@@ -299,11 +293,7 @@ namespace BSPData
 			g_asyncBuildThread.join();
 		}
 		std::lock_guard<std::mutex> lk(g_brushCacheMutex);
-		g_brushCache.clear();
-		g_brushCacheBuilt = false;
-		g_leafCache.clear();
-		g_nodeCache.clear();
-		g_leafCacheBuilt = false;
+		ClearAabbCaches();
 		g_boxBrushAuth.clear();
 		g_brushToBoxIdx.clear();
 		g_boxToBrushIdx.clear();
@@ -2347,11 +2337,7 @@ namespace BSPData
 	void RebuildCache()
 	{
 		std::lock_guard<std::mutex> lk(g_brushCacheMutex);
-		g_brushCache.clear();
-		g_brushCacheBuilt = false;
-		g_leafCache.clear();
-		g_nodeCache.clear();
-		g_leafCacheBuilt = false;
+		ClearAabbCaches();
 		BuildBrushCache();
 	}
 
@@ -2373,11 +2359,7 @@ namespace BSPData
 
 		{
 			std::lock_guard<std::mutex> lk(g_brushCacheMutex);
-			g_brushCache.clear();
-			g_brushCacheBuilt = false;
-			g_leafCache.clear();
-			g_nodeCache.clear();
-			g_leafCacheBuilt = false;
+			ClearAabbCaches();
 		}
 
 		g_asyncBuildThread = std::thread(
