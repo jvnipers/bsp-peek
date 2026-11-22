@@ -17,6 +17,11 @@ public:
 };
 
 extern BSPPeek g_BSPPeek;
-extern const sp_nativeinfo_t g_BSPNatives[];
+extern const sp_nativeinfo_t g_CoreNatives[];
+extern const sp_nativeinfo_t g_DataNatives[];
+extern const sp_nativeinfo_t g_DispNatives[];
+extern const sp_nativeinfo_t g_LumpNatives[];
+extern const sp_nativeinfo_t g_PropNatives[];
+extern const sp_nativeinfo_t g_SeamNatives[];
 
 #endif

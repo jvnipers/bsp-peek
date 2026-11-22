@@ -85,7 +85,7 @@ jobs:
           mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include
           find project/build -name '*.dll' -exec cp {} staging/addons/sourcemod/extensions/ \;
           cp project/gamedata/*.txt staging/addons/sourcemod/gamedata/
-          cp project/include/*.inc staging/addons/sourcemod/scripting/include/
+          cp -r project/include/* staging/addons/sourcemod/scripting/include/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -161,7 +161,7 @@ jobs:
           mkdir -p staging/addons/sourcemod/extensions staging/addons/sourcemod/gamedata staging/addons/sourcemod/scripting/include
           find project/build -name '*.so' -exec cp {} staging/addons/sourcemod/extensions/ \;
           cp project/gamedata/*.txt staging/addons/sourcemod/gamedata/
-          cp project/include/*.inc staging/addons/sourcemod/scripting/include/
+          cp -r project/include/* staging/addons/sourcemod/scripting/include/
 
       - name: Upload artifact
         if: matrix.runtime.name == 'steamrt3'

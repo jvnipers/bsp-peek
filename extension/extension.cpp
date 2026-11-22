@@ -49,7 +49,12 @@ bool BSPPeek::SDK_OnLoad(char *error, size_t maxlen, bool late)
 
 	gameconfs->CloseGameConfigFile(gameconf);
 
-	sharesys->AddNatives(myself, g_BSPNatives);
+	sharesys->AddNatives(myself, g_CoreNatives);
+	sharesys->AddNatives(myself, g_DataNatives);
+	sharesys->AddNatives(myself, g_DispNatives);
+	sharesys->AddNatives(myself, g_LumpNatives);
+	sharesys->AddNatives(myself, g_PropNatives);
+	sharesys->AddNatives(myself, g_SeamNatives);
 	sharesys->RegisterLibrary(myself, "bsppeek");
 
 	char self[PLATFORM_MAX_PATH];

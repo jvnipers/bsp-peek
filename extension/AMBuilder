@@ -5,13 +5,19 @@ projectName = "bsppeek"
 
 sourceFiles = [
     "extension.cpp",
-    "natives.cpp",
+    os.path.join("natives", "core.cpp"),
+    os.path.join("natives", "data.cpp"),
+    os.path.join("natives", "disp.cpp"),
+    os.path.join("natives", "lumps.cpp"),
+    os.path.join("natives", "props.cpp"),
+    os.path.join("natives", "seam.cpp"),
     "bsp_data.cpp",
     "bsp_disp.cpp",
     "bsp_lumps.cpp",
     "bsp_overlay.cpp",
     "bsp_props.cpp",
     "bsp_seam.cpp",
+    "bsp_seam_edges.cpp",
     "collide.cpp",
 ]
 
