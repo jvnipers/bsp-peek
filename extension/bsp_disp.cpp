@@ -1,4 +1,5 @@
 #include "bsp_disp.h"
+#include "bsp_file.h"
 #include "bsp_util.h"
 
 #include <cmath>
@@ -174,9 +175,6 @@ namespace BSPDisp
 	namespace disk
 	{
 
-		constexpr int kIdent = (('P' << 24) + ('S' << 16) + ('B' << 8) + 'V');
-		constexpr int kHeaderLumps = 64;
-
 		constexpr int LUMP_VERTEXES = 3;
 		constexpr int LUMP_FACES = 7;
 		constexpr int LUMP_EDGES = 12;
@@ -220,37 +218,19 @@ namespace BSPDisp
 		static std::vector<Displacement> g_disps;
 		static char g_loadedMap[128] = {0};
 
-		bool ReadLump(FILE *f, const uint8_t *header, int lump, std::vector<uint8_t> &out)
+		bool ReadLump(FILE *f, const BSPFile::Header &header, int lump, std::vector<uint8_t> &out)
 		{
-			int ofs = 8 + lump * 16;
-			int32_t fileofs, filelen, uncompressedLen;
-			std::memcpy(&fileofs, header + ofs + 0, 4);
-			std::memcpy(&filelen, header + ofs + 4, 4);
-			std::memcpy(&uncompressedLen, header + ofs + 12, 4);
-			if (uncompressedLen != 0)
+			BSPFile::Lump l = header.LumpAt(lump);
+			if (l.uncompressedLen != 0)
 			{
 				return false; // LZMA-compressed lump
 			}
-			if (filelen <= 0 || fileofs < 0)
+			if (l.filelen <= 0 || l.fileofs < 0)
 			{
 				out.clear();
 				return true;
 			}
-			// Bound by the file size before allocating: a corrupt header length would throw bad_alloc.
-			if (std::fseek(f, 0, SEEK_END) != 0 || std::ftell(f) - fileofs < filelen)
-			{
-				return false;
-			}
-			out.resize(filelen);
-			if (std::fseek(f, fileofs, SEEK_SET) != 0)
-			{
-				return false;
-			}
-			if (std::fread(out.data(), 1, filelen, f) != (size_t)filelen)
-			{
-				return false;
-			}
-			return true;
+			return BSPFile::Read(f, l.fileofs, l.filelen, out);
 		}
 
 		inline Vec3 ReadVec3(const uint8_t *p)
@@ -531,17 +511,15 @@ namespace BSPDisp
 			return false;
 		}
 
-		constexpr int kHeaderSize = 8 + disk::kHeaderLumps * 16 + 4;
-		std::vector<uint8_t> header(kHeaderSize);
-		if (std::fread(header.data(), 1, kHeaderSize, f) != kHeaderSize)
+		BSPFile::Header header;
+		if (!BSPFile::ReadHeader(f, header))
 		{
 			std::snprintf(err, errLen, "short header read");
 			std::fclose(f);
 			return false;
 		}
-		int32_t ident;
-		std::memcpy(&ident, header.data(), 4);
-		if (ident != disk::kIdent)
+		int32_t ident = header.Ident();
+		if (ident != BSPFile::kIdent)
 		{
 			std::snprintf(err, errLen, "bad BSP ident 0x%08x", ident);
 			std::fclose(f);
@@ -549,10 +527,9 @@ namespace BSPDisp
 		}
 
 		std::vector<uint8_t> vertsLump, edgesLump, surfedgesLump, facesLump, dispInfoLump, dispVertsLump;
-		if (!disk::ReadLump(f, header.data(), disk::LUMP_VERTEXES, vertsLump) || !disk::ReadLump(f, header.data(), disk::LUMP_EDGES, edgesLump)
-			|| !disk::ReadLump(f, header.data(), disk::LUMP_SURFEDGES, surfedgesLump)
-			|| !disk::ReadLump(f, header.data(), disk::LUMP_FACES, facesLump) || !disk::ReadLump(f, header.data(), disk::LUMP_DISPINFO, dispInfoLump)
-			|| !disk::ReadLump(f, header.data(), disk::LUMP_DISP_VERTS, dispVertsLump))
+		if (!disk::ReadLump(f, header, disk::LUMP_VERTEXES, vertsLump) || !disk::ReadLump(f, header, disk::LUMP_EDGES, edgesLump)
+			|| !disk::ReadLump(f, header, disk::LUMP_SURFEDGES, surfedgesLump) || !disk::ReadLump(f, header, disk::LUMP_FACES, facesLump)
+			|| !disk::ReadLump(f, header, disk::LUMP_DISPINFO, dispInfoLump) || !disk::ReadLump(f, header, disk::LUMP_DISP_VERTS, dispVertsLump))
 		{
 			std::snprintf(err, errLen, "lump read failed (truncated file, or LZMA-compressed lumps which are not supported)");
 			std::fclose(f);

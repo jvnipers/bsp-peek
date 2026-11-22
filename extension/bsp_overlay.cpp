@@ -1,4 +1,5 @@
 #include "bsp_overlay.h"
+#include "bsp_file.h"
 #include "bsp_props.h"
 #include "bsp_seam.h"
 #include "extension.h"
@@ -514,22 +515,20 @@ namespace BSPOverlay
 			{
 				return false;
 			}
-			std::vector<char> header(1036);
-			bool ok = fread(header.data(), 1, header.size(), f) == header.size();
-			int32_t entOfs = 0, entLen = 0;
-			memcpy(&entOfs, &header[8], 4);
-			memcpy(&entLen, &header[12], 4);
-			ok = ok && entOfs > 0 && entLen >= 0 && fseek(f, 0, SEEK_END) == 0;
+			BSPFile::Header header = {};
+			bool ok = BSPFile::ReadHeader(f, header);
+			BSPFile::Lump entities = header.LumpAt(0);
+			ok = ok && entities.fileofs > 0 && entities.filelen >= 0 && fseek(f, 0, SEEK_END) == 0;
 			long size = ok ? ftell(f) : 0;
-			std::vector<char> ents(ok && entLen <= size ? entLen : 0);
-			ok = ok && entLen <= size && fseek(f, entOfs, SEEK_SET) == 0 && fread(ents.data(), 1, ents.size(), f) == ents.size();
+			std::vector<uint8_t> ents;
+			ok = ok && BSPFile::Read(f, entities.fileofs, entities.filelen, ents);
 			fclose(f);
 			if (!ok)
 			{
 				return false;
 			}
 			Crc crc;
-			crc.Add(header.data(), header.size());
+			crc.Add(header.raw, sizeof(header.raw));
 			crc.Add(&size, sizeof(size));
 			crc.Add(ents.data(), ents.size());
 			out = crc.Done();

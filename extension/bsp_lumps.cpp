@@ -1,4 +1,5 @@
 #include "bsp_lumps.h"
+#include "bsp_file.h"
 #include "bsp_util.h"
 
 #include <cctype>
@@ -24,10 +25,6 @@ namespace BSPLumps
 	{
 
 		// BSP file format constants (CSGO).
-		constexpr int kIdent = (('P' << 24) + ('S' << 16) + ('B' << 8) + 'V');
-		constexpr int kNumLumps = 64;
-		constexpr int kHeaderSize = 1036; // 4+4 + 16*64 + 4
-
 		constexpr int LUMP_ENTITIES = 0;
 		constexpr int LUMP_VERTEXES = 3;
 		constexpr int LUMP_VISIBILITY = 4;
@@ -156,14 +153,6 @@ namespace BSPLumps
 		constexpr int kWL_TexInfo = 92;
 		constexpr int kWL_Owner = 96;
 
-		struct LumpEntry
-		{
-			int32_t fileofs;
-			int32_t filelen;
-			int32_t version;
-			int32_t uncompressedLen;
-		};
-
 		struct Entity
 		{
 			// File order, duplicates kept (outputs repeat their key).
@@ -199,7 +188,7 @@ namespace BSPLumps
 
 			int32_t version = 0;
 			int32_t revision = 0;
-			LumpEntry lumps[kNumLumps] = {};
+			BSPFile::Lump lumps[BSPFile::kNumLumps] = {};
 
 			std::string entityRaw;
 			std::vector<Entity> entities;
@@ -230,27 +219,6 @@ namespace BSPLumps
 		};
 
 		static State g;
-
-		bool ReadFile(FILE *f, int64_t offset, int len, std::vector<uint8_t> &out)
-		{
-			out.clear();
-			if (len <= 0)
-			{
-				return true;
-			}
-			// Bound by the file size before allocating: a corrupt header length would throw bad_alloc.
-			if (offset < 0 || std::fseek(f, 0, SEEK_END) != 0 || std::ftell(f) - offset < len)
-			{
-				return false;
-			}
-			out.resize(len);
-			if (std::fseek(f, (long)offset, SEEK_SET) != 0 || std::fread(out.data(), 1, len, f) != (size_t)len)
-			{
-				out.clear();
-				return false;
-			}
-			return true;
-		}
 
 		bool IEquals(const char *a, const char *b)
 		{
@@ -371,13 +339,13 @@ namespace BSPLumps
 		// Empties the list on any mismatch.
 		void ParseStaticProps(FILE *f)
 		{
-			const LumpEntry &gl = g.lumps[LUMP_GAME_LUMP];
+			const BSPFile::Lump &gl = g.lumps[LUMP_GAME_LUMP];
 			if (gl.filelen < 4)
 			{
 				return;
 			}
 			std::vector<uint8_t> dir;
-			if (!ReadFile(f, gl.fileofs, gl.filelen, dir) || dir.size() < 4)
+			if (!BSPFile::Read(f, gl.fileofs, gl.filelen, dir) || dir.size() < 4)
 			{
 				return;
 			}
@@ -413,7 +381,7 @@ namespace BSPLumps
 			}
 
 			std::vector<uint8_t> b;
-			if (!ReadFile(f, sprpOfs, sprpLen, b) || b.size() < 12)
+			if (!BSPFile::Read(f, sprpOfs, sprpLen, b) || b.size() < 12)
 			{
 				return;
 			}
@@ -590,32 +558,27 @@ namespace BSPLumps
 			return false;
 		}
 
-		uint8_t hdr[kHeaderSize];
-		if (std::fread(hdr, 1, kHeaderSize, f) != kHeaderSize)
+		BSPFile::Header hdr;
+		if (!BSPFile::ReadHeader(f, hdr))
 		{
 			std::snprintf(err, errLen, "BSPLumps: short read on header");
 			std::fclose(f);
 			return false;
 		}
 
-		int32_t ident;
-		std::memcpy(&ident, hdr + 0, 4);
-		if (ident != kIdent)
+		int32_t ident = hdr.Ident();
+		if (ident != BSPFile::kIdent)
 		{
 			std::snprintf(err, errLen, "BSPLumps: bad ident 0x%X (want VBSP)", ident);
 			std::fclose(f);
 			return false;
 		}
-		std::memcpy(&g.version, hdr + 4, 4);
-		for (int i = 0; i < kNumLumps; ++i)
+		g.version = hdr.Version();
+		for (int i = 0; i < BSPFile::kNumLumps; ++i)
 		{
-			int base = 8 + i * 16;
-			std::memcpy(&g.lumps[i].fileofs, hdr + base + 0, 4);
-			std::memcpy(&g.lumps[i].filelen, hdr + base + 4, 4);
-			std::memcpy(&g.lumps[i].version, hdr + base + 8, 4);
-			std::memcpy(&g.lumps[i].uncompressedLen, hdr + base + 12, 4);
+			g.lumps[i] = hdr.LumpAt(i);
 		}
-		std::memcpy(&g.revision, hdr + 1032, 4);
+		g.revision = hdr.Revision();
 
 		// LZMA-compressed lumps would parse as garbage. Only the lumps read below matter, keep this list in sync with them.
 		static const int kReadLumps[] = {
@@ -652,7 +615,7 @@ namespace BSPLumps
 		std::vector<uint8_t> raw;
 
 		// Entities
-		if (g.lumps[LUMP_ENTITIES].filelen > 0 && ReadFile(f, g.lumps[LUMP_ENTITIES].fileofs, g.lumps[LUMP_ENTITIES].filelen, raw))
+		if (g.lumps[LUMP_ENTITIES].filelen > 0 && BSPFile::Read(f, g.lumps[LUMP_ENTITIES].fileofs, g.lumps[LUMP_ENTITIES].filelen, raw))
 		{
 			g.entityRaw.assign((const char *)raw.data(), raw.size());
 			// Strip trailing null byte if present.
@@ -664,34 +627,34 @@ namespace BSPLumps
 		}
 
 		// Visibility
-		ReadFile(f, g.lumps[LUMP_VISIBILITY].fileofs, g.lumps[LUMP_VISIBILITY].filelen, g.visLump);
+		BSPFile::Read(f, g.lumps[LUMP_VISIBILITY].fileofs, g.lumps[LUMP_VISIBILITY].filelen, g.visLump);
 		// Leaf water data
-		ReadFile(f, g.lumps[LUMP_LEAFWATERDATA].fileofs, g.lumps[LUMP_LEAFWATERDATA].filelen, g.leafWaterLump);
+		BSPFile::Read(f, g.lumps[LUMP_LEAFWATERDATA].fileofs, g.lumps[LUMP_LEAFWATERDATA].filelen, g.leafWaterLump);
 		// Cubemaps
-		ReadFile(f, g.lumps[LUMP_CUBEMAPS].fileofs, g.lumps[LUMP_CUBEMAPS].filelen, g.cubemapsLump);
+		BSPFile::Read(f, g.lumps[LUMP_CUBEMAPS].fileofs, g.lumps[LUMP_CUBEMAPS].filelen, g.cubemapsLump);
 		// Vertexes
-		ReadFile(f, g.lumps[LUMP_VERTEXES].fileofs, g.lumps[LUMP_VERTEXES].filelen, g.vertexesLump);
+		BSPFile::Read(f, g.lumps[LUMP_VERTEXES].fileofs, g.lumps[LUMP_VERTEXES].filelen, g.vertexesLump);
 		// Edges + Surfedges
-		ReadFile(f, g.lumps[LUMP_EDGES].fileofs, g.lumps[LUMP_EDGES].filelen, g.edgesLump);
-		ReadFile(f, g.lumps[LUMP_SURFEDGES].fileofs, g.lumps[LUMP_SURFEDGES].filelen, g.surfedgesLump);
+		BSPFile::Read(f, g.lumps[LUMP_EDGES].fileofs, g.lumps[LUMP_EDGES].filelen, g.edgesLump);
+		BSPFile::Read(f, g.lumps[LUMP_SURFEDGES].fileofs, g.lumps[LUMP_SURFEDGES].filelen, g.surfedgesLump);
 		// Faces
-		ReadFile(f, g.lumps[LUMP_FACES].fileofs, g.lumps[LUMP_FACES].filelen, g.facesLump);
+		BSPFile::Read(f, g.lumps[LUMP_FACES].fileofs, g.lumps[LUMP_FACES].filelen, g.facesLump);
 
 		// Texinfo
-		ReadFile(f, g.lumps[LUMP_TEXINFO].fileofs, g.lumps[LUMP_TEXINFO].filelen, g.texinfoLump);
+		BSPFile::Read(f, g.lumps[LUMP_TEXINFO].fileofs, g.lumps[LUMP_TEXINFO].filelen, g.texinfoLump);
 		// Texdata
-		ReadFile(f, g.lumps[LUMP_TEXDATA].fileofs, g.lumps[LUMP_TEXDATA].filelen, g.texdataLump);
+		BSPFile::Read(f, g.lumps[LUMP_TEXDATA].fileofs, g.lumps[LUMP_TEXDATA].filelen, g.texdataLump);
 		// Texdata string table + data
-		ReadFile(f, g.lumps[LUMP_TEXDATA_STRING_TABLE].fileofs, g.lumps[LUMP_TEXDATA_STRING_TABLE].filelen, g.texdataStringTable);
-		ReadFile(f, g.lumps[LUMP_TEXDATA_STRING_DATA].fileofs, g.lumps[LUMP_TEXDATA_STRING_DATA].filelen, g.texdataStringData);
+		BSPFile::Read(f, g.lumps[LUMP_TEXDATA_STRING_TABLE].fileofs, g.lumps[LUMP_TEXDATA_STRING_TABLE].filelen, g.texdataStringTable);
+		BSPFile::Read(f, g.lumps[LUMP_TEXDATA_STRING_DATA].fileofs, g.lumps[LUMP_TEXDATA_STRING_DATA].filelen, g.texdataStringData);
 
 		// Leafs + LeafFaces
-		ReadFile(f, g.lumps[LUMP_LEAFS].fileofs, g.lumps[LUMP_LEAFS].filelen, g.leafsLump);
-		ReadFile(f, g.lumps[LUMP_LEAFFACES].fileofs, g.lumps[LUMP_LEAFFACES].filelen, g.leafFacesLump);
+		BSPFile::Read(f, g.lumps[LUMP_LEAFS].fileofs, g.lumps[LUMP_LEAFS].filelen, g.leafsLump);
+		BSPFile::Read(f, g.lumps[LUMP_LEAFFACES].fileofs, g.lumps[LUMP_LEAFFACES].filelen, g.leafFacesLump);
 
 		// Worldlights: prefer LDR (most maps), fall back to HDR if no LDR.
 		int wlLump = g.lumps[LUMP_WORLDLIGHTS_LDR].filelen > 0 ? LUMP_WORLDLIGHTS_LDR : LUMP_WORLDLIGHTS_HDR;
-		ReadFile(f, g.lumps[wlLump].fileofs, g.lumps[wlLump].filelen, g.worldlightsLump);
+		BSPFile::Read(f, g.lumps[wlLump].fileofs, g.lumps[wlLump].filelen, g.worldlightsLump);
 		if (g.lumps[wlLump].version == 0)
 		{
 			// v0 lacks shadow_cast_offset (88B). Widen with that field zeroed, as the engine does.
@@ -730,7 +693,7 @@ namespace BSPLumps
 
 	bool LumpInfo(int lumpId, int &outOffset, int &outLength, int &outVersion)
 	{
-		if (!g.loaded || lumpId < 0 || lumpId >= kNumLumps)
+		if (!g.loaded || lumpId < 0 || lumpId >= BSPFile::kNumLumps)
 		{
 			return false;
 		}
