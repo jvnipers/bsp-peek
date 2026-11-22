@@ -1,6 +1,6 @@
 // bsppeek_test - minimal consumer plugin exercising every bsppeek.ext native.
 //
-// Build: copy include/bsppeek.inc into your sourcemod/scripting/include, then:
+// Build: copy include/bsppeek.inc and include/bsppeek/ into your sourcemod/scripting/include, then:
 //        spcomp bsppeek_test.sp
 //
 // Usage (in-game / server console):
