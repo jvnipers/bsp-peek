@@ -107,11 +107,7 @@ cell_t N_WallEdgePoints(IPluginContext *pCtx, const cell_t *params)
 		return pCtx->ThrowNativeError("spacing %f must be at least 1, first %d and maxOut %d not negative", spacing, first, maxOut);
 	}
 	std::vector<float> pts((size_t)maxOut * BSPSeam::EDGE_POINT_FLOATS);
-	int total;
-	{
-		auto lk = BSPOverlay::GameThreadLock();
-		total = BSPSeam::WallEdgePoints(spacing, first, pts.data(), maxOut);
-	}
+	int total = BSPSeam::WallEdgePoints(spacing, first, pts.data(), maxOut);
 	int n = (std::min)(maxOut, (std::max)(0, total - first));
 	cell_t *out;
 	pCtx->LocalToPhysAddr(params[3], &out);
@@ -141,13 +137,11 @@ cell_t N_OverlayStart(IPluginContext *pCtx, const cell_t *params)
 	{
 		origin[k] = sp_ctof(o[k]);
 	}
-	auto lk = BSPOverlay::GameThreadLock();
 	return BSPOverlay::Start(values, spacing, hasOrigin ? origin : nullptr, params[4] != 0);
 }
 
 cell_t N_OverlayStep(IPluginContext *pCtx, const cell_t *params)
 {
-	auto lk = BSPOverlay::GameThreadLock();
 	return BSPOverlay::Step(sp_ctof(params[1]));
 }
 
@@ -159,11 +153,7 @@ cell_t N_OverlayKinds(IPluginContext *pCtx, const cell_t *params)
 		return pCtx->ThrowNativeError("first %d and maxKinds %d must not be negative", first, maxOut);
 	}
 	std::vector<int> kinds(maxOut);
-	int total;
-	{
-		auto lk = BSPOverlay::GameThreadLock();
-		total = BSPOverlay::Kinds(first, kinds.data(), maxOut);
-	}
+	int total = BSPOverlay::Kinds(first, kinds.data(), maxOut);
 	cell_t *out;
 	pCtx->LocalToPhysAddr(params[2], &out);
 	for (int k = 0; k < maxOut && first + k < total; ++k)
@@ -186,7 +176,6 @@ cell_t N_OverlayQueue(IPluginContext *pCtx, const cell_t *params)
 	{
 		values[k] = sp_ctof(v[k]);
 	}
-	auto lk = BSPOverlay::GameThreadLock();
 	BSPOverlay::Queue(values, spacing);
 	return 0;
 }
@@ -195,7 +184,6 @@ cell_t N_OverlayNearest(IPluginContext *pCtx, const cell_t *params)
 {
 	float origin[3];
 	cell_to_float3(pCtx, params[1], origin);
-	auto lk = BSPOverlay::GameThreadLock();
 	BSPOverlay::Nearest(origin);
 	return 0;
 }

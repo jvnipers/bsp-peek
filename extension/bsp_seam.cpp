@@ -63,8 +63,8 @@ namespace BSPSeam
 		};
 
 		// A displacement hit on an axis-aligned normal reports that face's coordinate as dist: the sign is off on a negative axis.
-		// A vphysics hit (a prop) reports the plane through the hull's origin, far from the contact: then the face is taken 1/32
-		// behind the contact, and own is false.
+		// A brush entity reports its model-space dist. A vphysics hit (a prop) reports the plane through the hull's origin,
+		// far from the contact: then the face is taken 1/32 behind the contact, and own is false.
 		float HitDist(const CGameTrace &tr, const Vector &mins, const Vector &maxs, bool *own = nullptr)
 		{
 			const Vector &n = tr.plane.normal;
@@ -74,6 +74,13 @@ namespace BSPSeam
 				c += n[k] * (tr.endpos[k] + (n[k] > 0.0f ? mins[k] : maxs[k]));
 			}
 			float d = tr.plane.dist;
+			IHandleEntity *hit = reinterpret_cast<IHandleEntity *>(tr.m_pEnt);
+			bool prop = !hit || (BSPProps::StaticPropMgr() && BSPProps::StaticPropMgr()->IsStaticProp(hit));
+			ICollideable *ent = prop ? nullptr : static_cast<IServerUnknown *>(hit)->GetCollideable();
+			if (ent && ent->GetSolid() == SOLID_BSP)
+			{
+				d += DotProduct(n, ent->GetCollisionOrigin());
+			}
 			bool axial = std::fabs(n.x) == 1.0f || std::fabs(n.y) == 1.0f || std::fabs(n.z) == 1.0f;
 			if (tr.dispFlags && axial && std::fabs(c + d) < std::fabs(c - d))
 			{

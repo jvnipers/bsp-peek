@@ -2,12 +2,10 @@
 #define _INCLUDE_BSPPEEK_BSP_OVERLAY_H_
 
 #include "smsdk_ext.h"
-#include <mutex>
 
 // The seam tests at every BSPSeam::WallEdgePoints point, for a set of movement values (tick interval, gravity, airaccelerate, maxspeed):
-// on the game thread in steps, and on a worker while the engine's game server hibernates (no game frame runs; the engine's world,
-// displacement, prop and partition traces are thread-safe for a thread with a tier0 thread id). Console commands that create or
-// remove entities while it hibernates are not guarded. Finished passes are saved per map, extension build, spacing and values.
+// in steps from the natives, and from the engine's Think while its game server hibernates (no game frame runs then).
+// Finished passes are saved per map, extension build, spacing and values.
 namespace BSPOverlay
 {
 	enum
@@ -29,12 +27,10 @@ namespace BSPOverlay
 	int Step(float seconds);
 	// The pass's kinds per point (KIND_*, -1 untested); returns the total.
 	int Kinds(int first, int *out, int maxOut);
-	// Values the worker also tests on every map while the server hibernates, saved for later.
+	// Values also tested on every map while the server hibernates, saved for later.
 	void Queue(const float values[4], float spacing);
-	// Held by the game thread around anything that builds or reads the edge points or a pass.
-	std::unique_lock<std::mutex> GameThreadLock();
 
-	// The game server's hibernation flag (gamedata "sv", "sv_hibernating") and the model cache, for the worker.
+	// The game server's hibernation flag (gamedata "sv", "sv_hibernating") and the model cache.
 	void Init(IGameConfig *gc);
 	void OnLoad(const char *extensionPath);
 	void OnUnload();

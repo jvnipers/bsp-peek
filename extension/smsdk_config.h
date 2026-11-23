@@ -14,6 +14,8 @@
 
 #define SMEXT_LINK(name) SDKExtension *g_pExtensionIface = name;
 
+#define SMEXT_CONF_METAMOD
+
 #define SMEXT_ENABLE_FORWARDSYS
 #define SMEXT_ENABLE_HANDLESYS
 #define SMEXT_ENABLE_PLAYERHELPERS

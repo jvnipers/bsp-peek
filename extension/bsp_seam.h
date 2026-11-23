@@ -1,7 +1,7 @@
 #ifndef _INCLUDE_BSPPEEK_BSP_SEAM_H_
 #define _INCLUDE_BSPPEEK_BSP_SEAM_H_
 
-// Main thread, or the overlay worker under BSPOverlay::GameThreadLock's lock.
+// Main thread only.
 namespace BSPSeam
 {
 	enum

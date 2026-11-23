@@ -11,10 +11,8 @@
 #include "engine/IEngineTrace.h"
 #include "gametrace.h"
 #include "tier1/checksum_crc.h"
-#include <IPlayerHelpers.h>
 
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -23,7 +21,6 @@
 #include <list>
 #include <map>
 #include <string>
-#include <thread>
 #include <vector>
 
 #ifdef _WIN32
@@ -35,9 +32,7 @@
 #include <unistd.h>
 #endif
 
-// tier0 (not in the SDK's headers): sets this thread's g_nThreadID to a free id, and gives it back.
-extern "C" int AllocateThreadID();
-extern "C" void FreeThreadID();
+SH_DECL_HOOK1_void(IServerGameDLL, Think, SH_NOATTRIB, false, bool);
 
 namespace BSPOverlay
 {
@@ -46,7 +41,8 @@ namespace BSPOverlay
 		constexpr int kFloats = BSPSeam::EDGE_POINT_FLOATS;
 		constexpr float kSlide = 16.0f; // half a hull: how far a point is tested toward its neighbour at a side wall
 		constexpr uint32_t kFormat = 1;
-		constexpr int64_t kIdleMs = 50; // no game frame and no overlay call for this long, and hibernating: the worker may run
+		// Per host frame while hibernating, whose every tick sleeps sv_hibernate_ms: a hibernating server answers packets this late.
+		constexpr double kThinkSeconds = 0.25;
 
 		struct Points
 		{
@@ -86,13 +82,8 @@ namespace BSPOverlay
 			bool done; // on this map: loaded or finished
 		};
 
-		// The worker holds it for one point; the game thread for every overlay call, at each frame's start and at a client's connect.
-		std::mutex g_work;
-		std::thread g_thread;
-		std::atomic<bool> g_stop {false};
-		std::atomic<int64_t> g_lastFrame {0};
-		// CBaseServer::m_bHibernating of the game server; null: the worker never runs.
-		const volatile uint8_t *g_hibernating = nullptr;
+		// CBaseServer::m_bHibernating of the game server; null: no passes while hibernating.
+		const uint8_t *g_hibernating = nullptr;
 		IMDLCache *g_mdlcache = nullptr;
 
 		bool g_mapReady = false;
@@ -106,11 +97,6 @@ namespace BSPOverlay
 		std::list<Pass> g_passes;
 		Pass *g_active = nullptr;
 		std::vector<QueueEntry> g_queue;
-
-		int64_t NowMs()
-		{
-			return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-		}
 
 		struct Crc
 		{
@@ -442,7 +428,7 @@ namespace BSPOverlay
 			return p;
 		}
 
-		// The worker's next point: the active pass, then the queued values not done on this map. False when there is none.
+		// The next point while hibernating: the active pass, then the queued values not done on this map. False when there is none.
 		bool WorkOne()
 		{
 			if (!g_mapReady)
@@ -494,64 +480,33 @@ namespace BSPOverlay
 			return false;
 		}
 
-		bool MayRun()
+		std::chrono::steady_clock::time_point Deadline(double seconds)
 		{
-			return g_hibernating && *g_hibernating && NowMs() - g_lastFrame >= kIdleMs;
+			return std::chrono::steady_clock::now()
+				   + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(seconds));
 		}
 
-		void WorkerMain()
+		// The engine calls Think once per host frame, hibernating too; GameFrame (plugins' timers and frames) only when not.
+		void OnThink(bool)
 		{
-			// Per-thread engine state (datacache's frame locks) is indexed by tier0's thread id;
-			// 0, a thread without one, is the main thread's.
-			AllocateThreadID();
-			while (!g_stop)
+			if (g_hibernating && *g_hibernating)
 			{
-				if (!MayRun())
-				{
-					std::this_thread::sleep_for(std::chrono::milliseconds(20));
-					continue;
-				}
-				std::unique_lock<std::mutex> lk(g_work);
-				if (g_stop || !MayRun())
-				{
-					continue;
-				}
-				// Model data the traces read stays cached until EndLock, as the main thread's frame lock keeps it.
+				// Model data the traces read stays cached until EndLock, as a game frame's lock keeps it.
 				if (g_mdlcache)
 				{
 					g_mdlcache->BeginLock();
 				}
-				bool worked = WorkOne();
+				auto until = Deadline(kThinkSeconds);
+				while (WorkOne() && std::chrono::steady_clock::now() < until)
+				{
+				}
 				if (g_mdlcache)
 				{
 					g_mdlcache->EndLock();
 				}
-				if (!worked)
-				{
-					lk.unlock();
-					std::this_thread::sleep_for(std::chrono::milliseconds(200));
-				}
 			}
-			FreeThreadID();
+			RETURN_META(MRES_IGNORED);
 		}
-
-		void OnGameFrame(bool)
-		{
-			g_lastFrame = NowMs();
-			std::lock_guard<std::mutex> lk(g_work);
-		}
-
-		// A connecting client wakes the server: the engine clears its hibernation flag first,
-		// and the worker's point ends before the client's entity is made.
-		class ConnectListener : public IClientListener
-		{
-		public:
-			bool InterceptClientConnect(int, char *, size_t) override
-			{
-				auto lk = GameThreadLock();
-				return true;
-			}
-		} g_connect;
 
 		void MakeDirs(const std::string &path)
 		{
@@ -617,25 +572,23 @@ namespace BSPOverlay
 		}
 	} // namespace
 
-	std::unique_lock<std::mutex> GameThreadLock()
-	{
-		g_lastFrame = NowMs();
-		return std::unique_lock<std::mutex>(g_work);
-	}
-
 	void Init(IGameConfig *gc)
 	{
 		void *sv = nullptr;
 		int offset = 0;
 		if (gc->GetAddress("sv", &sv) && sv && gc->GetOffset("sv_hibernating", &offset))
 		{
-			g_hibernating = static_cast<const volatile uint8_t *>(sv) + offset;
+			g_hibernating = static_cast<const uint8_t *>(sv) + offset;
 		}
 		else
 		{
-			smutils->LogError(myself, "Seam overlay worker disabled: no \"sv\" address or \"sv_hibernating\" offset in gamedata");
+			smutils->LogError(myself, "No seam overlay passes while hibernating: no \"sv\" address or \"sv_hibernating\" offset in gamedata");
 		}
 		g_mdlcache = static_cast<IMDLCache *>(BSPProps::ModuleInterface("datacache", MDLCACHE_INTERFACE_VERSION));
+		if (!g_mdlcache)
+		{
+			smutils->LogError(myself, "No %s: overlay passes while hibernating run without the model cache's frame lock", MDLCACHE_INTERFACE_VERSION);
+		}
 	}
 
 	int Start(const float values[4], float spacing, const float *origin, bool useCache)
@@ -690,8 +643,7 @@ namespace BSPOverlay
 		{
 			return -1;
 		}
-		auto until = std::chrono::steady_clock::now()
-					 + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(seconds));
+		auto until = Deadline(seconds);
 		while (!g_active->Done() && std::chrono::steady_clock::now() < until)
 		{
 			RunOne(*g_active);
@@ -736,33 +688,27 @@ namespace BSPOverlay
 		{
 			g_buildKey = 0;
 		}
-		g_lastFrame = NowMs();
-		smutils->AddGameFrameHook(&OnGameFrame);
-		playerhelpers->AddClientListener(&g_connect);
-		g_stop = false;
-		g_thread = std::thread(WorkerMain);
+		SH_ADD_HOOK(IServerGameDLL, Think, gamedll, SH_STATIC(OnThink), false);
 	}
 
 	void OnUnload()
 	{
-		g_stop = true;
-		if (g_thread.joinable())
-		{
-			g_thread.join();
-		}
-		playerhelpers->RemoveClientListener(&g_connect);
-		smutils->RemoveGameFrameHook(&OnGameFrame);
+		SH_REMOVE_HOOK(IServerGameDLL, Think, gamedll, SH_STATIC(OnThink), false);
 	}
 
 	void OnMapStart(const char *mapname, const char *bspPath, const char *cacheDir)
 	{
-		auto lk = GameThreadLock();
 		g_map = mapname;
 		std::replace(g_map.begin(), g_map.end(), '/', '_');
 		std::replace(g_map.begin(), g_map.end(), '\\', '_');
 		g_cacheDir = cacheDir;
 		MakeDirs(g_cacheDir);
 		g_cacheOk = g_buildKey != 0 && BspKey(bspPath, g_bspKey);
+		if (!g_cacheOk && !g_warnedSave)
+		{
+			g_warnedSave = true;
+			smutils->LogError(myself, "Seam overlay passes of %s not saved: no BSP at %s, or no extension build key", mapname, bspPath);
+		}
 		for (QueueEntry &q : g_queue)
 		{
 			q.done = false;
@@ -772,7 +718,6 @@ namespace BSPOverlay
 
 	void OnMapEnd()
 	{
-		auto lk = GameThreadLock();
 		g_mapReady = false;
 		g_active = nullptr;
 		g_passes.clear();

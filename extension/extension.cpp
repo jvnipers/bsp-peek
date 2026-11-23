@@ -96,7 +96,6 @@ bool BSPPeek::QueryRunning(char *error, size_t maxlen)
 // Cleared here, not at map start: OnMapInit and entity spawn of the next map run before OnCoreMapStart.
 void BSPPeek::OnCoreMapEnd()
 {
-	// First: the overlay worker reads the edge points and the engine's map data.
 	BSPOverlay::OnMapEnd();
 	BSPData::OnMapEnd();
 	BSPSeam::OnMapEnd();

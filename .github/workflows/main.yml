@@ -56,10 +56,20 @@ jobs:
           sparse-checkout: |
             public
             sourcepawn
+            hl2sdk-manifests
 
       - name: Init SourceMod submodules
         working-directory: sourcemod
-        run: git submodule update --init --depth 1 public/amtl sourcepawn
+        run: git submodule update --init --depth 1 public/amtl sourcepawn hl2sdk-manifests
+
+      - name: Checkout Metamod:Source
+        uses: actions/checkout@v7
+        with:
+          repository: alliedmodders/metamod-source
+          ref: 1.12-dev
+          path: metamod-source
+          sparse-checkout: |
+            core
 
       - uses: actions/setup-python@v7
         name: Setup Python
@@ -76,6 +86,7 @@ jobs:
           mkdir build && cd build
           python ../configure.py \
             --sm-path="${{ github.workspace }}/sourcemod" \
+            --mms-path="${{ github.workspace }}/metamod-source" \
             --enable-optimize
           ambuild
 
@@ -136,10 +147,20 @@ jobs:
           sparse-checkout: |
             public
             sourcepawn
+            hl2sdk-manifests
 
       - name: Init SourceMod submodules
         working-directory: sourcemod
-        run: git submodule update --init --depth 1 public/amtl sourcepawn
+        run: git submodule update --init --depth 1 public/amtl sourcepawn hl2sdk-manifests
+
+      - name: Checkout Metamod:Source
+        uses: actions/checkout@v7
+        with:
+          repository: alliedmodders/metamod-source
+          ref: 1.12-dev
+          path: metamod-source
+          sparse-checkout: |
+            core
 
       - name: Build inside container
         run: |
@@ -151,6 +172,7 @@ jobs:
               mkdir -p build && cd build
               python3 ../configure.py \
                 --sm-path=/work/sourcemod \
+                --mms-path=/work/metamod-source \
                 --enable-optimize
               ambuild
             '

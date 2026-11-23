@@ -27,7 +27,7 @@ native int BSP_HeadSeamCatch(const float wallPos[3], const float wallNorm[3], fl
 native int BSP_SeamCandidates(const float wallPos[3], const float wallNorm[3], float zMin, float zMax, float[] out, int maxOut);
 
 // Whether a box brush's bottom edge at edgeZ gives a falling player a texturebug, by movement's own traces (brush order counts),
-// from a start not within 2u of ground. A prop's face gives none.
+// from a start not within 2u of ground. A prop's face (anything that collides through vphysics) gives none.
 // Returns BSPP_CATCH_STANDING / BSPP_CATCH_DUCKED bits, or -1 unavailable. info: the brush's height, the smallest gap at the wall.
 native int BSP_TexturebugCatch(const float wallPos[3], const float wallNorm[3], float edgeZ, float frametime, float gravity,
                                float maxspeed, float info[2]);
@@ -85,9 +85,9 @@ native int BSP_WallEdgePoints(float spacing, int first, float[] out, int maxOut)
 // the seam tests at every BSP_WallEdgePoints point for one set of movement values ({tick interval, gravity, airaccelerate, maxspeed}),
 // as BSP_SeamCatch, BSP_HeadSeamCatch, BSP_TexturebugCatch, BSP_PixelwalkCatch and BSP_PixelwalkEnd give them by the point's bits,
 // and a point that misses next to one that catches tested again up to 16u toward it where something that blocks movement stands at
-// the edge. A pass runs in BSP_OverlayStep calls, and on a worker thread while the game server hibernates (the engine's flag; a
-// connecting client or the first game frame waits for its current point). Finished passes stay for the map and are saved under
-// data/bsppeek/overlay per map, BSP-Peek build, spacing and values.
+// the edge. A pass runs in BSP_OverlayStep calls, and while the game server hibernates (the engine's flag) in the engine's Think,
+// which runs once per frame, hibernating too.
+// Finished passes stay for the map and are saved under data/bsppeek/overlay per map, BSP-Peek build, spacing and values.
 #define BSPP_OVERLAY_PIXELSURF       1
 #define BSPP_OVERLAY_CEILING         2
 #define BSPP_OVERLAY_HEADSEAM        4
@@ -109,5 +109,5 @@ native int  BSP_OverlayStep(float seconds);
 // The pass's kinds per point (BSPP_OVERLAY_* bits, -1 untested), from `first`. Returns the total.
 native int  BSP_OverlayKinds(int first, int[] kinds, int maxKinds);
 
-// Values the worker tests too on every map, after the started pass, while the server hibernates; saved for a later start.
+// Values tested too on every map, after the started pass, while the server hibernates; saved for a later start.
 native void BSP_OverlayQueue(const float values[4], float spacing);

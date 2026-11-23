@@ -660,7 +660,6 @@ cell_t N_CacheIsBuilding(IPluginContext *, const cell_t *)
 // Next world brush at/after startIdx whose contents include CONTENTS_LADDER.
 cell_t N_FindLadderBrush(IPluginContext *pCtx, const cell_t *params)
 {
-	const int CONTENTS_LADDER = 0x20000000;
 	int n = BSPData::GetNumBrushes();
 	for (int i = params[1] < 0 ? 0 : params[1]; i < n; ++i)
 	{

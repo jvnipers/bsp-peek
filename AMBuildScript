@@ -1,5 +1,5 @@
 # vim: set sts=2 ts=8 sw=2 tw=99 et ft=python:
-import os, sys
+import json, os, sys
 
 
 def ResolveEnvPath(env, folder):
@@ -80,6 +80,11 @@ class ExtensionConfig(object):
         if not self.sm_root or not os.path.isdir(self.sm_root):
             raise Exception("Could not find a source copy of SourceMod")
         self.sm_root = Normalize(self.sm_root)
+
+        self.mms_root = builder.options.mms_path
+        if not os.path.isdir(os.path.join(self.mms_root, "core", "sourcehook")):
+            raise Exception("Could not find a source copy of Metamod:Source 1.12")
+        self.mms_root = Normalize(self.mms_root)
 
         if builder.options.hl2sdk_path:
             self.hl2sdk_root = builder.options.hl2sdk_path
@@ -211,6 +216,8 @@ class ExtensionConfig(object):
             os.path.join(self.sm_root, "sourcepawn", "include"),
             os.path.join(self.sm_root, "public", "amtl", "amtl"),
             os.path.join(self.sm_root, "public", "amtl"),
+            os.path.join(self.mms_root, "core"),
+            os.path.join(self.mms_root, "core", "sourcehook"),
         ]
         return compiler
 
@@ -224,6 +231,13 @@ class ExtensionConfig(object):
             os.path.join(self.hl2sdk_root, "public", "tier0"),
             os.path.join(self.hl2sdk_root, "public", "tier1"),
         ]
+        # SourceMod's and Metamod's headers compare SOURCE_ENGINE with every engine's SE_ code.
+        manifests = os.path.join(self.sm_root, "hl2sdk-manifests", "manifests")
+        for name in os.listdir(manifests):
+            with open(os.path.join(manifests, name)) as f:
+                sdk = json.load(f)
+            compiler.defines += ["SE_{0}={1}".format(sdk["define"], sdk["code"])]
+        compiler.defines += ["SOURCE_ENGINE=SE_CSGO"]
         if compiler.like("msvc"):
             compiler.defines += ["COMPILER_MSVC", "COMPILER_MSVC32"]
         else:

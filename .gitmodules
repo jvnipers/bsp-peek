@@ -6,3 +6,7 @@
 	path = sourcemod
 	url = https://github.com/alliedmodders/sourcemod
 	branch = 1.12-dev
+[submodule "metamod-source"]
+	path = metamod-source
+	url = https://github.com/alliedmodders/metamod-source
+	branch = 1.12-dev
