@@ -258,7 +258,9 @@ namespace BSPSeam
 			return -1;
 		}
 		int flags = 0;
-		bool speedHit[std::size(kCatchSpeeds)] = {};
+		// wideHit: a catch from more than the one exact state (feet 1/32u up, the hull 1/32u off the wall).
+		// A fall hovers only from a tick that starts in the window, so a window of that one state no fall reaches: it is no reason to stop looking.
+		bool speedHit[std::size(kCatchSpeeds)] = {}, wideHit[std::size(kCatchSpeeds)] = {}, wide = false;
 		float reach = 16.0f * (std::fabs(normal[0]) + std::fabs(normal[1]));
 		MoveTrace mt;
 		mt.list = list;
@@ -303,7 +305,7 @@ namespace BSPSeam
 					}
 					for (size_t s = 0; s < std::size(kCatchSpeeds); ++s)
 					{
-						if (speedHit[s] && (flags & (duck ? CATCH_DUCKED : CATCH_STANDING)))
+						if (wideHit[s] && (flags & (duck ? CATCH_DUCKED : CATCH_STANDING)))
 						{
 							continue;
 						}
@@ -323,6 +325,10 @@ namespace BSPSeam
 									outStart[5] = head ? kCatchSpeeds[s] : -kCatchSpeeds[s];
 								}
 								speedHit[s] = true;
+								if (head || dz != kCatchHeights[0] || gap < 0.03125f)
+								{
+									wideHit[s] = wide = true;
+								}
 								flags |= (duck ? CATCH_DUCKED : CATCH_STANDING) | (nonAxial ? CATCH_WALL_NON_AXIAL : 0);
 								break;
 							}
@@ -348,7 +354,7 @@ namespace BSPSeam
 		}
 		outSpeed[0] = first == 0 ? 0.0f : kCatchSpeeds[first - 1];
 		outSpeed[1] = last + 1 == std::size(kCatchSpeeds) ? kSpeedMax : kCatchSpeeds[last + 1];
-		return flags;
+		return flags | (head || wide ? 0 : CATCH_WALK_IN);
 	}
 
 	int TexturebugCatch(const float wallPos[3], const float normal[3], float edgeZ, float frametime, float gravity, float maxspeed, float outInfo[2])

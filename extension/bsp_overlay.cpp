@@ -174,10 +174,13 @@ namespace BSPOverlay
 				}
 			}
 			float speed[2], start[6];
-			if ((mask & KIND_PIXELSURF) && (bits & (BSPSeam::EDGE_CONTINUES | BSPSeam::EDGE_RESUMES | BSPSeam::EDGE_RAMP))
-				&& BSPSeam::Catch(wall, flat, row[2], v[0], v[1], v[2], v[3], speed, start, false) > 0)
+			if ((mask & (KIND_PIXELSURF | KIND_PIXELSURF_WALK_IN)) && (bits & (BSPSeam::EDGE_CONTINUES | BSPSeam::EDGE_RESUMES | BSPSeam::EDGE_RAMP)))
 			{
-				kinds |= KIND_PIXELSURF;
+				int f = BSPSeam::Catch(wall, flat, row[2], v[0], v[1], v[2], v[3], speed, start, false);
+				if (f > 0)
+				{
+					kinds |= (f & BSPSeam::CATCH_WALK_IN) ? KIND_PIXELSURF_WALK_IN : KIND_PIXELSURF;
+				}
 			}
 			if (!(bits & BSPSeam::EDGE_TOP) || (bits & BSPSeam::EDGE_CONTINUES))
 			{
@@ -215,7 +218,7 @@ namespace BSPOverlay
 			}
 			const float *a = pts.Row(miss), *b = pts.Row(other);
 			// A side wall at the edge: just above it where the hull stands over the edge (pixelsurf, pixelwalk), just under it for the rest.
-			int px = kinds & (KIND_PIXELSURF | KIND_PIXELWALK | KIND_PIXELWALK_EXACT), rest = kinds & ~px;
+			int px = kinds & (KIND_PIXELSURF | KIND_PIXELSURF_WALK_IN | KIND_PIXELWALK | KIND_PIXELWALK_EXACT), rest = kinds & ~px;
 			kinds = 0;
 			if (px && HullBlocked(a, a[2] + 0.04f))
 			{

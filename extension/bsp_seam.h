@@ -13,6 +13,8 @@ namespace BSPSeam
 		CATCH_WALL_NON_AXIAL = 4, // the wall stopping the hull has plane type >= PLANE_Z
 		CATCH_EXACT = 8,          // pixelwalk for a setpos or teleport:
 								  // PixelwalkCatch's hull stands only closer than a creep gets, PixelwalkEnd tests only on the face
+		CATCH_WALK_IN = 16,       // pixelsurf: holds only with the feet exactly 1/32u up and the hull 1/32u off the wall,
+								  // a state no fall's tick starts in (a flat displacement's row); a walk-in at that height reaches it
 	};
 
 	// Runs movement's traces, through its trace list, over a grid of arrivals at the wall:

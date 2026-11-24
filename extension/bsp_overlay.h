@@ -15,6 +15,7 @@ namespace BSPOverlay
 		KIND_TEXTUREBUG = 4,
 		KIND_PIXELWALK = 8,
 		KIND_PIXELWALK_EXACT = 16,
+		KIND_PIXELSURF_WALK_IN = 32,
 	};
 
 	// Points nearest origin first (null: in point order). With useCache this map's pass for these values goes on (or is done),

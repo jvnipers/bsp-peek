@@ -8,8 +8,9 @@
 // Bits returned by BSP_SeamCatch.
 #define BSPP_CATCH_STANDING       1
 #define BSPP_CATCH_DUCKED         2
-#define BSPP_CATCH_WALL_NON_AXIAL 4    // the wall stopping the hull has plane type >= PLANE_Z
-#define BSPP_CATCH_EXACT          8    // for a setpos or teleport: BSP_PixelwalkCatch's hull stands only closer than a creep gets, BSP_PixelwalkEnd tests only exactly on the face
+#define BSPP_CATCH_WALL_NON_AXIAL 4     // the wall stopping the hull has plane type >= PLANE_Z
+#define BSPP_CATCH_EXACT          8     // for a setpos or teleport: BSP_PixelwalkCatch's hull stands only closer than a creep gets, BSP_PixelwalkEnd tests only exactly on the face
+#define BSPP_CATCH_WALK_IN        16    // BSP_SeamCatch: holds only with the feet exactly 1/32u up and the hull 1/32u off the wall, a state no fall's tick starts in (a flat displacement's row); a walk-in at that height reaches it
 
 // Whether a seam at seamZ catches a player against the wall, by movement's own traces over a grid of arrivals.
 // wallPos: on the face. wallNorm: horizontal unit normal. speed: the range of the catching samples' vertical speeds.
@@ -101,11 +102,12 @@ native int BSP_WallEdgePoints(float spacing, int first, float[] out, int maxOut)
 // the edge. A pass runs in BSP_OverlayStep calls, and while the game server hibernates (the engine's flag) in the engine's Think,
 // which runs once per frame, hibernating too.
 // Finished passes stay for the map and are saved under data/bsppeek/overlay per map, BSP-Peek build, spacing and values.
-#define BSPP_OVERLAY_PIXELSURF       1
-#define BSPP_OVERLAY_HEADSEAM        2
-#define BSPP_OVERLAY_TEXTUREBUG      4
-#define BSPP_OVERLAY_PIXELWALK       8
-#define BSPP_OVERLAY_PIXELWALK_EXACT 16
+#define BSPP_OVERLAY_PIXELSURF         1
+#define BSPP_OVERLAY_HEADSEAM          2
+#define BSPP_OVERLAY_TEXTUREBUG        4
+#define BSPP_OVERLAY_PIXELWALK         8
+#define BSPP_OVERLAY_PIXELWALK_EXACT   16
+#define BSPP_OVERLAY_PIXELSURF_WALK_IN 32    // a pixelsurf BSP_SeamCatch marks BSPP_CATCH_WALK_IN
 
 // Starts the pass for these values, points nearest origin first (NULL_VECTOR: in point order). With useCache this map's pass for
 // them goes on, or is done, else a saved one is loaded; without, it starts over.
