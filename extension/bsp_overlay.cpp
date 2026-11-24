@@ -43,6 +43,7 @@ namespace BSPOverlay
 		constexpr uint32_t kFormat = 1;
 		// Per host frame while hibernating, whose every tick sleeps sv_hibernate_ms: a hibernating server answers packets this late.
 		constexpr double kThinkSeconds = 0.25;
+		constexpr double kBuildSeconds = 0.01;
 
 		struct Points
 		{
@@ -278,8 +279,12 @@ namespace BSPOverlay
 			{
 				return &it->second;
 			}
-			Points &pts = g_points[spacing];
 			int total = BSPSeam::WallEdgePoints(spacing, 0, nullptr, 0);
+			if (total < 0)
+			{
+				return nullptr;
+			}
+			Points &pts = g_points[spacing];
 			pts.rows.assign((size_t)total * kFloats, 0.0f);
 			if (total > 0)
 			{
@@ -444,7 +449,12 @@ namespace BSPOverlay
 				{
 					continue;
 				}
-				if (!EnsurePoints(q.spacing)->Count())
+				const Points *pts = EnsurePoints(q.spacing);
+				if (!pts)
+				{
+					return false; // the edges are still being built
+				}
+				if (!pts->Count())
 				{
 					q.done = true;
 					continue;
@@ -483,21 +493,23 @@ namespace BSPOverlay
 		// The engine calls Think once per host frame, hibernating too; GameFrame (plugins' timers and frames) only when not.
 		void OnThink(bool)
 		{
-			if (g_hibernating && *g_hibernating)
+			bool hibernating = g_hibernating && *g_hibernating;
+			// Model data the traces read stays cached until EndLock, as a game frame's lock keeps it.
+			if (g_mdlcache)
 			{
-				// Model data the traces read stays cached until EndLock, as a game frame's lock keeps it.
-				if (g_mdlcache)
-				{
-					g_mdlcache->BeginLock();
-				}
+				g_mdlcache->BeginLock();
+			}
+			// The wall edge build first: passes need its points. Awake, a little a frame.
+			if (!BSPSeam::EdgeBuildStep(hibernating ? kThinkSeconds : kBuildSeconds) && hibernating)
+			{
 				auto until = Deadline(kThinkSeconds);
 				while (WorkOne() && std::chrono::steady_clock::now() < until)
 				{
 				}
-				if (g_mdlcache)
-				{
-					g_mdlcache->EndLock();
-				}
+			}
+			if (g_mdlcache)
+			{
+				g_mdlcache->EndLock();
 			}
 			RETURN_META(MRES_IGNORED);
 		}
@@ -587,7 +599,16 @@ namespace BSPOverlay
 
 	int Start(const float values[4], float spacing, const float *origin, bool useCache)
 	{
-		if (!g_mapReady || !EnsurePoints(spacing)->Count())
+		if (!g_mapReady)
+		{
+			return -1;
+		}
+		const Points *pts = EnsurePoints(spacing);
+		if (!pts)
+		{
+			return -2;
+		}
+		if (!pts->Count())
 		{
 			return -1;
 		}

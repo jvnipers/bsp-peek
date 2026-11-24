@@ -86,7 +86,8 @@ native int BSP_PixelwalkEnd(const float endPos[3], const float wallNorm[3], cons
 // Per point BSPP_EDGE_FLOATS floats:
 // x, y, z on the face, flat normal x, y, edge index (points of one edge are consecutive, its END points after all edges),
 // BSPP_EDGE_* bits, then the ends (x, y, x, y) of the stretch of edge the point stands for: touching stretches make one line.
-// Built on the first call per map and spacing. Copies up to maxOut points from `first`:
+// The first call per map and spacing starts building them, a little each server frame (the engine's Think, hibernating too):
+// until they're built it returns -1, call again later. Copies up to maxOut points from `first`:
 // `out` must hold maxOut * BSPP_EDGE_FLOATS floats (maxOut 0 returns only the total). Returns the total.
 // Throws for spacing under 1 or a negative first or maxOut.
 native int BSP_WallEdgePoints(float spacing, int first, float[] out, int maxOut);
@@ -108,7 +109,7 @@ native int BSP_WallEdgePoints(float spacing, int first, float[] out, int maxOut)
 
 // Starts the pass for these values, points nearest origin first (NULL_VECTOR: in point order). With useCache this map's pass for
 // them goes on, or is done, else a saved one is loaded; without, it starts over.
-// Returns 1 when done, 0 started, -1 without points.
+// Returns 1 when done, 0 started, -1 without points, -2 while BSP_WallEdgePoints is building them (call again).
 native int  BSP_OverlayStart(const float values[4], float spacing, const float[] origin, bool useCache);
 
 // The started pass's untested points nearest origin first.

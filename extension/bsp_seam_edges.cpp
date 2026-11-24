@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -166,17 +167,36 @@ namespace BSPSeam
 			for (int k = 0; k < samples; ++k)
 			{
 				float c0 = s0 + (s1 - s0) * k / samples, c1 = s0 + (s1 - s0) * (k + 1) / samples, at = (c0 + c1) * 0.5f;
-				// A displacement row needn't be level.
-				// On an axial face the hull meets it across its whole width, standing on its highest point there and meeting its lowest with its head:
+				// A displacement row needn't be level. On an axial face the hull meets it across its whole width,
+				// standing on its highest point there and meeting its lowest with its head:
 				// both; else only the corner nearest the face meets it, off the point.
 				bool axial = std::fabs(e.fn[0]) > 0.999f || std::fabs(e.fn[1]) > 0.999f;
 				float corner = -16.0f * ((e.fn[0] > 0.0f ? dir[0] : -dir[0]) + (e.fn[1] > 0.0f ? dir[1] : -dir[1]));
 				float lo = axial ? at - 16.0f : at + corner, hi = axial ? at + 16.0f : at + corner;
-				float zs[2] = {e.z + e.slope * std::clamp(lo, 0.0f, span), e.z + e.slope * std::clamp(hi, 0.0f, span)};
-				int nz = std::fabs(zs[1] - zs[0]) < 1.0f / 64.0f ? 1 : 2;
-				if (nz == 1 && axial)
+				float zs[4];
+				int nz = 0;
+				auto addZ = [&](float z)
 				{
-					zs[0] = e.z + e.slope * at;
+					for (int i = 0; i < nz; ++i)
+					{
+						if (std::fabs(zs[i] - z) < 1.0f / 64.0f)
+						{
+							return;
+						}
+					}
+					zs[nz++] = z;
+				};
+				float zlo = e.z + e.slope * std::clamp(lo, 0.0f, span), zhi = e.z + e.slope * std::clamp(hi, 0.0f, span);
+				addZ(axial && std::fabs(zhi - zlo) < 1.0f / 64.0f ? e.z + e.slope * at : zlo);
+				addZ(zhi);
+				// And its corners' heights at its ends: a hull over the end, or past it, meets the corner.
+				if (e.slope != 0.0f && k == 0 && s0 < 0.001f)
+				{
+					addZ(e.z);
+				}
+				if (e.slope != 0.0f && k == samples - 1 && std::fabs(s1 - span) < 0.001f)
+				{
+					addZ(e.z + e.slope * span);
 				}
 				for (int zi = 0; zi < nz; ++zi)
 				{
@@ -535,22 +555,24 @@ namespace BSPSeam
 		// a level triangle side no other triangle of the displacement has, the third corner below.
 		// Kept under a brush face too, unless that brush's bottom edge is on the same plane at the same height (a leaning one then only as a ramp).
 		// Wall edges are listed on the sheet's back too where a standing hull fits behind it.
-		// For pixelwalks: such floor sides (facing out) and wall top ends (facing along: a hull over the sheet stands on its top
+		// For pixelwalks: such floor sides (facing out) and wall top ends (facing along: a hull over the sheet stands on its top)
 		// under a wall within 1u, and rows inside a face leaning back.
 		// Rows inside any other wall, and the sheet's bottom border, as bottom edges: the triangles above and below meet there.
-		// Rows and borders may slope up to 0.3; a row's ends at the sheet's border face along it.
-		void DispEdges(IEngineTrace *et, std::vector<WallEdge> &edges)
+		// Rows and borders may slope up to 0.3; their ends at the sheet's border face along them, and again the sheet just past them.
+		void DispEdges(IEngineTrace *et, std::vector<WallEdge> &edges, int from, int to)
 		{
 			std::vector<float> tris;
-			for (int d = 0; d < BSPDisp::EngineCount(); ++d)
+			std::vector<int> vidx;
+			for (int d = from; d < to; ++d)
 			{
-				if (!(BSPDisp::EngineGetContents(d) & MASK_PLAYERSOLID) || !BSPDisp::EngineTriangles(d, tris))
+				if (!(BSPDisp::EngineGetContents(d) & MASK_PLAYERSOLID) || !BSPDisp::EngineTriangles(d, tris, &vidx))
 				{
 					continue;
 				}
+				int side = (int)std::lround(std::sqrt((double)BSPDisp::EngineVertCount(d)));
 				size_t first = edges.size();
 				// Corners are shared bit for bit within a displacement.
-				std::map<std::array<float, 6>, int> uses;
+				std::map<std::array<float, 6>, std::vector<size_t>> uses; // the triangles with that side
 				auto key = [&](size_t t, int i, int j)
 				{
 					const float *p = &tris[12 * t + 3 * i], *q = &tris[12 * t + 3 * j];
@@ -566,11 +588,12 @@ namespace BSPSeam
 				{
 					for (int i = 0; i < 3; ++i)
 					{
-						++uses[key(t, i, (i + 1) % 3)];
+						uses[key(t, i, (i + 1) % 3)].push_back(t);
 					}
 				}
 				// A corner only one wall top side has is the top's end; one only one row side has, the row's.
 				std::map<std::array<float, 3>, std::vector<std::array<float, 3>>> tops, rows;
+				std::map<std::array<float, 3>, std::array<float, 3>> rowFace; // a row corner's face: flat normal, lean
 				for (size_t t = 0; t < count; ++t)
 				{
 					const float *n = &tris[12 * t + 9];
@@ -583,7 +606,19 @@ namespace BSPSeam
 					for (int i = 0; i < 3; ++i)
 					{
 						const float *a = &tris[12 * t + 3 * i], *c = &tris[12 * t + 3 * ((i + 1) % 3)], *o = &tris[12 * t + 3 * ((i + 2) % 3)];
-						int u = uses[key(t, i, (i + 1) % 3)];
+						const std::vector<size_t> &with = uses[key(t, i, (i + 1) % 3)];
+						int u = (int)with.size();
+						// A quad's diagonal: a crease only where the quad bends (on a flat one it can be nearly level), and never a row's end.
+						int step = std::abs(vidx[3 * t + i] - vidx[3 * t + (i + 1) % 3]);
+						bool diagonal = u == 2 && (step == side - 1 || step == side + 1);
+						if (diagonal)
+						{
+							const float *m = &tris[12 * (with[0] == t ? with[1] : with[0]) + 9];
+							if (n[0] * m[0] + n[1] * m[1] + n[2] * m[2] > 0.99999f)
+							{
+								continue;
+							}
+						}
 						if (!floor && u == 2)
 						{
 							// A row inside the wall, its third corner under it: leaning back, a ramp's top; else a bottom edge.
@@ -595,8 +630,12 @@ namespace BSPSeam
 								bool level = std::fabs(a[2] - c[2]) <= 0.01f;
 								AddEdge(edges, a, c, level ? (std::max)(a[2], c[2]) : a[2], fn, n[2] / len, back, false, false, back, false, false,
 										true, level ? 0.0f : (c[2] - a[2]) / hl);
-								rows[{a[0], a[1], a[2]}].push_back({c[0], c[1], c[2]});
-								rows[{c[0], c[1], c[2]}].push_back({a[0], a[1], a[2]});
+								if (!diagonal)
+								{
+									rows[{a[0], a[1], a[2]}].push_back({c[0], c[1], c[2]});
+									rows[{c[0], c[1], c[2]}].push_back({a[0], a[1], a[2]});
+									rowFace[{a[0], a[1], a[2]}] = rowFace[{c[0], c[1], c[2]}] = {fn[0], fn[1], n[2] / len};
+								}
 							}
 							continue;
 						}
@@ -610,6 +649,9 @@ namespace BSPSeam
 								bool level = std::fabs(a[2] - c[2]) <= 0.01f;
 								AddEdge(edges, a, c, level ? (std::min)(a[2], c[2]) : a[2], fn, n[2] / len, false, false, false, false, false, false,
 										false, level ? 0.0f : (c[2] - a[2]) / hl);
+								rows[{a[0], a[1], a[2]}].push_back({c[0], c[1], c[2]});
+								rows[{c[0], c[1], c[2]}].push_back({a[0], a[1], a[2]});
+								rowFace[{a[0], a[1], a[2]}] = rowFace[{c[0], c[1], c[2]}] = {fn[0], fn[1], n[2] / len};
 							}
 							continue;
 						}
@@ -663,6 +705,10 @@ namespace BSPSeam
 						if (pass)
 						{
 							AddEdge(edges, a, c, q[2], fn, 0.0f, false, false, false, false, false, false, true, 0.0f, true);
+							// Facing the sheet, a hull past the end meets the row's corner.
+							const auto &f = rowFace[q];
+							const float past[2] = {q[0] + fn[0] * 16.0f, q[1] + fn[1] * 16.0f}, ffn[2] = {f[0], f[1]};
+							AddEdge(edges, q.data(), past, q[2], ffn, f[2], false, false, false, false, false, false, true);
 						}
 						else
 						{
@@ -670,6 +716,7 @@ namespace BSPSeam
 						}
 					}
 				}
+				size_t sheet = edges.size();
 				for (size_t k = first, last = edges.size(); k < last; ++k)
 				{
 					WallEdge e = edges[k];
@@ -710,6 +757,49 @@ namespace BSPSeam
 					// Its rows lean out from the back: bottom edges.
 					bool top = e.top && !e.row;
 					AddEdge(edges, e.a, e.c, e.z, fn, -e.lean, top, false, false, false, false, false, e.row, e.slope);
+				}
+				// A wall the sheet meets (it ends at one, or one cuts across it): a hull against that wall, its side on the sheet's front,
+				// meets the sheet's rows and bottom border where they reach the wall.
+				for (size_t k = first; k < sheet; ++k)
+				{
+					WallEdge e = edges[k];
+					if (e.top || e.floor || e.sheetEnd)
+					{
+						continue;
+					}
+					float span = std::hypot(e.c[0] - e.a[0], e.c[1] - e.a[1]);
+					float dir[2] = {(e.c[0] - e.a[0]) / span, (e.c[1] - e.a[1]) / span};
+					for (float sgn : {1.0f, -1.0f})
+					{
+						float s0 = sgn > 0.0f ? 0.0f : span;
+						Vector from(e.a[0] + dir[0] * s0 + e.fn[0], e.a[1] + dir[1] * s0 + e.fn[1], e.z + e.slope * s0 + 0.1f);
+						Vector to = from + Vector(dir[0], dir[1], e.slope) * (sgn * (span + 2.0f));
+						Ray_t ray;
+						ray.Init(from, to);
+						MovementFilter movement;
+						CGameTrace tr;
+						et->TraceRay(ray, MASK_PLAYERSOLID, &movement, &tr);
+						float wl = std::hypot(tr.plane.normal.x, tr.plane.normal.y);
+						if (tr.startsolid || tr.fraction >= 1.0f || std::fabs(tr.plane.normal.z) > 0.3f || wl < 0.5f)
+						{
+							continue;
+						}
+						const float wn[2] = {tr.plane.normal.x / wl, tr.plane.normal.y / wl};
+						// Along the wall toward the sheet's front.
+						float d = e.fn[0] * wn[0] + e.fn[1] * wn[1], t[2] = {e.fn[0] - wn[0] * d, e.fn[1] - wn[1] * d}, tl = std::hypot(t[0], t[1]);
+						if (tl < 0.1f)
+						{
+							continue;
+						}
+						t[0] /= tl;
+						t[1] /= tl;
+						float reach = 16.0f * (std::fabs(t[0]) + std::fabs(t[1]));
+						float at = s0 + sgn * tr.fraction * (span + 2.0f);
+						const float p[2] = {tr.endpos.x + t[0] * reach, tr.endpos.y + t[1] * reach};
+						const float a[2] = {p[0] - t[0], p[1] - t[1]}, c[2] = {p[0] + t[0], p[1] + t[1]};
+						AddEdge(edges, a, c, e.z + e.slope * std::clamp(at, 0.0f, span), wn, tr.plane.normal.z / wl, false, false, false, false,
+								false, false, true);
+					}
 				}
 			}
 		}
@@ -822,10 +912,10 @@ namespace BSPSeam
 			}
 		}
 
-		void PropEdges(IEngineTrace *et, std::vector<WallEdge> &edges)
+		void PropEdges(IEngineTrace *et, std::vector<WallEdge> &edges, int from, int to)
 		{
 			std::vector<float> m;
-			for (int i = 0; i < BSPProps::RtCount(); ++i)
+			for (int i = from; i < to; ++i)
 			{
 				ICollideable *c = BSPProps::StaticProp(i);
 				if (c && c->GetSolid() != SOLID_NONE && !(c->GetSolidFlags() & FSOLID_NOT_SOLID))
@@ -834,6 +924,11 @@ namespace BSPSeam
 					MeshTopEdges(et, c, m, edges);
 				}
 			}
+		}
+
+		void DynamicPropEdges(IEngineTrace *et, std::vector<WallEdge> &edges)
+		{
+			std::vector<float> m;
 			float mn[3], mx[3];
 			if (!BSPData::CModelBounds(0, mn, mx))
 			{
@@ -851,222 +946,292 @@ namespace BSPSeam
 			}
 		}
 
-		void BuildEdgePoints(float spacing)
+		// The build as steps: brushes, entities, displacements, static props, dynamic props, indexes, then each edge's points.
+		struct EdgeBuild
 		{
-			s_edgePoints.clear();
-			s_edgeSpacing = spacing;
-			IEngineTrace *et = BSPProps::EngineTrace();
-			if (!et || !BSPData::CollideBsp())
-			{
-				return;
-			}
-			std::vector<WallEdge> edges;
-			s_wallFaces.clear();
-			s_edgeEnds.clear();
+			bool active = false;
+			float spacing = 0.0f;
+			int phase = 0;
+			int next = 0;
 			std::vector<int> world;
-			ModelBrushes(0, world);
-			for (int b : world)
-			{
-				if (BSPData::GetBrushContents(b) & MASK_PLAYERSOLID)
-				{
-					BrushFaceEdges(edges, b, nullptr);
-				}
-			}
-			EntityEdges(et, edges);
-			if (BSPDisp::EngineReady())
-			{
-				DispEdges(et, edges);
-			}
-			PropEdges(et, edges);
-
-			// A flush face can cover only part of a seam edge, a few units at its end:
-			// cut the edge where those faces start and end, so even a short flush stretch gets a point of its own.
-			// A bottom edge's are top edges at its height, a top edge's bottom edges, a shrunk top edge's bottom edges up to 1u above it.
-			// Not floor or ramp edges: no wall face of the plane.
+			std::vector<WallEdge> edges;
 			std::map<std::tuple<int, int, int>, std::vector<int>> onPlane;
 			// Faces meeting at an edge with normals a little apart can be far apart in distance: an unshrunk edge's by height and normal.
 			std::map<std::array<int, 3>, std::vector<int>> nearBy;
 			// Top edge ends by corner, 1/16u: where another top edge on the same line goes on, the top doesn't end.
 			std::map<std::array<int, 3>, std::vector<int>> topEnds;
-			auto endKey = [](const float q[2], float z)
-			{ return std::array<int, 3> {(int)std::lround(q[0] * 16.0f), (int)std::lround(q[1] * 16.0f), (int)std::lround(z * 16.0f)}; };
-			for (int i = 0; i < (int)edges.size(); ++i)
+		};
+
+		EdgeBuild s_build;
+
+		std::array<int, 3> EndKey(const float q[2], float z)
+		{
+			return {(int)std::lround(q[0] * 16.0f), (int)std::lround(q[1] * 16.0f), (int)std::lround(z * 16.0f)};
+		}
+
+		int EndsAt(int i)
+		{
+			const std::vector<WallEdge> &edges = s_build.edges;
+			auto &topEnds = s_build.topEnds;
+			const WallEdge &e = edges[i];
+			float span = std::hypot(e.c[0] - e.a[0], e.c[1] - e.a[1]);
+			float dir[2] = {(e.c[0] - e.a[0]) / span, (e.c[1] - e.a[1]) / span};
+			int ends = 3;
+			for (int end = 0; end < 2 && e.top; ++end)
 			{
-				onPlane[PlaneKey(edges[i])].push_back(i);
-				nearBy[NearKey(edges[i].z, edges[i].fn[0], edges[i].fn[1])].push_back(i);
-				if (edges[i].top && !edges[i].floor)
+				for (int j : topEnds[EndKey(end ? e.c : e.a, e.z)])
 				{
-					topEnds[endKey(edges[i].a, edges[i].z)].push_back(i);
-					topEnds[endKey(edges[i].c, edges[i].z)].push_back(i);
+					const WallEdge &t = edges[j];
+					if (j == i || t.fn[0] * e.fn[0] + t.fn[1] * e.fn[1] <= 0.999f)
+					{
+						continue;
+					}
+					// Only one that goes on past the end: an overlapping or duplicate brush ending there too doesn't.
+					for (const float *q : {t.a, t.c})
+					{
+						float at = (q[0] - e.a[0]) * dir[0] + (q[1] - e.a[1]) * dir[1];
+						if (end ? at > span + 0.5f : at < -0.5f)
+						{
+							ends &= ~(1 << end);
+						}
+					}
 				}
 			}
-			auto endsAt = [&](int i)
+			return ends;
+		}
+
+		// A flush face can cover only part of a seam edge, a few units at its end:
+		// cut the edge where those faces start and end, so even a short flush stretch gets a point of its own.
+		// A bottom edge's are top edges at its height, a top edge's bottom edges, a shrunk top edge's bottom edges up to 1u above it.
+		// Not floor or ramp edges: no wall face of the plane.
+		void EdgeSamples(IEngineTrace *et, int i)
+		{
+			const std::vector<WallEdge> &edges = s_build.edges;
+			const auto &onPlane = s_build.onPlane;
+			const auto &nearBy = s_build.nearBy;
+			float spacing = s_build.spacing;
+			const WallEdge &e = edges[i];
+			float span = std::sqrt((e.c[0] - e.a[0]) * (e.c[0] - e.a[0]) + (e.c[1] - e.a[1]) * (e.c[1] - e.a[1]));
+			std::vector<float> cuts = {0.0f, span};
+			std::vector<std::array<float, 4>> above; // t's ends along e; how far e stands in front at each
+			int ends = EndsAt(i);
+			if (e.top || !e.shrunk)
 			{
-				const WallEdge &e = edges[i];
-				float span = std::hypot(e.c[0] - e.a[0], e.c[1] - e.a[1]);
 				float dir[2] = {(e.c[0] - e.a[0]) / span, (e.c[1] - e.a[1]) / span};
-				int ends = 3;
-				for (int end = 0; end < 2 && e.top; ++end)
+				// A shrunk top edge's are 0.49 to 1.01u above it: on a leaning plane, under the keys of that whole stretch.
+				auto lo = PlaneKey(e, e.shrunk ? 0.49f : 0.0f);
+				int d0 = std::get<2>(lo), d1 = std::get<2>(PlaneKey(e, e.shrunk ? 1.01f : 0.0f));
+				std::vector<int> coplanar;
+				if (e.shrunk)
 				{
-					for (int j : topEnds[endKey(end ? e.c : e.a, e.z)])
+					// One bucket either side: a distance on a bucket boundary splits on vertex noise.
+					for (int d = (std::min)(d0, d1) - 1; d <= (std::max)(d0, d1) + 1; ++d)
 					{
-						const WallEdge &t = edges[j];
-						if (j == i || t.fn[0] * e.fn[0] + t.fn[1] * e.fn[1] <= 0.999f)
+						auto it = onPlane.find({std::get<0>(lo), std::get<1>(lo), d});
+						if (it != onPlane.end())
 						{
-							continue;
-						}
-						// Only one that goes on past the end: an overlapping or duplicate brush ending there too doesn't.
-						for (const float *q : {t.a, t.c})
-						{
-							float at = (q[0] - e.a[0]) * dir[0] + (q[1] - e.a[1]) * dir[1];
-							if (end ? at > span + 0.5f : at < -0.5f)
-							{
-								ends &= ~(1 << end);
-							}
+							coplanar.insert(coplanar.end(), it->second.begin(), it->second.end());
 						}
 					}
 				}
-				return ends;
-			};
-			for (int i = 0; i < (int)edges.size(); ++i)
-			{
-				const WallEdge &e = edges[i];
-				float span = std::sqrt((e.c[0] - e.a[0]) * (e.c[0] - e.a[0]) + (e.c[1] - e.a[1]) * (e.c[1] - e.a[1]));
-				std::vector<float> cuts = {0.0f, span};
-				std::vector<std::array<float, 4>> above; // t's ends along e; how far e stands in front at each
-				int ends = endsAt(i);
-				if (e.top || !e.shrunk)
+				else
 				{
-					float dir[2] = {(e.c[0] - e.a[0]) / span, (e.c[1] - e.a[1]) / span};
-					// A shrunk top edge's are 0.49 to 1.01u above it: on a leaning plane, under the keys of that whole stretch.
-					auto lo = PlaneKey(e, e.shrunk ? 0.49f : 0.0f);
-					int d0 = std::get<2>(lo), d1 = std::get<2>(PlaneKey(e, e.shrunk ? 1.01f : 0.0f));
-					std::vector<int> coplanar;
-					if (e.shrunk)
+					// The buckets the tolerances below span.
+					auto k0 = NearKey(e.z - 0.01f, e.fn[0] - 0.002f, e.fn[1] - 0.002f), k1 = NearKey(e.z + 0.01f, e.fn[0] + 0.002f, e.fn[1] + 0.002f);
+					for (int z = k0[0]; z <= k1[0]; ++z)
 					{
-						// One bucket either side: a distance on a bucket boundary splits on vertex noise.
-						for (int d = (std::min)(d0, d1) - 1; d <= (std::max)(d0, d1) + 1; ++d)
+						for (int x = k0[1]; x <= k1[1]; ++x)
 						{
-							auto it = onPlane.find({std::get<0>(lo), std::get<1>(lo), d});
-							if (it != onPlane.end())
+							for (int y = k0[2]; y <= k1[2]; ++y)
 							{
-								coplanar.insert(coplanar.end(), it->second.begin(), it->second.end());
-							}
-						}
-					}
-					else
-					{
-						// The buckets the tolerances below span.
-						auto k0 = NearKey(e.z - 0.01f, e.fn[0] - 0.002f, e.fn[1] - 0.002f),
-							 k1 = NearKey(e.z + 0.01f, e.fn[0] + 0.002f, e.fn[1] + 0.002f);
-						for (int z = k0[0]; z <= k1[0]; ++z)
-						{
-							for (int x = k0[1]; x <= k1[1]; ++x)
-							{
-								for (int y = k0[2]; y <= k1[2]; ++y)
+								auto it = nearBy.find({z, x, y});
+								if (it != nearBy.end())
 								{
-									auto it = nearBy.find({z, x, y});
-									if (it != nearBy.end())
-									{
-										coplanar.insert(coplanar.end(), it->second.begin(), it->second.end());
-									}
+									coplanar.insert(coplanar.end(), it->second.begin(), it->second.end());
 								}
 							}
 						}
 					}
-					for (int j : coplanar)
+				}
+				for (int j : coplanar)
+				{
+					const WallEdge &t = edges[j];
+					float up = t.z - e.z;
+					if (std::fabs(t.fn[0] - e.fn[0]) > 0.002f || std::fabs(t.fn[1] - e.fn[1]) > 0.002f || t.top == e.top || t.floor || t.ramp
+						|| (e.shrunk ? up < 0.49f || up > 1.01f : std::fabs(up) > 0.01f))
 					{
-						const WallEdge &t = edges[j];
-						float up = t.z - e.z;
-						if (std::fabs(t.fn[0] - e.fn[0]) > 0.002f || std::fabs(t.fn[1] - e.fn[1]) > 0.002f || t.top == e.top || t.floor || t.ramp
-							|| (e.shrunk ? up < 0.49f || up > 1.01f : std::fabs(up) > 0.01f))
+						continue;
+					}
+					// How far e stands in front of t's face at e's height, at t's ends: t's normal can be a little off e's.
+					float at[2], front[2];
+					for (int k = 0; k < 2; ++k)
+					{
+						const float *q = k ? t.c : t.a;
+						at[k] = (q[0] - e.a[0]) * dir[0] + (q[1] - e.a[1]) * dir[1];
+						front[k] = (e.a[0] - q[0]) * e.fn[0] + (e.a[1] - q[1]) * e.fn[1] - t.lean * up;
+					}
+					auto frontAt = [&](float s) { return front[0] + (front[1] - front[0]) * (s - at[0]) / (at[1] - at[0]); };
+					float from = (std::max)(0.0f, (std::min)(at[0], at[1])), to = (std::min)(span, (std::max)(at[0], at[1]));
+					if (!e.shrunk && (std::fabs(frontAt(from)) > 0.015625f || std::fabs(frontAt(to)) > 0.015625f))
+					{
+						continue;
+					}
+					for (int k = 0; k < 2; ++k)
+					{
+						if (at[k] > 0.5f && at[k] < span - 0.5f)
 						{
-							continue;
-						}
-						// How far e stands in front of t's face at e's height, at t's ends: t's normal can be a little off e's.
-						float at[2], front[2];
-						for (int k = 0; k < 2; ++k)
-						{
-							const float *q = k ? t.c : t.a;
-							at[k] = (q[0] - e.a[0]) * dir[0] + (q[1] - e.a[1]) * dir[1];
-							front[k] = (e.a[0] - q[0]) * e.fn[0] + (e.a[1] - q[1]) * e.fn[1] - t.lean * up;
-						}
-						auto frontAt = [&](float s) { return front[0] + (front[1] - front[0]) * (s - at[0]) / (at[1] - at[0]); };
-						float from = (std::max)(0.0f, (std::min)(at[0], at[1])), to = (std::min)(span, (std::max)(at[0], at[1]));
-						if (!e.shrunk && (std::fabs(frontAt(from)) > 0.015625f || std::fabs(frontAt(to)) > 0.015625f))
-						{
-							continue;
-						}
-						for (int k = 0; k < 2; ++k)
-						{
-							if (at[k] > 0.5f && at[k] < span - 0.5f)
-							{
-								cuts.push_back(at[k]);
-							}
-						}
-						if (e.top)
-						{
-							above.push_back({at[0], at[1], front[0], front[1]});
+							cuts.push_back(at[k]);
 						}
 					}
-					// So does a face on the plane that crosses the edge's height: a pillar through a trim.
-					auto crossing = s_wallFaces.find(FaceKey(e.fn, e.lean, e.a[0], e.a[1], e.z));
-					if (crossing != s_wallFaces.end())
+					if (e.top)
 					{
-						for (const WallFace &f : crossing->second)
+						above.push_back({at[0], at[1], front[0], front[1]});
+					}
+				}
+				// So does a face on the plane that crosses the edge's height: a pillar through a trim.
+				auto crossing = s_wallFaces.find(FaceKey(e.fn, e.lean, e.a[0], e.a[1], e.z));
+				if (crossing != s_wallFaces.end())
+				{
+					for (const WallFace &f : crossing->second)
+					{
+						if (f.zMin > e.z - 0.01f || f.zMax < e.z + 0.01f)
 						{
-							if (f.zMin > e.z - 0.01f || f.zMax < e.z + 0.01f)
+							continue;
+						}
+						for (size_t k = 0; k < f.w.size(); ++k)
+						{
+							const Vector &p = f.w[k], &q = f.w[(k + 1) % f.w.size()];
+							if (p.z == q.z || (p.z - e.z) * (q.z - e.z) > 0.0f)
 							{
 								continue;
 							}
-							for (size_t k = 0; k < f.w.size(); ++k)
+							Vector x = p + (q - p) * ((e.z - p.z) / (q.z - p.z));
+							float at = (x.x - e.a[0]) * dir[0] + (x.y - e.a[1]) * dir[1];
+							if (at > 0.5f && at < span - 0.5f)
 							{
-								const Vector &p = f.w[k], &q = f.w[(k + 1) % f.w.size()];
-								if (p.z == q.z || (p.z - e.z) * (q.z - e.z) > 0.0f)
-								{
-									continue;
-								}
-								Vector x = p + (q - p) * ((e.z - p.z) / (q.z - p.z));
-								float at = (x.x - e.a[0]) * dir[0] + (x.y - e.a[1]) * dir[1];
-								if (at > 0.5f && at < span - 0.5f)
-								{
-									cuts.push_back(at);
-								}
+								cuts.push_back(at);
 							}
 						}
 					}
-					std::sort(cuts.begin(), cuts.end());
 				}
-				for (size_t k = 0; k + 1 < cuts.size(); ++k)
+				std::sort(cuts.begin(), cuts.end());
+			}
+			for (size_t k = 0; k + 1 < cuts.size(); ++k)
+			{
+				if (cuts[k + 1] - cuts[k] >= 0.5f)
 				{
-					if (cuts[k + 1] - cuts[k] >= 0.5f)
+					float mid = (cuts[k] + cuts[k + 1]) * 0.5f;
+					// Out past it by more than the vertices' float noise: a ledge thinner than the plane key's 1/64u.
+					float noise = FloatNoise((std::max)({std::fabs(e.a[0]), std::fabs(e.a[1]), std::fabs(e.c[0]), std::fabs(e.c[1])}));
+					bool ownAbove = false, hair = false;
+					for (const auto &r : above)
 					{
-						float mid = (cuts[k] + cuts[k + 1]) * 0.5f;
-						// Out past it by more than the vertices' float noise: a ledge thinner than the plane key's 1/64u.
-						float noise = FloatNoise((std::max)({std::fabs(e.a[0]), std::fabs(e.a[1]), std::fabs(e.c[0]), std::fabs(e.c[1])}));
-						bool ownAbove = false, hair = false;
-						for (const auto &r : above)
+						if ((std::min)(r[0], r[1]) <= mid && mid <= (std::max)(r[0], r[1]))
 						{
-							if ((std::min)(r[0], r[1]) <= mid && mid <= (std::max)(r[0], r[1]))
-							{
-								(r[2] + (r[3] - r[2]) * (mid - r[0]) / (r[1] - r[0]) > noise ? hair : ownAbove) = true;
-							}
+							(r[2] + (r[3] - r[2]) * (mid - r[0]) / (r[1] - r[0]) > noise ? hair : ownAbove) = true;
 						}
-						SampleSpan(et, e, cuts[k], cuts[k + 1], spacing, i, ownAbove || e.prop, hair && !ownAbove, ends);
 					}
+					SampleSpan(et, e, cuts[k], cuts[k + 1], spacing, i, ownAbove || e.prop, hair && !ownAbove, ends);
 				}
 			}
-			s_wallFaces.clear();
-			s_edgePoints.insert(s_edgePoints.end(), s_edgeEnds.begin(), s_edgeEnds.end());
-			s_edgeEnds.clear();
+		}
+
+		// One unit of the build (a brush, a displacement, a prop, an edge, or a phase done at once); false when the build is done.
+		bool BuildUnit(IEngineTrace *et)
+		{
+			EdgeBuild &b = s_build;
+			switch (b.phase)
+			{
+				case 0:
+					s_wallFaces.clear();
+					s_edgeEnds.clear();
+					ModelBrushes(0, b.world);
+					break;
+				case 1:
+					if (b.next < (int)b.world.size())
+					{
+						int brush = b.world[b.next++];
+						if (BSPData::GetBrushContents(brush) & MASK_PLAYERSOLID)
+						{
+							BrushFaceEdges(b.edges, brush, nullptr);
+						}
+						return true;
+					}
+					break;
+				case 2:
+					EntityEdges(et, b.edges);
+					break;
+				case 3:
+					if (BSPDisp::EngineReady() && b.next < BSPDisp::EngineCount())
+					{
+						DispEdges(et, b.edges, b.next, b.next + 1);
+						++b.next;
+						return true;
+					}
+					break;
+				case 4:
+					if (b.next < BSPProps::RtCount())
+					{
+						PropEdges(et, b.edges, b.next, b.next + 1);
+						++b.next;
+						return true;
+					}
+					break;
+				case 5:
+					DynamicPropEdges(et, b.edges);
+					break;
+				case 6:
+					for (int i = 0; i < (int)b.edges.size(); ++i)
+					{
+						const WallEdge &e = b.edges[i];
+						b.onPlane[PlaneKey(e)].push_back(i);
+						b.nearBy[NearKey(e.z, e.fn[0], e.fn[1])].push_back(i);
+						if (e.top && !e.floor)
+						{
+							b.topEnds[EndKey(e.a, e.z)].push_back(i);
+							b.topEnds[EndKey(e.c, e.z)].push_back(i);
+						}
+					}
+					break;
+				case 7:
+					if (b.next < (int)b.edges.size())
+					{
+						EdgeSamples(et, b.next++);
+						return true;
+					}
+					break;
+				default:
+					s_wallFaces.clear();
+					s_edgePoints.insert(s_edgePoints.end(), s_edgeEnds.begin(), s_edgeEnds.end());
+					s_edgeEnds.clear();
+					s_edgeSpacing = b.spacing;
+					s_build = EdgeBuild();
+					return false;
+			}
+			++b.phase;
+			b.next = 0;
+			return true;
 		}
 	} // namespace
 
 	int WallEdgePoints(float spacing, int first, float *out, int maxOut)
 	{
-		if (s_edgePoints.empty() || s_edgeSpacing != spacing)
+		if (s_edgeSpacing != spacing)
 		{
-			BuildEdgePoints(spacing);
+			if (!s_build.active || s_build.spacing != spacing)
+			{
+				s_edgePoints.clear();
+				s_edgeSpacing = 0.0f;
+				s_build = EdgeBuild();
+				s_build.active = BSPProps::EngineTrace() && BSPData::CollideBsp();
+				s_build.spacing = spacing;
+				if (!s_build.active)
+				{
+					s_edgeSpacing = spacing;
+					return 0;
+				}
+			}
+			return -1;
 		}
 		int total = (int)(s_edgePoints.size() / EDGE_POINT_FLOATS);
 		for (int i = 0; i < maxOut && first + i < total; ++i)
@@ -1111,9 +1276,29 @@ namespace BSPSeam
 		}
 	}
 
+	bool EdgeBuildStep(double seconds)
+	{
+		IEngineTrace *et = BSPProps::EngineTrace();
+		if (!s_build.active || !et)
+		{
+			return false;
+		}
+		auto until = std::chrono::steady_clock::now()
+					 + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(seconds));
+		while (BuildUnit(et))
+		{
+			if (std::chrono::steady_clock::now() >= until)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	void OnMapEnd()
 	{
 		s_edgePoints.clear();
 		s_edgeSpacing = 0.0f;
+		s_build = EdgeBuild();
 	}
 } // namespace BSPSeam

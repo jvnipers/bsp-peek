@@ -9,8 +9,7 @@ Engine-internal:
 - `CDispCollTree` (displacements)
 - static props (runtime VPhysics collision)
 - world collision tracing (`BSP_TraceHull` - brushes + displacements + props)
-- pixelsurf, head seam, texturebug and pixelwalk tests through movement's trace list (`BSP_SeamCatch`, `BSP_HeadSeamCatch`, `BSP_TexturebugCatch`,
-  `BSP_PixelwalkCatch`, `BSP_PixelwalkEnd`),
+- pixelsurf, head seam, texturebug and pixelwalk tests through movement's trace list (`BSP_SeamCatch`, `BSP_HeadSeamCatch`, `BSP_TexturebugCatch`, `BSP_PixelwalkCatch`, `BSP_PixelwalkEnd`),
   the heights to test on a wall (`BSP_SeamCandidates`), and the map's wall edges to run them on (`BSP_WallEdgePoints`)
 - map-wide passes of those tests over the wall edges (`BSP_OverlayStart`), in steps and while the server hibernates, saved per map and movement values under `data/bsppeek/overlay`
 - surface physics props / friction (`IPhysicsSurfaceProps`)

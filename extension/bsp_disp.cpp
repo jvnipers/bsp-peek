@@ -1128,9 +1128,13 @@ namespace BSPDisp
 		return ReadI32(tree, engine::OFF_TREE_TRIS_CNT);
 	}
 
-	bool EngineTriangles(int idx, std::vector<float> &out)
+	bool EngineTriangles(int idx, std::vector<float> &out, std::vector<int> *verts)
 	{
 		out.clear();
+		if (verts)
+		{
+			verts->clear();
+		}
 		if (!EngineReady() || idx < 0 || idx >= EngineCount())
 		{
 			return false;
@@ -1146,6 +1150,13 @@ namespace BSPDisp
 										Vec3 n;
 										std::memcpy(&n, triRec + engine::OFF_TRI_NORMAL, sizeof(Vec3));
 										out.insert(out.end(), {v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, n.x, n.y, n.z});
+										if (verts)
+										{
+											for (int k = 0; k < 3; ++k)
+											{
+												verts->push_back(ReadU16(triRec, engine::OFF_TRI_INDICES + 2 * k) & engine::TRI_VERT_MASK);
+											}
+										}
 									});
 		return true;
 	}

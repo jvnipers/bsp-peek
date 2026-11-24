@@ -18,7 +18,7 @@ namespace BSPOverlay
 	};
 
 	// Points nearest origin first (null: in point order). With useCache this map's pass for these values goes on (or is done),
-	// else a saved one is loaded; without, it starts over. 1 done, 0 started, -1 no points.
+	// else a saved one is loaded; without, it starts over. 1 done, 0 started, -1 no points, -2 points still building.
 	int Start(const float values[4], float spacing, const float *origin, bool useCache);
 	// The started pass's untested points nearest origin first.
 	void Nearest(const float origin[3]);
