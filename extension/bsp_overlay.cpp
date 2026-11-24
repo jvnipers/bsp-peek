@@ -143,7 +143,9 @@ namespace BSPOverlay
 		}
 
 		// The kinds of mask caught at point row moved shift units along its edge.
-		// Pixelsurf needs the wall to go on past the edge; head seam, ceiling and texturebug come from bottom edges.
+		// Pixelsurf needs the wall to go on past the edge, something holding a hull over it against the wall, or the wall rising into it
+		// as a ramp; head seam and texturebug come from bottom edges and from top edges a face goes on flush above
+		// (a seam the lower face's edge stands for).
 		int TestAt(const float *row, float shift, int mask, const float v[4])
 		{
 			const float wall[3] = {row[0] - row[4] * shift, row[1] + row[3] * shift, row[2]};
@@ -161,7 +163,7 @@ namespace BSPOverlay
 				}
 				return kinds & mask;
 			}
-			if ((mask & (KIND_PIXELWALK | KIND_PIXELWALK_EXACT)) && (bits & BSPSeam::EDGE_TOP))
+			if ((mask & (KIND_PIXELWALK | KIND_PIXELWALK_EXACT)) && (bits & (BSPSeam::EDGE_TOP | BSPSeam::EDGE_ROW)))
 			{
 				float pw[4];
 				int f = BSPSeam::PixelwalkCatch(wall, flat, row[2], pw);
@@ -171,24 +173,16 @@ namespace BSPOverlay
 				}
 			}
 			float speed[2], start[6];
-			if ((mask & KIND_PIXELSURF) && (bits & BSPSeam::EDGE_CONTINUES)
+			if ((mask & KIND_PIXELSURF) && (bits & (BSPSeam::EDGE_CONTINUES | BSPSeam::EDGE_RESUMES | BSPSeam::EDGE_RAMP))
 				&& BSPSeam::Catch(wall, flat, row[2], v[0], v[1], v[2], v[3], speed, start, false) > 0)
 			{
 				kinds |= KIND_PIXELSURF;
 			}
-			if (!(bits & BSPSeam::EDGE_TOP))
+			if (!(bits & BSPSeam::EDGE_TOP) || (bits & BSPSeam::EDGE_CONTINUES))
 			{
-				if (mask & (KIND_HEADSEAM | KIND_CEILING))
+				if ((mask & KIND_HEADSEAM) && BSPSeam::Catch(wall, flat, row[2], v[0], v[1], v[2], v[3], speed, start, true) > 0)
 				{
-					int h = BSPSeam::Catch(wall, flat, row[2], v[0], v[1], v[2], v[3], speed, start, true);
-					if (h > 0 && (h & (BSPSeam::CATCH_STANDING | BSPSeam::CATCH_DUCKED)))
-					{
-						kinds |= KIND_HEADSEAM;
-					}
-					else if (h > 0 && (h & BSPSeam::CATCH_UNDER_CEILING))
-					{
-						kinds |= KIND_CEILING;
-					}
+					kinds |= KIND_HEADSEAM;
 				}
 				float info[2];
 				if ((mask & KIND_TEXTUREBUG) && BSPSeam::TexturebugCatch(wall, flat, row[2], v[0], v[1], v[3], info) > 0)

@@ -8,9 +8,8 @@
 // Bits returned by BSP_SeamCatch.
 #define BSPP_CATCH_STANDING       1
 #define BSPP_CATCH_DUCKED         2
-#define BSPP_CATCH_WALL_NON_AXIAL 4     // the wall stopping the hull has plane type >= PLANE_Z
-#define BSPP_CATCH_UNDER_CEILING  8     // BSP_HeadSeamCatch: a flat overhang or displacement edge over the hull
-#define BSPP_CATCH_EXACT          16    // for a setpos or teleport: BSP_PixelwalkCatch's hull stands only closer than a creep gets, BSP_PixelwalkEnd tests only exactly on the face
+#define BSPP_CATCH_WALL_NON_AXIAL 4    // the wall stopping the hull has plane type >= PLANE_Z
+#define BSPP_CATCH_EXACT          8    // for a setpos or teleport: BSP_PixelwalkCatch's hull stands only closer than a creep gets, BSP_PixelwalkEnd tests only exactly on the face
 
 // Whether a seam at seamZ catches a player against the wall, by movement's own traces over a grid of arrivals.
 // wallPos: on the face. wallNorm: horizontal unit normal. speed: the range of the catching samples' vertical speeds.
@@ -22,12 +21,14 @@ native int BSP_SeamCatch(const float wallPos[3], const float wallNorm[3], float 
 native int BSP_HeadSeamCatch(const float wallPos[3], const float wallNorm[3], float seamZ, float frametime, float gravity,
                              float airaccelerate, float maxspeed, float speed[2], float start[6]);
 
-// Sorted heights in zMin..zMax where the wall column changes, and tops of brush faces leaning back the way the wall faces
+// Sorted heights in zMin..zMax where the wall column changes (brush, displacement, prop collision mesh and brush entity edges,
+// and where a ray into the wall meets another surface), and tops of brush faces leaning back the way the wall faces
 // (ramps, walls leaning back), for BSP_SeamCatch and the other tests. Returns the count.
 native int BSP_SeamCandidates(const float wallPos[3], const float wallNorm[3], float zMin, float zMax, float[] out, int maxOut);
 
 // Whether a box brush's bottom edge at edgeZ gives a falling player a texturebug, by movement's own traces (brush order counts),
-// from a start not within 2u of ground. A prop's face (anything that collides through vphysics) gives none.
+// from a start not within 2u of ground. Needs a world box brush whose bottom is at edgeZ on that face: a fall past it in a tick
+// that started higher stops the same way. A prop's face (anything that collides through vphysics) gives none.
 // Returns BSPP_CATCH_STANDING / BSPP_CATCH_DUCKED bits, or -1 unavailable. info: the brush's height, the smallest gap at the wall.
 native int BSP_TexturebugCatch(const float wallPos[3], const float wallNorm[3], float edgeZ, float frametime, float gravity,
                                float maxspeed, float info[2]);
@@ -50,27 +51,36 @@ native int BSP_PixelwalkCatch(const float wallPos[3], const float wallNorm[3], f
 native int BSP_PixelwalkEnd(const float endPos[3], const float wallNorm[3], const float along[3], float edgeZ, float out[3]);
 
 // BSP_WallEdgePoints bits, the 7th float of a point.
-#define BSPP_EDGE_TOP       1     // a face's top edge (a pixelwalk test), else its bottom edge
-#define BSPP_EDGE_CONTINUES 2     // a face goes on past the edge, flush with this one (a pixelsurf test), else the wall ends there;
-                                  // a bottom edge is probed 1u and 1/4u under it
-#define BSPP_EDGE_NONWORLD  4     // with CONTINUES: the face past the edge is a displacement's, a prop's or an entity's
-#define BSPP_EDGE_LEDGE     8     // why a top edge is listed: the face above set back 0.25 to 1u, or by more than float noise and
-                                  // under 1/64u; or a displacement floor side or wall top end under a wall within 1u; never CONTINUES
-#define BSPP_EDGE_END       16    // a covered top edge's end, where no top edge on its line goes on past it;
-                                  // its stretch runs 1u from it along the edge (BSP_PixelwalkEnd)
-#define BSPP_EDGE_RAMP      32    // why a top edge is listed: the top of a face leaning back, or a level row inside a displacement one
+#define BSPP_EDGE_TOP       1      // a face's top edge (a pixelwalk test), else its bottom edge
+#define BSPP_EDGE_CONTINUES 2      // a face goes on past the edge, flush with this one (a pixelsurf test), else the wall ends there;
+                                   // a bottom edge is probed 1u and 1/4u under it
+#define BSPP_EDGE_NONWORLD  4      // with CONTINUES: the face past the edge is a displacement's, a prop's or an entity's
+#define BSPP_EDGE_LEDGE     8      // why a top edge is listed: the face above set back 0.25 to 1u, or by more than float noise and
+                                   // under 1/64u; or a displacement floor side or wall top end under a wall within 1u; never CONTINUES
+#define BSPP_EDGE_END       16     // a covered top edge's end, where no top edge on its line goes on past it;
+                                   // its stretch runs 1u from it along the edge (BSP_PixelwalkEnd)
+#define BSPP_EDGE_RAMP      32     // why a top edge is listed: the top of a face leaning back, or a level row inside a displacement one
+#define BSPP_EDGE_RESUMES   64     // a top edge with no face flush above, where a hull over it within 1u of the face's plane meets
+                                   // something (the plane starting again higher up, an overhang): a pixelsurf test
+#define BSPP_EDGE_ROW       128    // a row inside a displacement or prop wall, the point's z the row's height there
+                                   // (a displacement's needn't be level):
+                                   // a pixelwalk test too
 #define BSPP_EDGE_FLOATS    11
 
 // Points about every `spacing` units along the horizontal edges of wall faces where a seam can be, for map-wide seam tests,
-// from world brushes, the brushes of func_brush, func_wall and func_wall_toggle entities that are solid, displacements and props.
+// from world brushes, the brushes of func_brush, func_wall, func_wall_toggle, func_button, func_breakable, func_door and
+// func_movelinear entities that are solid, displacements and props.
 // "Flush" is measured with a small box, which meets a vphysics model where movement does:
-// - brushes: bottom edges unless a floor meets them; top edges under a displacement, prop or entity,
-//   or inside a world face that goes on lower (a world brush starting at the edge has its own bottom edge there);
+// - brushes: bottom edges unless a floor meets them; top edges unless a world brush's bottom edge is flush above at that height,
+//   which has the seam;
 // - vphysics brush entities collide 0.5u inside some faces: their edges are where movement meets them; a top edge moved down carries the seam
 //   (bits TOP | CONTINUES when a face flush with it goes on above), a bottom edge moved up gets no CONTINUES;
 // - displacements: top edges with a face flush above, unless a world brush's bottom edge is on the same plane there;
+//   rows inside a wall (ROW), within 0.3 of level, as bottom edges (the triangles above and below meet there), and a row's end
+//   at the sheet's border facing along it (a hull meets the sheet edge-on); wall edges also facing back where a hull fits behind;
 // - solid static props, prop_dynamic and prop_dynamic_override:
 //   top edges of their collision mesh under a displacement, prop or entity (under a world brush a prop never hovers);
+//   level rows inside a wall face, between coplanar triangles (ROW), and bottom edges of their wall faces, as bottom edges;
 // - pixelwalks: LEDGE, RAMP and END points (see the bits).
 // Built once per map: entities that move, toggle or go away later aren't followed.
 // Per point BSPP_EDGE_FLOATS floats:
@@ -83,17 +93,18 @@ native int BSP_WallEdgePoints(float spacing, int first, float[] out, int maxOut)
 
 // Overlay passes:
 // the seam tests at every BSP_WallEdgePoints point for one set of movement values ({tick interval, gravity, airaccelerate, maxspeed}),
-// as BSP_SeamCatch, BSP_HeadSeamCatch, BSP_TexturebugCatch, BSP_PixelwalkCatch and BSP_PixelwalkEnd give them by the point's bits,
+// as BSP_SeamCatch, BSP_HeadSeamCatch, BSP_TexturebugCatch, BSP_PixelwalkCatch and BSP_PixelwalkEnd give them by the point's bits
+// (pixelsurf with CONTINUES, RESUMES or RAMP; head seam and texturebug on bottom edges and on top edges with CONTINUES;
+// pixelwalk on top edges and rows),
 // and a point that misses next to one that catches tested again up to 16u toward it where something that blocks movement stands at
 // the edge. A pass runs in BSP_OverlayStep calls, and while the game server hibernates (the engine's flag) in the engine's Think,
 // which runs once per frame, hibernating too.
 // Finished passes stay for the map and are saved under data/bsppeek/overlay per map, BSP-Peek build, spacing and values.
 #define BSPP_OVERLAY_PIXELSURF       1
-#define BSPP_OVERLAY_CEILING         2
-#define BSPP_OVERLAY_HEADSEAM        4
-#define BSPP_OVERLAY_TEXTUREBUG      8
-#define BSPP_OVERLAY_PIXELWALK       16
-#define BSPP_OVERLAY_PIXELWALK_EXACT 32
+#define BSPP_OVERLAY_HEADSEAM        2
+#define BSPP_OVERLAY_TEXTUREBUG      4
+#define BSPP_OVERLAY_PIXELWALK       8
+#define BSPP_OVERLAY_PIXELWALK_EXACT 16
 
 // Starts the pass for these values, points nearest origin first (NULL_VECTOR: in point order). With useCache this map's pass for
 // them goes on, or is done, else a saved one is loaded; without, it starts over.

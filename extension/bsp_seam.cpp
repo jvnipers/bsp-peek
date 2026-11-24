@@ -11,6 +11,7 @@
 #include "engine/ICollideable.h"
 #include "engine/IEngineTrace.h"
 #include "engine/IStaticPropMgr.h"
+#include "engine/ivmodelinfo.h"
 #include "gametrace.h"
 #include "tier1/utlvector.h"
 
@@ -94,8 +95,8 @@ namespace BSPSeam
 			return plane ? d : c - 0.03125f;
 		}
 
-		// AirAccelerate's step for this hull: ducked, the input is 0.34 of it; CategorizePosition leaves friction 0.25 after a rise
-		// of 140 u/s or less, and the last tick moved at vz + halfG.
+		// AirAccelerate's step for this hull: ducked, the input is 0.34 of it;
+		// CategorizePosition leaves friction 0.25 after a rise of 140 u/s or less, and the last tick moved at vz + halfG.
 		float AirScale(const MoveTrace &mt, float vz, float halfG)
 		{
 			return (mt.maxs.z < 72.0f ? 0.34f : 1.0f) * ((vz + halfG > 0.0f && vz + halfG <= 140.0f) ? 0.25f : 1.0f);
@@ -131,9 +132,9 @@ namespace BSPSeam
 			return tr.startsolid || tr.fraction >= 1.0f || tr.plane.normal.z < 0.7f;
 		}
 
-		// A start whose straight rise meets a ceiling (an overhang) sets underCeiling instead.
+		// Not a start whose straight rise meets a ceiling (an overhang): a plain ceiling stops it.
 		bool CaughtHead(MoveTrace &mt, const Vector &start, const float normal[3], float vin, float vz, float frametime, float gravity,
-						float airaccelerate, float maxspeed, bool &wallNonAxial, bool &underCeiling)
+						float airaccelerate, float maxspeed, bool &wallNonAxial)
 		{
 			float vel[3] = {-normal[0] * vin, -normal[1] * vin, vz};
 			float origin[3] = {start.x, start.y, start.z}, mn[3], mx[3];
@@ -158,42 +159,85 @@ namespace BSPSeam
 			wallNonAxial = tr.fraction < 0.0001f && tr.plane.type >= PLANE_Z;
 			// From the start: the second bump can leave an overhang.
 			mt.Run(start, start + Vector(0.0f, 0.0f, 2.0f), tr);
-			if (tr.startsolid || tr.fraction >= 1.0f || tr.plane.normal.z > -0.7f)
-			{
-				return true;
-			}
-			// Only a flat one: under a slope the head hit depends on the speed along it and where the hull is.
-			// And only one at this height, within ε: a higher one is listed at its own, its bottom being a candidate too.
-			if (tr.plane.normal.z <= -0.99999f && tr.fraction * 2.0f <= 0.03125f)
-			{
-				underCeiling = true;
-			}
-			return false;
+			return tr.startsolid || tr.fraction >= 1.0f || tr.plane.normal.z > -0.7f;
 		}
 
-		// A vcollide's box stands 0.25 off its surface.
-		void AddBounds(ICollideable *c, std::vector<float> &zs)
+		// Heights where c's collision changes inside the box mn..mx: its bounds (a vcollide's box stands 0.25 off its surface),
+		// its collision mesh's corners, and a brush entity's brushes' tops and bottoms at its origin.
+		void AddBounds(ICollideable *c, const float mn[3], const float mx[3], std::vector<float> &zs)
 		{
 			float z = c->GetCollisionOrigin().z, hi = z + c->OBBMaxs().z, lo = z + c->OBBMins().z;
 			zs.insert(zs.end(), {hi, hi - 0.25f, lo, lo + 0.25f});
+			const model_t *m = c->GetCollisionModel();
+			const char *name = m && BSPProps::ModelInfo() ? BSPProps::ModelInfo()->GetModelName(m) : nullptr;
+			if (c->GetSolid() == SOLID_BSP && name && name[0] == '*')
+			{
+				const Vector &o = c->GetCollisionOrigin();
+				std::vector<int> brushes;
+				ModelBrushes(std::atoi(name + 1), brushes);
+				for (int b : brushes)
+				{
+					float bmn[3], bmx[3];
+					if (BSPData::GetBrushBounds(b, bmn, bmx) && (BSPData::GetBrushContents(b) & MASK_PLAYERSOLID) && bmn[0] + o.x <= mx[0]
+						&& bmx[0] + o.x >= mn[0] && bmn[1] + o.y <= mx[1] && bmx[1] + o.y >= mn[1])
+					{
+						zs.insert(zs.end(), {bmn[2] + o.z, bmx[2] + o.z});
+					}
+				}
+				return;
+			}
+			std::vector<float> mesh;
+			BSPProps::CollisionMesh(c, mesh);
+			// Corners of triangles reaching over the box.
+			for (size_t t = 0; t + 8 < mesh.size(); t += 9)
+			{
+				const float *v = &mesh[t];
+				if ((std::max)({v[0], v[3], v[6]}) < mn[0] || (std::min)({v[0], v[3], v[6]}) > mx[0] || (std::max)({v[1], v[4], v[7]}) < mn[1]
+					|| (std::min)({v[1], v[4], v[7]}) > mx[1])
+				{
+					continue;
+				}
+				zs.insert(zs.end(), {v[2], v[5], v[8]});
+			}
+		}
+
+		// A world box brush with its bottom at z and a side on the face (axis, sign) that a hull at wallPos reaches along it.
+		// A fall crossing that bottom in a tick that started higher, or past the box's top too, stops the same way:
+		// only the bottom's own height is the seam.
+		bool BoxBottomAt(int axis, float sign, float face, const float wallPos[3], float z)
+		{
+			int o = 1 - axis;
+			for (int b = 0, count = BSPData::GetNumBrushes(); b < count; ++b)
+			{
+				float mn[3], mx[3];
+				if (BSPData::BrushNumSides(b) > 0 || !(BSPData::GetBrushContents(b) & MASK_PLAYERSOLID) || !BSPData::GetBrushBounds(b, mn, mx)
+					|| std::fabs(mn[2] - z) > 0.01f || std::fabs((sign > 0.0f ? mx[axis] : mn[axis]) - face) > 0.01f || mn[o] >= wallPos[o] + 16.0f
+					|| mx[o] <= wallPos[o] - 16.0f)
+				{
+					continue;
+				}
+				return true;
+			}
+			return false;
 		}
 
 		class SolidBounds : public IEntityEnumerator
 		{
 		public:
-			explicit SolidBounds(std::vector<float> &zs) : m_zs(zs) {}
+			SolidBounds(const float mn[3], const float mx[3], std::vector<float> &zs) : m_mn(mn), m_mx(mx), m_zs(zs) {}
 
 			bool EnumEntity(IHandleEntity *ent) override
 			{
 				ICollideable *c = BSPProps::EngineTrace()->GetCollideable(ent);
 				if (c && c->GetSolid() != SOLID_NONE && !(c->GetSolidFlags() & FSOLID_NOT_SOLID))
 				{
-					AddBounds(c, m_zs);
+					AddBounds(c, m_mn, m_mx, m_zs);
 				}
 				return true;
 			}
 
 		private:
+			const float *m_mn, *m_mx;
 			std::vector<float> &m_zs;
 		};
 	} // namespace
@@ -214,7 +258,6 @@ namespace BSPSeam
 			return -1;
 		}
 		int flags = 0;
-		bool underCeiling = false;
 		bool speedHit[std::size(kCatchSpeeds)] = {};
 		float reach = 16.0f * (std::fabs(normal[0]) + std::fabs(normal[1]));
 		MoveTrace mt;
@@ -267,8 +310,7 @@ namespace BSPSeam
 						for (float vin : kCatchIn)
 						{
 							bool nonAxial = false;
-							if (head ? CaughtHead(mt, start, normal, vin, kCatchSpeeds[s], frametime, gravity, airaccelerate, maxspeed, nonAxial,
-												  underCeiling)
+							if (head ? CaughtHead(mt, start, normal, vin, kCatchSpeeds[s], frametime, gravity, airaccelerate, maxspeed, nonAxial)
 									 : Caught(mt, start, normal, vin, -kCatchSpeeds[s], frametime, gravity, airaccelerate, maxspeed, nonAxial))
 							{
 								if (!flags)
@@ -292,7 +334,7 @@ namespace BSPSeam
 		BSPProps::EngineTrace()->FreeTraceListData(list);
 		if (!flags)
 		{
-			return underCeiling ? CATCH_UNDER_CEILING : 0;
+			return 0;
 		}
 		// To the next grid speed with no catch.
 		size_t first = 0, last = std::size(kCatchSpeeds) - 1;
@@ -306,7 +348,7 @@ namespace BSPSeam
 		}
 		outSpeed[0] = first == 0 ? 0.0f : kCatchSpeeds[first - 1];
 		outSpeed[1] = last + 1 == std::size(kCatchSpeeds) ? kSpeedMax : kCatchSpeeds[last + 1];
-		return flags | (underCeiling ? CATCH_UNDER_CEILING : 0);
+		return flags;
 	}
 
 	int TexturebugCatch(const float wallPos[3], const float normal[3], float edgeZ, float frametime, float gravity, float maxspeed, float outInfo[2])
@@ -333,6 +375,8 @@ namespace BSPSeam
 		MoveTrace mt;
 		mt.list = list;
 		mt.mins.Init(-16.0f, -16.0f, 0.0f);
+		float boxFace = NAN;
+		bool boxBottom = false;
 		for (int duck = 0; duck < 2; ++duck)
 		{
 			mt.maxs.Init(16.0f, 16.0f, duck ? 54.0f : 72.0f);
@@ -366,7 +410,12 @@ namespace BSPSeam
 					// and in a coordinate-stop band (collisions §7.4) the first step rounds onto the face.
 					bool own;
 					float face = HitDist(hit, mt.mins, mt.maxs, &own) * sign;
-					if (!own)
+					if (face != boxFace)
+					{
+						boxFace = face;
+						boxBottom = own && BoxBottomAt(axis, sign, face, wallPos, edgeZ);
+					}
+					if (!boxBottom)
 					{
 						continue;
 					}
@@ -872,16 +921,27 @@ namespace BSPSeam
 						zs.push_back(bottom);
 					}
 				}
-				// The top of a face leaning back the way the wall faces: where the wall rises from a ramp, outside the column.
 				for (int s = 0, sides = BSPData::BrushNumSides(b); s < sides; ++s)
 				{
 					float n[3], d, v[3 * 64];
-					if (BSPData::BrushSideBevel(b, s) || !BSPData::BrushSidePlane(b, s, n, d) || n[2] <= 0.001f || n[2] >= 0.7f
-						|| n[0] * normal[0] + n[1] * normal[1] < 0.999f * std::sqrt(n[0] * n[0] + n[1] * n[1]))
+					if (BSPData::BrushSideBevel(b, s) || !BSPData::BrushSidePlane(b, s, n, d))
 					{
 						continue;
 					}
 					int nv = BSPData::BrushSideWinding(b, s, v, 64);
+					// Its corners in the box: a thin or sloped brush's edges the column misses.
+					for (int i = 0; i < nv; ++i)
+					{
+						if (v[3 * i] >= mn[0] && v[3 * i] <= mx[0] && v[3 * i + 1] >= mn[1] && v[3 * i + 1] <= mx[1])
+						{
+							zs.push_back(v[3 * i + 2]);
+						}
+					}
+					// The top of a face leaning back the way the wall faces: where the wall rises from a ramp, outside the column.
+					if (n[2] <= 0.001f || n[2] >= 0.7f || n[0] * normal[0] + n[1] * normal[1] < 0.999f * std::sqrt(n[0] * n[0] + n[1] * n[1]))
+					{
+						continue;
+					}
 					float zTop = -FLT_MAX;
 					for (int i = 0; i < nv; ++i)
 					{
@@ -905,10 +965,10 @@ namespace BSPSeam
 				BSPProps::StaticPropMgr()->GetAllStaticPropsInAABB(boxMin, boxMax, &props);
 				for (int i = 0; i < props.Count(); ++i)
 				{
-					AddBounds(props[i], zs);
+					AddBounds(props[i], mn, mx, zs);
 				}
 			}
-			SolidBounds entities(zs);
+			SolidBounds entities(mn, mx, zs);
 			BSPProps::EngineTrace()->EnumerateEntities(boxMin, boxMax, &entities);
 
 			MovementFilter filter;
@@ -946,9 +1006,14 @@ namespace BSPSeam
 				{
 					float lo = z - 1.0f, hi = z;
 					Sample low = last;
-					for (int i = 0; i < 12; ++i)
+					// Down to neighbouring floats: the scan tests the height as found.
+					for (int i = 0; i < 40; ++i)
 					{
 						float mid = (lo + hi) * 0.5f;
+						if (mid <= lo || mid >= hi)
+						{
+							break;
+						}
 						if (same(low, probe(mid)))
 						{
 							lo = mid;
@@ -958,7 +1023,7 @@ namespace BSPSeam
 							hi = mid;
 						}
 					}
-					zs.push_back((lo + hi) * 0.5f);
+					zs.push_back(hi);
 				}
 				last = now;
 			}

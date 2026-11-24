@@ -2,6 +2,7 @@
 #include "bsp_file.h"
 #include "bsp_util.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -723,10 +724,15 @@ namespace BSPDisp
 			engine::ForEachTreeTriangle(tree,
 										[&](const uint8_t *, const Vec3 &v0, const Vec3 &v1, const Vec3 &v2)
 										{
+											// A triangle reaching over the box: a row passing through it can have its corners far out.
+											if ((std::max)({v0.x, v1.x, v2.x}) < mins[0] || (std::min)({v0.x, v1.x, v2.x}) > maxs[0]
+												|| (std::max)({v0.y, v1.y, v2.y}) < mins[1] || (std::min)({v0.y, v1.y, v2.y}) > maxs[1])
+											{
+												return;
+											}
 											for (const Vec3 *v : {&v0, &v1, &v2})
 											{
-												if (v->x >= mins[0] && v->x <= maxs[0] && v->y >= mins[1] && v->y <= maxs[1] && v->z >= mins[2]
-													&& v->z <= maxs[2])
+												if (v->z >= mins[2] && v->z <= maxs[2])
 												{
 													out.push_back(v->z);
 												}

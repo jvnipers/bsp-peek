@@ -11,11 +11,10 @@ namespace BSPOverlay
 	enum
 	{
 		KIND_PIXELSURF = 1,
-		KIND_CEILING = 2,
-		KIND_HEADSEAM = 4,
-		KIND_TEXTUREBUG = 8,
-		KIND_PIXELWALK = 16,
-		KIND_PIXELWALK_EXACT = 32,
+		KIND_HEADSEAM = 2,
+		KIND_TEXTUREBUG = 4,
+		KIND_PIXELWALK = 8,
+		KIND_PIXELWALK_EXACT = 16,
 	};
 
 	// Points nearest origin first (null: in point order). With useCache this map's pass for these values goes on (or is done),

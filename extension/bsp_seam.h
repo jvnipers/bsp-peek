@@ -1,6 +1,8 @@
 #ifndef _INCLUDE_BSPPEEK_BSP_SEAM_H_
 #define _INCLUDE_BSPPEEK_BSP_SEAM_H_
 
+#include <vector>
+
 // Main thread only.
 namespace BSPSeam
 {
@@ -9,8 +11,7 @@ namespace BSPSeam
 		CATCH_STANDING = 1,
 		CATCH_DUCKED = 2,
 		CATCH_WALL_NON_AXIAL = 4, // the wall stopping the hull has plane type >= PLANE_Z
-		CATCH_UNDER_CEILING = 8,  // head: a flat overhang over the hull
-		CATCH_EXACT = 16,         // pixelwalk for a setpos or teleport:
+		CATCH_EXACT = 8,          // pixelwalk for a setpos or teleport:
 								  // PixelwalkCatch's hull stands only closer than a creep gets, PixelwalkEnd tests only on the face
 	};
 
@@ -52,6 +53,8 @@ namespace BSPSeam
 							// or a displacement floor side or wall top end under a wall within 1u
 		EDGE_END = 16,      // a covered top edge's end where no top edge on its line goes on past it, its cell 1u along it (PixelwalkEnd)
 		EDGE_RAMP = 32,     // why a top edge is listed: a face leaning back, or a level row inside a displacement one
+		EDGE_RESUMES = 64,  // no face flush above the top edge, but a hull over it within 1u of the face's plane meets something
+		EDGE_ROW = 128,     // a row inside a displacement wall (a pixelwalk test too), its height where the point is
 	};
 
 	// EDGE_POINT_FLOATS a point: x, y, z, flat normal x, y, edge index, EDGE_* bits, then the ends (x, y) of the stretch of edge
@@ -59,11 +62,13 @@ namespace BSPSeam
 	// props (bsppeek/seam.inc has which). Built on the first call per map and spacing; returns the total.
 	constexpr int EDGE_POINT_FLOATS = 11;
 	int WallEdgePoints(float spacing, int first, float *out, int maxOut);
+	// The brushes of brush model `model` (0 the world), in their model's space.
+	void ModelBrushes(int model, std::vector<int> &out);
 	void OnMapEnd();
 
 	// Sorted heights where the wall column changes:
-	// brush edges, tops of faces leaning back the wall's way, displacement vertices, prop and entity bounds, and where a ray into the
-	// wall meets another surface, entity or depth.
+	// brush edges, tops of faces leaning back the wall's way, displacement vertices, prop and entity bounds and collision mesh corners,
+	// brush entities' brush edges, and where a ray into the wall meets another surface, entity or depth.
 	int Candidates(const float wallPos[3], const float normal[3], float zMin, float zMax, float *out, int maxOut);
 } // namespace BSPSeam
 
